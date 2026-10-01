@@ -16,8 +16,8 @@ use crate::{
 use super::super::restart::RecoveryCount;
 use super::super::schedule::ScheduleKey;
 use super::super::worker::{
-    ActivationAttempt, PreparationTicket, WorkerActivationOutcome, WorkerPreparationOutcome,
-    preparation_result_accepts,
+    ActivationAttempt, WorkerActivationOutcome, WorkerPreparationExpectation,
+    WorkerPreparationOutcome,
 };
 use super::super::worker::{
     WorkerCreationOutcome, WorkerCreationSettlement, settle_worker_creation,
@@ -25,7 +25,8 @@ use super::super::worker::{
 use super::super::{
     ActivationPermit, ActivationPlan, BeginActivation, InitializationAttempt, InitializeWorker,
     PrepareWorkers, PreparedWorker, RoleName, WorkerActivation, WorkerAttempt,
-    WorkerCreationRejection, WorkerInitializationReport, WorkerSource, WorkerSubmission,
+    WorkerCreationRejection, WorkerInitializationReport, WorkerPreparation, WorkerSource,
+    WorkerSubmission,
 };
 use super::assignment::{AssignedJob, AssignmentShutdown};
 
@@ -135,7 +136,7 @@ where
     Preparing {
         previous: WorkerAttempt,
         stopped: ChildStopped<BehaviorAddr<W>>,
-        preparation: PreparationTicket,
+        preparation: WorkerPreparationExpectation,
     },
     Scheduling {
         previous: WorkerAttempt,
@@ -210,6 +211,24 @@ where
         source: Source,
         error: WorkerPreparationError<Source::WorkerRejection, Source::SourceRejection>,
     },
+}
+
+pub(in crate::atomic) enum WorkerPreparationStartFault {
+    InterpreterCorrupt(behavior::InterpreterFault),
+    InterpretationSkipped,
+}
+
+pub(in crate::atomic) struct FailedWorkerPreparation<Role, W, Source>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+{
+    pub(in crate::atomic) role: RoleName<Role>,
+    pub(in crate::atomic) recoveries: RecoveryCount,
+    pub(in crate::atomic) previous: WorkerAttempt,
+    pub(in crate::atomic) stopped: ChildStopped<BehaviorAddr<W>>,
+    pub(in crate::atomic) source: Source,
+    pub(in crate::atomic) fault: WorkerPreparationStartFault,
 }
 
 impl<W, P> RecoveringWorker<W, P>
@@ -334,21 +353,30 @@ where
         }
     }
 
-    pub(in crate::atomic) fn accept_preparation<Source, Role>(
+    pub(in crate::atomic) fn accept_preparation_start<Source, Role>(
         role: RoleName<Role>,
         recoveries: RecoveryCount,
         previous: WorkerAttempt,
         stopped: ChildStopped<BehaviorAddr<W>>,
-        expected: PreparationTicket,
+        expected: WorkerPreparationExpectation,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Result<
-        WorkerRecoveryPreparation<Role, W, P, Source>,
+        ControlFlow<
+            FailedWorkerPreparation<Role, W, Source>,
+            (
+                RoleName<Role>,
+                RecoveryCount,
+                WorkerAttempt,
+                ChildStopped<BehaviorAddr<W>>,
+                WorkerPreparationExpectation,
+            ),
+        >,
         (
             RoleName<Role>,
             RecoveryCount,
             WorkerAttempt,
             ChildStopped<BehaviorAddr<W>>,
-            PreparationTicket,
+            WorkerPreparationExpectation,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         ),
     >
@@ -357,57 +385,122 @@ where
         W: Send,
         Source: WorkerSource<Role, W, P>,
     {
+        if !expected.accepts_issued(&input) {
+            return Err((role, recoveries, previous, stopped, expected, input));
+        }
         match input {
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)) => {
-                let (ticket, outcome) = preparation.into_parts();
-                match outcome {
-                    WorkerPreparationOutcome::Prepared {
-                        source,
-                        mut members,
-                    } => match members.pop() {
-                        Some(prepared) => {
-                            Ok(WorkerRecoveryPreparation::Ready(PreparedReplacement {
-                                role,
-                                recoveries,
-                                previous,
-                                stopped,
-                                source,
-                                submission: prepared.submission,
-                            }))
-                        }
-                        prepared => {
-                            if let Some(prepared) = prepared {
-                                members.push(prepared);
-                            }
-                            Err((
-                                role,
-                                recoveries,
-                                previous,
-                                stopped,
-                                expected,
-                                SettledItem::Attempted(ItemSettlement::Accepted(
-                                    super::super::WorkerPreparation::from_parts(
-                                        ticket,
-                                        WorkerPreparationOutcome::Prepared { source, members },
-                                    ),
-                                )),
-                            ))
-                        }
-                    },
-                    WorkerPreparationOutcome::WorkerRejected { source, reason, .. } => {
-                        Ok(WorkerRecoveryPreparation::Failed {
-                            role,
-                            recoveries,
-                            previous,
-                            stopped,
-                            source,
-                            error: WorkerPreparationError::WorkerRejected(reason),
-                        })
-                    }
+            SettledItem::Attempted(ItemSettlement::Accepted(started)) => {
+                match expected.accept_start(&started) {
+                    Ok(expected) => Ok(ControlFlow::Continue((
+                        role, recoveries, previous, stopped, expected,
+                    ))),
+                    Err(expected) => Err((
+                        role,
+                        recoveries,
+                        previous,
+                        stopped,
+                        expected,
+                        SettledItem::Attempted(ItemSettlement::Accepted(started)),
+                    )),
                 }
             }
-            SettledItem::Attempted(ItemSettlement::Rejected { item, reason }) => {
+            SettledItem::Attempted(ItemSettlement::Corrupt { item, fault }) => {
                 let (source, _, _) = item.into_parts();
+                Ok(ControlFlow::Break(FailedWorkerPreparation {
+                    role,
+                    recoveries,
+                    previous,
+                    stopped,
+                    source,
+                    fault: WorkerPreparationStartFault::InterpreterCorrupt(fault),
+                }))
+            }
+            SettledItem::Unattempted(item) => {
+                let (source, _, _) = item.into_parts();
+                Ok(ControlFlow::Break(FailedWorkerPreparation {
+                    role,
+                    recoveries,
+                    previous,
+                    stopped,
+                    source,
+                    fault: WorkerPreparationStartFault::InterpretationSkipped,
+                }))
+            }
+            SettledItem::Attempted(ItemSettlement::Rejected { reason, .. }) => match reason {},
+            SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
+                match prerequisite {}
+            }
+        }
+    }
+
+    pub(in crate::atomic) fn accept_preparation_return<Source, Role>(
+        role: RoleName<Role>,
+        recoveries: RecoveryCount,
+        previous: WorkerAttempt,
+        stopped: ChildStopped<BehaviorAddr<W>>,
+        expected: WorkerPreparationExpectation,
+        returned: WorkerPreparation<Source, Role, W, P>,
+    ) -> Result<
+        WorkerRecoveryPreparation<Role, W, P, Source>,
+        (
+            RoleName<Role>,
+            RecoveryCount,
+            WorkerAttempt,
+            ChildStopped<BehaviorAddr<W>>,
+            WorkerPreparationExpectation,
+            WorkerPreparation<Source, Role, W, P>,
+        ),
+    >
+    where
+        Role: Send + Sync,
+        W: Send,
+        Source: WorkerSource<Role, W, P>,
+    {
+        if !expected.accepts_return(&returned) {
+            return Err((role, recoveries, previous, stopped, expected, returned));
+        }
+        let (ticket, outcome) = returned.into_parts();
+        match outcome {
+            WorkerPreparationOutcome::Prepared {
+                source,
+                mut members,
+            } => match members.pop() {
+                Some(prepared) => Ok(WorkerRecoveryPreparation::Ready(PreparedReplacement {
+                    role,
+                    recoveries,
+                    previous,
+                    stopped,
+                    source,
+                    submission: prepared.submission,
+                })),
+                prepared => {
+                    if let Some(prepared) = prepared {
+                        members.push(prepared);
+                    }
+                    Err((
+                        role,
+                        recoveries,
+                        previous,
+                        stopped,
+                        expected,
+                        WorkerPreparation::from_parts(
+                            ticket,
+                            WorkerPreparationOutcome::Prepared { source, members },
+                        ),
+                    ))
+                }
+            },
+            WorkerPreparationOutcome::WorkerRejected { source, reason, .. } => {
+                Ok(WorkerRecoveryPreparation::Failed {
+                    role,
+                    recoveries,
+                    previous,
+                    stopped,
+                    source,
+                    error: WorkerPreparationError::WorkerRejected(reason),
+                })
+            }
+            WorkerPreparationOutcome::SourceRejected { source, reason, .. } => {
                 Ok(WorkerRecoveryPreparation::Failed {
                     role,
                     recoveries,
@@ -416,31 +509,6 @@ where
                     source,
                     error: WorkerPreparationError::SourceRejected(reason),
                 })
-            }
-            SettledItem::Attempted(ItemSettlement::Corrupt { item, fault }) => {
-                let (source, _, _) = item.into_parts();
-                Ok(WorkerRecoveryPreparation::Failed {
-                    role,
-                    recoveries,
-                    previous,
-                    stopped,
-                    source,
-                    error: WorkerPreparationError::InterpreterCorrupt(fault),
-                })
-            }
-            SettledItem::Unattempted(item) => {
-                let (source, _, _) = item.into_parts();
-                Ok(WorkerRecoveryPreparation::Failed {
-                    role,
-                    recoveries,
-                    previous,
-                    stopped,
-                    source,
-                    error: WorkerPreparationError::InterpretationSkipped,
-                })
-            }
-            SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
-                match prerequisite {}
             }
         }
     }
@@ -571,7 +639,7 @@ where
         recoveries: RecoveryCount,
         previous: WorkerAttempt,
         stopped: ChildStopped<BehaviorAddr<W>>,
-        preparation: PreparationTicket,
+        preparation: WorkerPreparationExpectation,
     },
     AwaitingRestartSchedule {
         replacement: PendingWorkerReplacement<W, P>,
@@ -909,14 +977,17 @@ where
     }
 }
 
-pub(in crate::atomic) fn accept_retiring_worker_preparation<Role, W, P, Source>(
+pub(in crate::atomic) fn accept_retiring_worker_preparation_start<Role, W, P, Source>(
     mut workers: Vec<RetiringWorker<Role, W, P>>,
     input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
 ) -> Result<
-    (
+    ControlFlow<
+        (
+            Vec<RetiringWorker<Role, W, P>>,
+            FailedWorkerPreparation<Role, W, Source>,
+        ),
         Vec<RetiringWorker<Role, W, P>>,
-        WorkerRecoveryPreparation<Role, W, P, Source>,
-    ),
+    >,
     (
         Vec<RetiringWorker<Role, W, P>>,
         behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
@@ -929,23 +1000,15 @@ where
     P: ActivationPlan,
     Source: WorkerSource<Role, W, P>,
 {
-    let Some(position) =
-        workers
-            .iter()
-            .enumerate()
-            .find_map(|(position, worker)| match &worker.state {
-                RetirementStatus::AwaitingPreparation { preparation, .. }
-                    if preparation_result_accepts(&input, preparation) =>
-                {
-                    Some(position)
-                }
-                RetirementStatus::AwaitingCreation(_)
-                | RetirementStatus::Established { .. }
-                | RetirementStatus::AwaitingPreparation { .. }
-                | RetirementStatus::AwaitingRestartSchedule { .. }
-                | RetirementStatus::Drained => None,
-            })
-    else {
+    let Some(position) = workers.iter().position(|worker| match &worker.state {
+        RetirementStatus::AwaitingPreparation { preparation, .. } => {
+            preparation.accepts_issued(&input)
+        }
+        RetirementStatus::AwaitingCreation(_)
+        | RetirementStatus::Established { .. }
+        | RetirementStatus::AwaitingRestartSchedule { .. }
+        | RetirementStatus::Drained => false,
+    }) else {
         return Err((workers, input));
     };
     let RetiringWorker { role, state } = workers.remove(position);
@@ -960,7 +1023,7 @@ where
         return Err((workers, input));
     };
     let drained_role = role.clone();
-    match RecoveringWorker::<W, P>::accept_preparation(
+    match RecoveringWorker::<W, P>::accept_preparation_start(
         role,
         recoveries,
         previous,
@@ -968,7 +1031,22 @@ where
         preparation,
         input,
     ) {
-        Ok(preparation) => {
+        Ok(ControlFlow::Continue((role, recoveries, previous, stopped, preparation))) => {
+            workers.insert(
+                position,
+                RetiringWorker {
+                    role,
+                    state: RetirementStatus::AwaitingPreparation {
+                        recoveries,
+                        previous,
+                        stopped,
+                        preparation,
+                    },
+                },
+            );
+            Ok(ControlFlow::Continue(workers))
+        }
+        Ok(ControlFlow::Break(failed)) => {
             workers.insert(
                 position,
                 RetiringWorker {
@@ -976,7 +1054,7 @@ where
                     state: RetirementStatus::Drained,
                 },
             );
-            Ok((workers, preparation))
+            Ok(ControlFlow::Break((workers, failed)))
         }
         Err((role, recoveries, previous, stopped, preparation, input)) => {
             workers.insert(
@@ -992,6 +1070,93 @@ where
                 },
             );
             Err((workers, input))
+        }
+    }
+}
+
+pub(in crate::atomic) fn accept_retiring_worker_preparation_return<Role, W, P, Source>(
+    mut workers: Vec<RetiringWorker<Role, W, P>>,
+    returned: WorkerPreparation<Source, Role, W, P>,
+) -> Result<
+    (
+        Vec<RetiringWorker<Role, W, P>>,
+        WorkerRecoveryPreparation<Role, W, P, Source>,
+    ),
+    (
+        Vec<RetiringWorker<Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
+    ),
+>
+where
+    Role: Send + Sync,
+    W: Behavior + Send,
+    BehaviorAddr<W>: EndpointAddress,
+    P: ActivationPlan,
+    Source: WorkerSource<Role, W, P>,
+{
+    let Some(position) =
+        workers
+            .iter()
+            .enumerate()
+            .find_map(|(position, worker)| match &worker.state {
+                RetirementStatus::AwaitingPreparation { preparation, .. }
+                    if preparation.accepts_return(&returned) =>
+                {
+                    Some(position)
+                }
+                RetirementStatus::AwaitingCreation(_)
+                | RetirementStatus::Established { .. }
+                | RetirementStatus::AwaitingPreparation { .. }
+                | RetirementStatus::AwaitingRestartSchedule { .. }
+                | RetirementStatus::Drained => None,
+            })
+    else {
+        return Err((workers, returned));
+    };
+    let RetiringWorker { role, state } = workers.remove(position);
+    let RetirementStatus::AwaitingPreparation {
+        recoveries,
+        previous,
+        stopped,
+        preparation,
+    } = state
+    else {
+        workers.insert(position, RetiringWorker { role, state });
+        return Err((workers, returned));
+    };
+    let drained_role = role.clone();
+    match RecoveringWorker::<W, P>::accept_preparation_return(
+        role,
+        recoveries,
+        previous,
+        stopped,
+        preparation,
+        returned,
+    ) {
+        Ok(preparation) => {
+            workers.insert(
+                position,
+                RetiringWorker {
+                    role: drained_role,
+                    state: RetirementStatus::Drained,
+                },
+            );
+            Ok((workers, preparation))
+        }
+        Err((role, recoveries, previous, stopped, preparation, returned)) => {
+            workers.insert(
+                position,
+                RetiringWorker {
+                    role,
+                    state: RetirementStatus::AwaitingPreparation {
+                        recoveries,
+                        previous,
+                        stopped,
+                        preparation,
+                    },
+                },
+            );
+            Err((workers, returned))
         }
     }
 }
@@ -1405,11 +1570,11 @@ where
         }
     }
 
-    pub(in crate::atomic) fn accept_preparation<Source>(
+    pub(in crate::atomic) fn accept_preparation_start<Source>(
         self,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Result<
-        WorkerRecoveryPreparation<Role, W, P, Source>,
+        ControlFlow<FailedWorkerPreparation<Role, W, Source>, Self>,
         (
             Self,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
@@ -1430,25 +1595,34 @@ where
                 previous,
                 stopped,
                 preparation: expected,
-            }) => {
-                match RecoveringWorker::accept_preparation(
-                    role, recoveries, previous, stopped, expected, input,
-                ) {
-                    Ok(accepted) => Ok(accepted),
-                    Err((role, recoveries, previous, stopped, expected, input)) => Err((
-                        Self {
-                            role,
-                            recoveries,
-                            state: MemberState::Recovering(RecoveringWorker::Preparing {
-                                previous,
-                                stopped,
-                                preparation: expected,
-                            }),
-                        },
-                        input,
-                    )),
+            }) => match RecoveringWorker::accept_preparation_start(
+                role, recoveries, previous, stopped, expected, input,
+            ) {
+                Ok(ControlFlow::Continue((role, recoveries, previous, stopped, preparation))) => {
+                    Ok(ControlFlow::Continue(Self {
+                        role,
+                        recoveries,
+                        state: MemberState::Recovering(RecoveringWorker::Preparing {
+                            previous,
+                            stopped,
+                            preparation,
+                        }),
+                    }))
                 }
-            }
+                Ok(ControlFlow::Break(failed)) => Ok(ControlFlow::Break(failed)),
+                Err((role, recoveries, previous, stopped, preparation, input)) => Err((
+                    Self {
+                        role,
+                        recoveries,
+                        state: MemberState::Recovering(RecoveringWorker::Preparing {
+                            previous,
+                            stopped,
+                            preparation,
+                        }),
+                    },
+                    input,
+                )),
+            },
             state => Err((
                 Self {
                     role,
@@ -1456,6 +1630,61 @@ where
                     state,
                 },
                 input,
+            )),
+        }
+    }
+
+    pub(in crate::atomic) fn accept_preparation_return<Source>(
+        self,
+        returned: WorkerPreparation<Source, Role, W, P>,
+    ) -> Result<
+        WorkerRecoveryPreparation<Role, W, P, Source>,
+        (Self, WorkerPreparation<Source, Role, W, P>),
+    >
+    where
+        Role: Eq + Send + Sync,
+        W: Send,
+        Source: WorkerSource<Role, W, P>,
+    {
+        let Self {
+            role,
+            recoveries,
+            state,
+        } = self;
+        match state {
+            MemberState::Recovering(RecoveringWorker::Preparing {
+                previous,
+                stopped,
+                preparation,
+            }) => match RecoveringWorker::accept_preparation_return(
+                role,
+                recoveries,
+                previous,
+                stopped,
+                preparation,
+                returned,
+            ) {
+                Ok(accepted) => Ok(accepted),
+                Err((role, recoveries, previous, stopped, preparation, returned)) => Err((
+                    Self {
+                        role,
+                        recoveries,
+                        state: MemberState::Recovering(RecoveringWorker::Preparing {
+                            previous,
+                            stopped,
+                            preparation,
+                        }),
+                    },
+                    returned,
+                )),
+            },
+            state => Err((
+                Self {
+                    role,
+                    recoveries,
+                    state,
+                },
+                returned,
             )),
         }
     }

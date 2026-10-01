@@ -14,8 +14,8 @@ use super::super::pool::assignment::AssignmentShutdown;
 use super::super::pool::worker as direct_worker;
 use super::super::pool::worker::{
     RetirementReturns, RetiringWorker, RetiringWorkerActivation, RetiringWorkerInitialization,
-    WorkerCustody, WorkerDeparture, WorkerPreparationError, WorkerRecoveryPreparation,
-    WorkerReplacementError, WorkerStartupCustody,
+    WorkerCustody, WorkerDeparture, WorkerPreparationError, WorkerPreparationStartFault,
+    WorkerRecoveryPreparation, WorkerReplacementError, WorkerStartupCustody,
 };
 use super::super::pool::{Assignment, CompletesAssignments};
 use super::super::worker::WorkerCreationSettlement;
@@ -722,7 +722,7 @@ where
         }
     }
 
-    pub(super) fn accept_retired_preparation(
+    pub(super) fn accept_retired_preparation_start(
         &mut self,
         workers: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -731,13 +731,69 @@ where
         KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
+        match direct_worker::accept_retiring_worker_preparation_start(workers, input) {
+            Ok(ControlFlow::Continue(workers)) => {
+                self.continue_retirement(workers, deadline, None, Actions::cont())
+            }
+            Ok(ControlFlow::Break((workers, failed))) => {
+                let error = match failed.fault {
+                    WorkerPreparationStartFault::InterpreterCorrupt(fault) => {
+                        WorkerPreparationError::InterpreterCorrupt(fault)
+                    }
+                    WorkerPreparationStartFault::InterpretationSkipped => {
+                        WorkerPreparationError::InterpretationSkipped
+                    }
+                };
+                let (returned_source, error) = match self.recovery.restore_source(failed.source) {
+                    Ok(()) => (None, error),
+                    Err(source) => (Some(source), WorkerPreparationError::SourceStateCorrupt),
+                };
+                let mut actions: KeyedActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Key,
+                    Job,
+                    WorkerResult,
+                > = Actions::cont();
+                actions.sends.diagnostics.append(InterpreterRequests::one(
+                    self.diagnostics.action(KeyedDiagnostic::from(
+                        protocol::KeyedDiagnosticCause::WorkerPreparationFailed {
+                            role: failed.role,
+                            previous: failed.previous,
+                            stopped: failed.stopped,
+                            returned_source,
+                            error,
+                        },
+                    )),
+                ));
+                self.continue_retirement(workers, deadline, None, actions)
+            }
+            Err((workers, input)) => self.diagnose(
+                KeyedPoolState::Retiring { workers, deadline },
+                KeyedEvent::WorkerPreparationStarted(input),
+            ),
+        }
+    }
+
+    pub(super) fn accept_retired_preparation_return(
+        &mut self,
+        workers: Vec<RetiringWorker<Role, W, P>>,
+        deadline: ShutdownDeadline,
+        input: super::super::WorkerPreparation<Source, Role, W, P>,
+    ) -> (
+        KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
+        KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
+    ) {
         let (workers, returned) =
-            match direct_worker::accept_retiring_worker_preparation(workers, input) {
+            match direct_worker::accept_retiring_worker_preparation_return(workers, input) {
                 Ok(returned) => returned,
                 Err((workers, input)) => {
                     return self.diagnose(
                         KeyedPoolState::Retiring { workers, deadline },
-                        KeyedEvent::WorkerPreparationSettled(input),
+                        KeyedEvent::WorkerPreparationReturned(input),
                     );
                 }
             };

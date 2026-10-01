@@ -87,10 +87,16 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_births<Preparation>(
+    pub(in super::super) fn accept_births<PreparationStart, PreparationReturn>(
         self,
         proxies: CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
-    ) -> Result<Self, (Self, FixedSupervisorError<Role, Worker, Plan, Preparation>)> {
+    ) -> Result<
+        Self,
+        (
+            Self,
+            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        ),
+    > {
         match self {
             Self::Operating(members) => {
                 let settlements = match proxies.into_settlement() {
@@ -164,12 +170,15 @@ where
         }
     }
 
-    pub(in super::super) fn authorize<Preparation>(
+    pub(in super::super) fn authorize<PreparationStart, PreparationReturn>(
         self,
         maximum: usize,
     ) -> Result<
         (Self, Vec<ProxyOperation<behavior::Here, Worker, Plan>>),
-        (Self, FixedSupervisorError<Role, Worker, Plan, Preparation>),
+        (
+            Self,
+            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        ),
     > {
         match self {
             Self::Operating(mut members) => {
@@ -219,12 +228,15 @@ where
         }
     }
 
-    pub(in super::super) fn accept_operation<Preparation>(
+    pub(in super::super) fn accept_operation<PreparationStart, PreparationReturn>(
         self,
         settlement: ProxyInputResult<behavior::Here, Worker, Plan>,
     ) -> Result<
         (Self, Option<RoleName<Role>>),
-        (Self, FixedSupervisorError<Role, Worker, Plan, Preparation>),
+        (
+            Self,
+            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        ),
     > {
         match self {
             Self::Operating(mut members) => {

@@ -11,8 +11,13 @@ use super::FixedRoster;
 use super::start::ProxyStartingMember;
 use super::stop::ProxyStoppingMember;
 
-pub(in super::super) enum InitialProxyDecision<Role, Worker, Plan, Preparation>
-where
+pub(in super::super) enum InitialProxyDecision<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+> where
     Worker: Behavior,
     Plan: ActivationPlan,
     BehaviorAddr<Worker>: EndpointAddress,
@@ -30,7 +35,7 @@ where
     },
     Rejected {
         roster: FixedRoster<Role, Worker, Plan>,
-        rejection: FixedSupervisorError<Role, Worker, Plan, Preparation>,
+        rejection: FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
     },
 }
 
@@ -60,10 +65,10 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_initial_outcome<Preparation>(
+    pub(in super::super) fn accept_initial_outcome<PreparationStart, PreparationReturn>(
         self,
         report: ChildReport<ProxyOutcome<Worker, Plan>>,
-    ) -> InitialProxyDecision<Role, Worker, Plan, Preparation> {
+    ) -> InitialProxyDecision<Role, Worker, Plan, PreparationStart, PreparationReturn> {
         match self {
             Self::Operating(mut members) => {
                 match members

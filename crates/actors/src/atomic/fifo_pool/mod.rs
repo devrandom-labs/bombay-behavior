@@ -25,8 +25,8 @@ use super::RoleName;
 use super::worker::{InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, BeginActivation, InitializeWorker,
-    OrderedRoles, PrepareWorkers, PreparedWorker, WorkerCreationRejection, WorkerSource,
-    WorkerSubmission,
+    OrderedRoles, PrepareWorkers, PreparedWorker, WorkerCreationRejection, WorkerPreparation,
+    WorkerSource, WorkerSubmission,
 };
 
 mod event;
@@ -50,8 +50,8 @@ use super::pool::worker as direct_worker;
 use super::pool::worker::{
     Member, MemberState, PreparedReplacement, RetiringWorker, RetiringWorkerActivation,
     RetiringWorkerInitialization, ShutdownJoin, Worker, WorkerCreationAdmission, WorkerCustody,
-    WorkerDeparture, WorkerPhase, WorkerPreparationError, WorkerRecoveryPreparation,
-    WorkerReplacementError, WorkerReplacementRelease, creation_identity,
+    WorkerDeparture, WorkerPhase, WorkerPreparationError, WorkerPreparationStartFault,
+    WorkerRecoveryPreparation, WorkerReplacementError, WorkerReplacementRelease, creation_identity,
 };
 use super::pool::{
     AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, CompletesAssignments, Completion,
@@ -60,7 +60,7 @@ use super::pool::{
 use super::pool::{PoolRecoveryState, WorkerRecoveryDecision};
 use super::restart::{RecoveryRelease, RestartAdmission, RestartBudget, admit_restart};
 use super::schedule::ScheduleKey;
-use super::worker::{WorkerActivationOutcome, preparation_result_accepts, stop_kind};
+use super::worker::{WorkerActivationOutcome, WorkerPreparationExpectation, stop_kind};
 use job::QueuedJob;
 use protocol::FifoDiagnosticCause;
 
@@ -307,7 +307,7 @@ where
         })
     }
 
-    fn preparation_position<Source>(
+    fn preparation_start_position<Source>(
         &self,
         input: &behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Option<usize>
@@ -321,7 +321,29 @@ where
             MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
                 preparation: expected,
                 ..
-            }) => preparation_result_accepts(input, expected),
+            }) => expected.accepts_issued(input),
+            MemberState::Creating(_)
+            | MemberState::Worker(_)
+            | MemberState::Recovering(_)
+            | MemberState::Retired => false,
+        })
+    }
+
+    fn preparation_return_position<Source>(
+        &self,
+        input: &WorkerPreparation<Source, Role, W, P>,
+    ) -> Option<usize>
+    where
+        Role: Send + Sync,
+        W: Send,
+        P: ActivationPlan,
+        Source: WorkerSource<Role, W, P>,
+    {
+        self.members.iter().position(|member| match &member.state {
+            MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
+                preparation: expected,
+                ..
+            }) => expected.accepts_return(input),
             MemberState::Creating(_)
             | MemberState::Worker(_)
             | MemberState::Recovering(_)
@@ -577,7 +599,7 @@ where
                 state: MemberState::Recovering(direct_worker::RecoveringWorker::Preparing {
                     previous,
                     stopped,
-                    preparation: ticket,
+                    preparation: WorkerPreparationExpectation::issued(ticket),
                 }),
             },
             actions,
@@ -880,7 +902,7 @@ where
         )
     }
 
-    fn accept_worker_preparation(
+    fn accept_worker_preparation_start(
         &mut self,
         mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
@@ -897,16 +919,69 @@ where
     where
         Role: Eq,
     {
+        let Some(position) = operating.preparation_start_position(&input) else {
+            return Err((operating, input));
+        };
+        let member = operating.members.remove(position);
+        match member.accept_preparation_start(input) {
+            Ok(ControlFlow::Continue(member)) => {
+                operating.members.insert(position, member);
+                Ok((PoolState::Operating(operating), Actions::cont()))
+            }
+            Ok(ControlFlow::Break(failed)) => {
+                let error = match failed.fault {
+                    WorkerPreparationStartFault::InterpreterCorrupt(fault) => {
+                        WorkerPreparationError::InterpreterCorrupt(fault)
+                    }
+                    WorkerPreparationStartFault::InterpretationSkipped => {
+                        WorkerPreparationError::InterpretationSkipped
+                    }
+                };
+                Ok(self.reject_preparation(
+                    operating,
+                    position,
+                    failed.role,
+                    failed.recoveries,
+                    failed.previous,
+                    failed.stopped,
+                    failed.source,
+                    error,
+                ))
+            }
+            Err((member, input)) => {
+                operating.members.insert(position, member);
+                Err((operating, input))
+            }
+        }
+    }
+
+    fn accept_worker_preparation_return(
+        &mut self,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        input: WorkerPreparation<Source, Role, W, P>,
+    ) -> Result<
+        (
+            PoolState<Role, W, P, Job, WorkerResult>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        ),
+        (
+            FifoOperating<Role, W, P, Job, WorkerResult>,
+            WorkerPreparation<Source, Role, W, P>,
+        ),
+    >
+    where
+        Role: Eq,
+    {
         let (limit, release) = match &self.recovery {
             PoolRecoveryState::Permanent { limit, release, .. }
             | PoolRecoveryState::Transient { limit, release, .. } => (*limit, *release),
             PoolRecoveryState::Temporary { .. } => return Err((operating, input)),
         };
-        let Some(position) = operating.preparation_position(&input) else {
+        let Some(position) = operating.preparation_return_position(&input) else {
             return Err((operating, input));
         };
         let member = operating.members.remove(position);
-        let prepared = match member.accept_preparation(input) {
+        let prepared = match member.accept_preparation_return(input) {
             Ok(WorkerRecoveryPreparation::Ready(prepared)) => prepared,
             Ok(WorkerRecoveryPreparation::Failed {
                 role,
@@ -3357,7 +3432,7 @@ where
         }
     }
 
-    fn accept_drain_preparation(
+    fn accept_drain_preparation_start(
         &mut self,
         members: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -3369,8 +3444,63 @@ where
     where
         Role: Eq,
     {
+        let accepted = direct_worker::accept_retiring_worker_preparation_start(members, input);
+        match accepted {
+            Ok(ControlFlow::Continue(members)) => {
+                self.continue_draining(members, deadline, Actions::cont())
+            }
+            Ok(ControlFlow::Break((members, failed))) => {
+                let error = match failed.fault {
+                    WorkerPreparationStartFault::InterpreterCorrupt(fault) => {
+                        WorkerPreparationError::InterpreterCorrupt(fault)
+                    }
+                    WorkerPreparationStartFault::InterpretationSkipped => {
+                        WorkerPreparationError::InterpretationSkipped
+                    }
+                };
+                let (returned_source, error) = match self.recovery.restore_source(failed.source) {
+                    Ok(()) => (None, error),
+                    Err(source) => (Some(source), WorkerPreparationError::SourceStateCorrupt),
+                };
+                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+                    Actions::cont();
+                actions.sends.diagnostics.append(InterpreterRequests::one(
+                    self.diagnostics.action(FifoDiagnostic::new(
+                        FifoDiagnosticCause::WorkerPreparationFailed {
+                            role: failed.role,
+                            previous: failed.previous,
+                            stopped: failed.stopped,
+                            returned_source,
+                            error,
+                        },
+                    )),
+                ));
+                self.continue_draining(members, deadline, actions)
+            }
+            Err((workers, input)) => self.diagnose(
+                PoolState::Draining {
+                    members: workers,
+                    deadline,
+                },
+                FifoEvent::WorkerPreparationStarted(input),
+            ),
+        }
+    }
+
+    fn accept_drain_preparation_return(
+        &mut self,
+        members: Vec<RetiringWorker<Role, W, P>>,
+        deadline: ShutdownDeadline,
+        input: WorkerPreparation<Source, Role, W, P>,
+    ) -> (
+        PoolState<Role, W, P, Job, WorkerResult>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+    )
+    where
+        Role: Eq,
+    {
         let (members, accepted) =
-            match direct_worker::accept_retiring_worker_preparation(members, input) {
+            match direct_worker::accept_retiring_worker_preparation_return(members, input) {
                 Ok(accepted) => accepted,
                 Err((workers, input)) => {
                     return self.diagnose(
@@ -3378,7 +3508,7 @@ where
                             members: workers,
                             deadline,
                         },
-                        FifoEvent::WorkerPreparationSettled(input),
+                        FifoEvent::WorkerPreparationReturned(input),
                     );
                 }
             };
@@ -3611,6 +3741,7 @@ where
             Job,
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+            WorkerPreparation<Source, Role, W, P>,
         >,
     ) -> (
         PoolState<Role, W, P, Job, WorkerResult>,
@@ -3861,6 +3992,7 @@ where
         Job,
         WorkerResult,
         behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+        WorkerPreparation<Source, Role, W, P>,
     >;
     type Sends = FifoRequests<
         InterpreterRequests<ObserveChild<W::Protocol, ChildHead>>,
@@ -3949,12 +4081,21 @@ where
                     ),
                 }
             }
-            (PoolState::Operating(operating), FifoEvent::WorkerPreparationSettled(input)) => {
-                match self.accept_worker_preparation(operating, input) {
+            (PoolState::Operating(operating), FifoEvent::WorkerPreparationStarted(input)) => {
+                match self.accept_worker_preparation_start(operating, input) {
                     Ok(result) => result,
                     Err((operating, input)) => self.diagnose(
                         PoolState::Operating(operating),
-                        FifoEvent::WorkerPreparationSettled(input),
+                        FifoEvent::WorkerPreparationStarted(input),
+                    ),
+                }
+            }
+            (PoolState::Operating(operating), FifoEvent::WorkerPreparationReturned(input)) => {
+                match self.accept_worker_preparation_return(operating, input) {
+                    Ok(result) => result,
+                    Err((operating, input)) => self.diagnose(
+                        PoolState::Operating(operating),
+                        FifoEvent::WorkerPreparationReturned(input),
                     ),
                 }
             }
@@ -4075,8 +4216,12 @@ where
             ) => self.accept_drain_shutdown(members, deadline, settled),
             (
                 PoolState::Draining { members, deadline },
-                FifoEvent::WorkerPreparationSettled(prepared),
-            ) => self.accept_drain_preparation(members, deadline, prepared),
+                FifoEvent::WorkerPreparationStarted(started),
+            ) => self.accept_drain_preparation_start(members, deadline, started),
+            (
+                PoolState::Draining { members, deadline },
+                FifoEvent::WorkerPreparationReturned(returned),
+            ) => self.accept_drain_preparation_return(members, deadline, returned),
             (
                 PoolState::Draining { members, deadline },
                 FifoEvent::RestartScheduleSettled(settled),

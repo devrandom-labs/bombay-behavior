@@ -1,7 +1,7 @@
 # Supervisor diagnostics and preparation overlap
 
-Status: diagnostic ingress retained on `codex/arc010-owner-contract`; preparation
-overlap remains an unretained experiment. The acceptance target is Bombay
+Status: owner diagnostic ingress and preparation overlap retained on
+`codex/arc010-owner-contract`; downstream Bombay adoption remains pending. The acceptance target is Bombay
 ARC-010's observable supervisor and pool trace, not a prescribed method name.
 
 ## Law and failing trace
@@ -46,13 +46,13 @@ test files; production `+110/-0/net +110`, no new public type. Cross-checks:
 `docs/actor-laws/dynamic-supervisor.md`, and Bombay's ARC-010 probe.
 Disposition: `pass` for diagnostic ingress.
 
-## Preparation overlap checkpoint
+## Pre-integration preparation overlap checkpoint
 
 The separate `codex/late-worker-preparation` worktree contains a test-first,
 unretained candidate. Its focused FIFO and fixed-supervisor callers fail
 against untouched 0.19 source in debug and release. The candidate distinguishes
 source-action admission from the later complete source result, so the actor
-can fold shutdown between them. The candidate is not selected by this ledger;
+can fold shutdown between them. At this pre-integration checkpoint, the candidate was not selected by this ledger;
 `docs/engineering/worker-preparation-interleaving.md` in that worktree records
 its ownership equation, alternatives, falsifiers, and missing Bombay active
 task-failure proof.
@@ -72,9 +72,9 @@ orders, and Bombay's typed source interpreter must be checked together.
 Cross-checks: `docs/atomic-runtime-settlement.md`, the FIFO, keyed, and fixed
 actor-law documents, and Bombay ARC-010. Disposition: `reopen` until the
 candidate compiles, passes pure transitions and the live timing witness, and
-accounts for active task failure and retirement. It is not part of this branch.
+accounts for active task failure and retirement. It was not part of the branch at this checkpoint.
 
-The separate preparation experiment currently changes eleven paths,
+At this checkpoint, the separate preparation experiment changed eleven paths,
 production `+664/-176/net +488`, tests `+88/-11`, and two proposed public
 types. Combining that current experiment with the retained diagnostic batch
 would already exceed 15 changed files and 500 net new production lines; the
@@ -82,3 +82,30 @@ unmigrated keyed and fixed consumers require further files. Under `AGENTS.md`'s
 change-containment rule, further production edits require explicit
 authorization for the expanded cumulative surface. This measurement is a
 checkpoint, not permission to retain the candidate or its method spelling.
+
+The user explicitly authorized the expanded ARC-010 change on 2026-10-01
+after reviewing this checkpoint. The size threshold no longer blocks the
+current task; the independent model, pure-fold, and Bombay runtime proofs
+remain mandatory.
+
+## Integrated result
+
+The owner contract now has two typed inputs for one preparation request: an
+exact accepted start settlement and a later complete `WorkerPreparation`.
+Fixed, FIFO, and keyed aggregate transitions retain the request ticket across
+shutdown; shutdown folds while the external source waits, and late completion
+cannot start another replacement. The focused FIFO regression additionally
+submits a job between shutdown and source return and proves the exact payload
+is rejected with `ShuttingDown`. The typed proxy report reaches fixed and
+dynamic supervisors with its original reason and child occurrence.
+
+The full owner workspace test suite passes. An isolated Bombay copy using the
+new owner source passes the held-source ARC-010 probe, all 186 Bombay library
+tests, and all five FIFO recovery integration tests. Its actor-owned task
+monitor observes a source panic while the actor is active. The reviewable
+runtime adoption patch is
+`docs/research-probes/bombay-worker-preparation-runtime.patch`; it applies
+cleanly to the current Bombay working tree, which remains untouched. The
+complete aggregate-drift metrics and residue scan are in
+`docs/engineering/worker-preparation-interleaving.md`. Disposition: `pass`
+for this Behavior Actors contract. The Bombay patch is downstream work.

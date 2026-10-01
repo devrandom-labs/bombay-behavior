@@ -162,15 +162,20 @@ fn begin_recovery(
         SettledItem::Unattempted(preparation) => preparation,
         SettledItem::Attempted(_) => panic!("the preparation has not been interpreted"),
     };
-    let preparation = match preparation.accept(WorkerSubmission::immediate(Worker::new(successor)))
+    let (receipt, starting) = preparation.start();
+    let started = supervisor
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
+            SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+        ))
+        .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
+    assert!(started.creates.is_empty());
+    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(successor)))
     {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => panic!("one selected role needs one worker submission"),
     };
     let admitted = supervisor
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact preparation admits one replacement"));
     let operation = match admitted
         .sends

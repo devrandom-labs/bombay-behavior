@@ -21,9 +21,12 @@ pub use initialization::{
     ActivationPermit, InitializationAttempt, InitializeWorker, WorkerInitializationFailure,
     WorkerInitializationOutcome, WorkerInitializationReport,
 };
-pub use preparation::{PendingWorkerPreparation, PrepareWorkers, WorkerPreparation, WorkerSource};
+pub use preparation::{
+    PendingWorkerPreparation, PrepareWorkers, StartingWorkerPreparation, WorkerPreparation,
+    WorkerPreparationStarted, WorkerSource,
+};
 pub(in crate::atomic) use preparation::{
-    PreparationTicket, WorkerPreparationOutcome, preparation_result_accepts,
+    PreparationTicket, WorkerPreparationExpectation, WorkerPreparationOutcome,
 };
 pub use roster::InitialWorkerRejection;
 pub(in crate::atomic) use roster::prepare_initial_workers;

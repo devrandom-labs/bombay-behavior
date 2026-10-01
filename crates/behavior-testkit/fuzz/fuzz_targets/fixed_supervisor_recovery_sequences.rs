@@ -107,17 +107,20 @@ fn exercise(inputs: &[u8]) {
     let mut proxy = recovering.proxy;
     let proxy_id = recovering.proxy_id;
     let previous = recovering.previous;
-    let preparation = match recovering
-        .preparation
-        .accept(WorkerSubmission::immediate(Worker::new(1)))
+    let (receipt, starting) = recovering.preparation.start();
+    let started = supervisor
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
+            SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+        ))
+        .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
+    assert!(started.creates.is_empty());
+    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(1)))
     {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => panic!("one role needs one worker submission"),
     };
     let prepared = supervisor
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact preparation returns to its recovery"));
     let replacement = match prepared
         .sends

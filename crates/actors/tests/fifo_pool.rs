@@ -1,5 +1,20 @@
 mod installed_control;
 
+macro_rules! start_worker_preparation {
+    ($pool:expr, $request:expr) => {{
+        let (receipt, starting) = $request.start();
+        let actions = $pool
+            .transition(
+                behavior_actors::atomic::FifoEvent::WorkerPreparationStarted(
+                    behavior::SettledItem::Attempted(behavior::ItemSettlement::Accepted(receipt)),
+                ),
+            )
+            .unwrap_or_else(|error| panic!("worker preparation start failed: {error}"));
+        assert!(actions.creates.is_empty());
+        starting
+    }};
+}
+
 use core::ops::ControlFlow;
 use std::cell::RefCell;
 use std::convert::Infallible;
@@ -568,14 +583,13 @@ async fn scheduling_search_replacement_with_drain(
             .pop()
             .unwrap_or_else(|| panic!("the ready worker exists")),
     );
-    let ControlFlow::Break(preparation) = request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) =
+        start_worker_preparation!(pool, request).accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let scheduling = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     let schedule = scheduling
         .sends
@@ -962,15 +976,109 @@ async fn drain_retains_activation_plan_rejection_without_assigning_work() {
 async fn shutdown_waits_for_exact_worker_preparation_without_restarting() {
     let (mut pool, preparation) = pool_awaiting_worker_preparation(SearchSource).await;
 
-    let ControlFlow::Break(prepared) =
-        preparation.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(prepared) = start_worker_preparation!(pool, preparation)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let returned = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(prepared),
+        .transition(FifoEvent::WorkerPreparationReturned(prepared))
+        .unwrap_or_else(|error| panic!("late worker preparation failed: {error}"));
+    assert!(matches!(returned.become_, Step::Stop(_)));
+    assert_eq!(returned.sends.diagnostics.len(), 1);
+    assert!(returned.creates.is_empty());
+    assert!(returned.sends.restart_schedules.is_empty());
+    assert!(returned.sends.worker_preparations.is_empty());
+}
+
+#[tokio::test]
+async fn preparation_start_commits_before_shutdown_and_late_worker_return() {
+    let roles = OrderedRoles::new(Role::Search, [Role::Index])
+        .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
+    let ReadySearchPool {
+        mut pool,
+        mut workers,
+    } = ready_search_pool(
+        roles,
+        BacklogCapacity::new(0),
+        Interruption::Fail,
+        PoolRecovery::permanent(
+            SearchSource,
+            RestartLimit::new(3, Duration::from_secs(10)),
+            RestartRelease::immediate(),
+            PoolFailureReaction::RetireRole,
+        ),
+    )
+    .await;
+    let preparation = stop_search_worker(&mut pool, workers.remove(0));
+    let (receipt, starting) = preparation.start();
+
+    let started = pool
+        .transition(FifoEvent::WorkerPreparationStarted(SettledItem::Attempted(
+            ItemSettlement::Accepted(receipt),
         )))
+        .unwrap_or_else(|error| panic!("exact worker preparation start failed: {error}"));
+    assert!(matches!(started.become_, Step::Continue));
+    assert!(started.creates.is_empty());
+    assert!(started.sends.worker_preparations.is_empty());
+
+    let draining = pool
+        .receive(RuntimeAddr(7), FifoCommand::shutdown())
+        .unwrap_or_else(|error| panic!("FIFO shutdown failed: {error}"));
+    assert!(matches!(draining.become_, Step::Continue));
+    let customer = Recipient::<MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>>::global(
+        RuntimeAddr(88),
+    );
+    let submitted = pool
+        .receive(
+            RuntimeAddr(7),
+            FifoCommand::submit(SubmissionId::new(88), 41, customer),
+        )
+        .unwrap_or_else(|error| panic!("FIFO submission during shutdown failed: {error}"));
+    assert!(submitted.creates.is_empty());
+    assert!(submitted.sends.worker_assignments.is_empty());
+    let reply = submitted
+        .sends
+        .customer_outcomes
+        .into_deliveries()
+        .pop()
+        .unwrap_or_else(|| panic!("the waiting source cannot delay the job rejection"));
+    let ReplyDelivery::Logical(reply) = reply else {
+        panic!("the exact logical customer receives the rejection")
+    };
+    let (_, payload, reason) = reply
+        .message
+        .into_rejected()
+        .unwrap_or_else(|_| panic!("the shutdown reply rejects the job"));
+    assert_eq!(payload, 41);
+    assert_eq!(reason, AdmissionRejection::ShuttingDown);
+    let shutdown = draining
+        .sends
+        .worker_shutdowns
+        .into_requests()
+        .pop()
+        .unwrap_or_else(|| panic!("shutdown stops the remaining live worker"));
+    let settled = pool
+        .on(EstablishedShutdownResolved::<SearchWorker>::accepted(
+            shutdown.id,
+        ))
+        .unwrap_or_else(|error| panic!("shutdown settlement failed: {error}"));
+    assert!(matches!(settled.become_, Step::Continue));
+    let workers_retired = pool
+        .on(ChildStopped::new(
+            workers.remove(0),
+            Ok(Exit::Normal),
+            Instant::now(),
+        ))
+        .unwrap_or_else(|error| panic!("remaining worker exit input failed: {error}"));
+    assert!(matches!(workers_retired.become_, Step::Continue));
+
+    let ControlFlow::Break(prepared) = starting.accept(WorkerSubmission::immediate(SearchWorker))
+    else {
+        panic!("one selected role completes in one preparation")
+    };
+    let returned = pool
+        .transition(FifoEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("late worker preparation failed: {error}"));
     assert!(matches!(returned.become_, Step::Stop(_)));
     assert_eq!(returned.sends.diagnostics.len(), 1);
@@ -985,7 +1093,7 @@ async fn foreign_worker_preparation_cannot_release_the_exact_drain() {
     let (_foreign_pool, foreign) = pool_awaiting_worker_preparation(SearchSource).await;
 
     let unrelated = pool
-        .transition(FifoEvent::WorkerPreparationSettled(
+        .transition(FifoEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(foreign),
         ))
         .unwrap_or_else(|error| panic!("foreign worker preparation failed: {error}"));
@@ -994,7 +1102,7 @@ async fn foreign_worker_preparation_cannot_release_the_exact_drain() {
     assert!(unrelated.creates.is_empty());
 
     let returned = pool
-        .transition(FifoEvent::WorkerPreparationSettled(
+        .transition(FifoEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(exact),
         ))
         .unwrap_or_else(|error| panic!("exact unattempted preparation failed: {error}"));
@@ -1007,12 +1115,11 @@ async fn foreign_worker_preparation_cannot_release_the_exact_drain() {
 #[tokio::test]
 async fn worker_rejection_during_drain_returns_source_without_recovery() {
     let (mut pool, preparation) = pool_awaiting_worker_preparation(FallibleSearchSource).await;
-    let rejected = preparation.reject(SearchWorkerRejection::Unavailable);
+    let rejected =
+        start_worker_preparation!(pool, preparation).reject(SearchWorkerRejection::Unavailable);
 
     let returned = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(rejected),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(rejected))
         .unwrap_or_else(|error| panic!("worker preparation rejection failed: {error}"));
     assert!(matches!(returned.become_, Step::Stop(_)));
     assert_eq!(returned.sends.diagnostics.len(), 1);
@@ -1028,13 +1135,11 @@ async fn source_rejection_during_drain_preserves_affine_custody() {
     let (mut pool, preparation) =
         pool_awaiting_worker_preparation(TrackedSearchSource(Arc::clone(&source_drops))).await;
 
+    let starting = start_worker_preparation!(pool, preparation);
     let returned = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Rejected {
-                item: preparation,
-                reason: TrackedSourceRejection(Arc::clone(&reason_drops)),
-            },
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(
+            starting.reject_source(TrackedSourceRejection(Arc::clone(&reason_drops))),
+        ))
         .unwrap_or_else(|error| panic!("worker source rejection failed: {error}"));
     assert!(matches!(returned.become_, Step::Stop(_)));
     assert_eq!(returned.sends.diagnostics.len(), 1);
@@ -1054,7 +1159,7 @@ async fn corrupt_worker_preparation_during_drain_cannot_restart() {
     let (mut pool, preparation) = pool_awaiting_worker_preparation(FallibleSearchSource).await;
 
     let returned = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+        .transition(FifoEvent::WorkerPreparationStarted(SettledItem::Attempted(
             ItemSettlement::Corrupt {
                 item: preparation,
                 fault: InterpreterFault::CorruptTraversal,
@@ -1280,16 +1385,13 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(prepared) = preparation.accept(WorkerSubmission::activated(
-        SearchWorker,
-        HeldActivation(Arc::clone(&replacement_drops)),
-    )) else {
+    let ControlFlow::Break(prepared) = start_worker_preparation!(pool, preparation).accept(
+        WorkerSubmission::activated(SearchWorker, HeldActivation(Arc::clone(&replacement_drops))),
+    ) else {
         panic!("one selected role completes in one preparation")
     };
     let schedule = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(prepared),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"))
         .sends
         .restart_schedules
@@ -3391,10 +3493,11 @@ async fn permanent_worker_stop_emits_one_affine_source_request() {
     assert!(stopped.sends.diagnostics.is_empty());
     let mut requests = stopped.sends.worker_preparations.into_items();
     assert_eq!(requests.len(), 1);
-    let mut request = requests
+    let request = requests
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let (source, role) = request.source_and_role();
+    let mut starting = start_worker_preparation!(pool, request);
+    let (source, role) = starting.source_and_role();
     assert_eq!(source, &mut SearchSource);
     assert_eq!(role, &Role::Search);
 }
@@ -3567,14 +3670,13 @@ async fn accepted_preparation_starts_one_immediate_replacement() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(preparation) = request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) =
+        start_worker_preparation!(pool, request).accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
-    let settled = SettledItem::Attempted(ItemSettlement::Accepted(preparation));
-
     let restarting = pool
-        .transition(FifoEvent::WorkerPreparationSettled(settled))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     assert!(restarting.sends.diagnostics.is_empty());
     assert_eq!(restarting.creates.len(), 1);
@@ -3621,25 +3723,24 @@ async fn returned_source_prepares_the_first_waiting_role() {
         ))
         .unwrap_or_else(|error| panic!("second worker exit input failed: {error}"));
     assert!(waiting.sends.worker_preparations.is_empty());
-    let ControlFlow::Break(preparation) =
-        first_request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) = start_worker_preparation!(pool, first_request)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
 
     let restarting = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     assert!(restarting.sends.diagnostics.is_empty());
     assert_eq!(restarting.creates.len(), 1);
     let mut requests = restarting.sends.worker_preparations.into_items();
     assert_eq!(requests.len(), 1);
-    let mut request = requests
+    let request = requests
         .pop()
         .unwrap_or_else(|| panic!("returned source serves one waiting role"));
-    let (source, role) = request.source_and_role();
+    let mut starting = start_worker_preparation!(pool, request);
+    let (source, role) = starting.source_and_role();
     assert_eq!(source, &mut SearchSource);
     assert_eq!(role, &Role::Index);
 }
@@ -3679,14 +3780,13 @@ async fn delayed_replacement_waits_for_schedule_and_timer() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(preparation) = request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) =
+        start_worker_preparation!(pool, request).accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let scheduling = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     assert!(scheduling.creates.is_empty());
     let schedule = scheduling
@@ -3748,14 +3848,13 @@ async fn restart_limit_denial_retires_the_role_without_creation() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(preparation) = request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) =
+        start_worker_preparation!(pool, request).accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let denied = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     assert!(denied.creates.is_empty());
     assert_eq!(denied.sends.diagnostics.len(), 1);
@@ -3796,15 +3895,13 @@ async fn restart_limit_keeps_a_charge_at_the_inclusive_cutoff() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the first stop prepares one replacement"));
-    let ControlFlow::Break(first_preparation) =
-        first_request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(first_preparation) = start_worker_preparation!(pool, first_request)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let first_replacement = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(first_preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(first_preparation))
         .unwrap_or_else(|error| panic!("first preparation settlement failed: {error}"));
     let committed = pool
         .on(created_worker(
@@ -3854,15 +3951,13 @@ async fn restart_limit_keeps_a_charge_at_the_inclusive_cutoff() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the second stop prepares one replacement"));
-    let ControlFlow::Break(second_preparation) =
-        second_request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(second_preparation) = start_worker_preparation!(pool, second_request)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let denied = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(second_preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(second_preparation))
         .unwrap_or_else(|error| panic!("second preparation settlement failed: {error}"));
     assert!(denied.creates.is_empty());
     assert_eq!(denied.sends.diagnostics.len(), 1);
@@ -3903,14 +3998,13 @@ async fn rejected_restart_schedule_retires_without_creation() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(preparation) = request.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(preparation) =
+        start_worker_preparation!(pool, request).accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let scheduling = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation settlement failed: {error}"));
     let schedule = scheduling
         .sends
@@ -3959,22 +4053,21 @@ async fn rejected_preparation_restores_source_for_next_waiting_role() {
         .unwrap_or_else(|error| panic!("second worker exit input failed: {error}"));
     assert!(waiting.sends.worker_preparations.is_empty());
 
+    let starting = start_worker_preparation!(pool, request);
     let failed = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Rejected {
-                item: request,
-                reason: SearchSourceRejection::Closed,
-            },
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(
+            starting.reject_source(SearchSourceRejection::Closed),
+        ))
         .unwrap_or_else(|error| panic!("worker preparation rejection failed: {error}"));
     assert!(failed.creates.is_empty());
     assert_eq!(failed.sends.diagnostics.len(), 1);
     let mut requests = failed.sends.worker_preparations.into_items();
     assert_eq!(requests.len(), 1);
-    let mut request = requests
+    let request = requests
         .pop()
         .unwrap_or_else(|| panic!("returned source serves the waiting role"));
-    let (source, role) = request.source_and_role();
+    let mut starting = start_worker_preparation!(pool, request);
+    let (source, role) = starting.source_and_role();
     assert_eq!(source, &mut FallibleSearchSource);
     assert_eq!(role, &Role::Index);
 }
@@ -4007,13 +4100,11 @@ async fn rejected_preparation_preserves_source_and_reason_custody() {
             .unwrap_or_else(|| panic!("the ready worker exists")),
     );
 
+    let starting = start_worker_preparation!(pool, request);
     let failed = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Rejected {
-                item: request,
-                reason: TrackedSourceRejection(Arc::clone(&reason_drops)),
-            },
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(
+            starting.reject_source(TrackedSourceRejection(Arc::clone(&reason_drops))),
+        ))
         .unwrap_or_else(|error| panic!("worker preparation rejection failed: {error}"));
     assert_eq!(source_drops.load(Ordering::SeqCst), 0);
     assert_eq!(reason_drops.load(Ordering::SeqCst), 0);
@@ -4050,12 +4141,11 @@ async fn worker_preparation_rejection_retires_the_role() {
             .pop()
             .unwrap_or_else(|| panic!("the ready worker exists")),
     );
-    let preparation = request.reject(SearchWorkerRejection::Unavailable);
+    let preparation =
+        start_worker_preparation!(pool, request).reject(SearchWorkerRejection::Unavailable);
 
     let failed = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation failure input failed: {error}"));
     assert!(failed.creates.is_empty());
     assert!(failed.sends.worker_preparations.is_empty());
@@ -4083,12 +4173,11 @@ async fn preparation_failure_can_stop_the_pool_and_drain_surviving_workers() {
     )
     .await;
     let request = stop_search_worker(&mut pool, workers.remove(0));
-    let preparation = request.reject(SearchWorkerRejection::Unavailable);
+    let preparation =
+        start_worker_preparation!(pool, request).reject(SearchWorkerRejection::Unavailable);
 
     let draining = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|error| panic!("worker preparation failure input failed: {error}"));
     assert!(draining.creates.is_empty());
     assert!(draining.sends.worker_preparations.is_empty());
@@ -4124,7 +4213,7 @@ async fn corrupt_preparation_retires_the_role_without_losing_its_source() {
     );
 
     let failed = pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
+        .transition(FifoEvent::WorkerPreparationStarted(SettledItem::Attempted(
             ItemSettlement::Corrupt {
                 item: request,
                 fault: InterpreterFault::CorruptTraversal,
@@ -4164,7 +4253,7 @@ async fn unattempted_preparation_retires_the_role_without_losing_its_source() {
     );
 
     let failed = pool
-        .transition(FifoEvent::WorkerPreparationSettled(
+        .transition(FifoEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(request),
         ))
         .unwrap_or_else(|error| panic!("unattempted preparation input failed: {error}"));
@@ -4220,28 +4309,26 @@ async fn foreign_preparation_cannot_advance_another_pool() {
             .pop()
             .unwrap_or_else(|| panic!("the second worker exists")),
     );
-    let ControlFlow::Break(foreign) = foreign.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(foreign) = start_worker_preparation!(first_pool, foreign)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
 
     let rejected = second_pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(foreign),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(foreign))
         .unwrap_or_else(|error| panic!("foreign preparation input failed: {error}"));
     assert!(rejected.creates.is_empty());
     assert!(rejected.sends.worker_preparations.is_empty());
     assert_eq!(rejected.sends.diagnostics.len(), 1);
 
-    let ControlFlow::Break(expected) = expected.accept(WorkerSubmission::immediate(SearchWorker))
+    let ControlFlow::Break(expected) = start_worker_preparation!(second_pool, expected)
+        .accept(WorkerSubmission::immediate(SearchWorker))
     else {
         panic!("one selected role completes in one preparation")
     };
     let accepted = second_pool
-        .transition(FifoEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(expected),
-        )))
+        .transition(FifoEvent::WorkerPreparationReturned(expected))
         .unwrap_or_else(|error| panic!("exact preparation input failed: {error}"));
     assert_eq!(accepted.creates.len(), 1);
     assert!(accepted.sends.diagnostics.is_empty());

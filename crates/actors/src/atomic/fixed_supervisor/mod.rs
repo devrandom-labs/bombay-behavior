@@ -51,7 +51,7 @@ use proxy::{FixedRoster, InitialProxyDecision};
 use recovery::{
     AcceptedWorkerStop, PreparationAcceptance, PreparedRecoveryDecision, RecoveryChoice,
     RecoveryFailure, RecoveryTicket, ReplacementCompletion, RestartScheduleAdmission,
-    SupervisorRecovery, UnrecoveredMember, WorkerStopDecision,
+    SupervisorRecovery, UnrecoveredMember, WorkerPreparationRetirement, WorkerStopDecision,
 };
 use shutdown::FixedShutdown;
 
@@ -171,8 +171,7 @@ where
     roster: FixedRoster<Role, Worker, Plan>,
     creations: CreationSequence,
     activation: ActivationPolicy,
-    recovery:
-        SupervisorRecovery<Source, ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>>,
+    recovery: SupervisorRecovery<Source, WorkerPreparationRetirement<Source, Role, Worker, Plan>>,
     failure_reaction: FailureReaction,
     actor_drain: ActorDrainPolicy,
     diagnostics: DiagnosticDisposition<DiagnosticRoute>,
@@ -184,7 +183,7 @@ where
 /// No variant loses a prepared worker submission or a returned runtime input.
 /// Namespace exhaustion retires every locally reserved child route and returns
 /// the complete prepared roster partitioned around the exact rejected role.
-pub enum FixedSupervisorError<Role, Worker, Plan, Preparation>
+pub enum FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>
 where
     Worker: Behavior,
     Plan: ActivationPlan,
@@ -206,7 +205,7 @@ where
     /// A typed runtime or application input was not valid in the current phase.
     InputRejected {
         /// Complete returned input, unchanged.
-        input: FixedSupervisorEvent<Role, Worker, Plan, Preparation>,
+        input: FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>,
     },
     /// The stored roster contradicted its aggregate phase.
     ///
@@ -406,6 +405,7 @@ where
                 Worker,
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+                WorkerPreparation<Source, Role, Worker, Plan>,
             >,
         >,
 {
@@ -424,6 +424,7 @@ where
                 Worker,
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+                WorkerPreparation<Source, Role, Worker, Plan>,
             >,
         ),
     > {
@@ -478,7 +479,7 @@ where
         roster: FixedRoster<Role, Worker, Plan>,
         recovery: SupervisorRecovery<
             Source,
-            ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+            WorkerPreparationRetirement<Source, Role, Worker, Plan>,
         >,
         schedule: Option<ScheduleAfter>,
     ) -> BehaviorActed<Self> {
@@ -1118,7 +1119,67 @@ where
         }
     }
 
-    fn accept_worker_preparation(
+    fn apply_failed_preparation(
+        &mut self,
+        awaiting: recovery::AwaitingWorkerSource,
+        failed: recovery::FailedPreparation<Role, Worker, Plan, Source>,
+    ) -> BehaviorActed<Self> {
+        match (&self.diagnostics, self.failure_reaction) {
+            (DiagnosticDisposition::Terminate, _) => {
+                let (roster, source, failure) = failed.terminate();
+                self.recovery = awaiting.restore(source);
+                self.roster = roster;
+                let mut requests = FixedSupervisorRequests::empty();
+                requests.diagnostics = InterpreterRequests::one(DiagnosticAction::terminal(
+                    FixedDiagnostic::WorkerPreparationFailed(failure),
+                ));
+                Ok(Actions::new(
+                    requests,
+                    Creations::empty(),
+                    Step::Stop(behavior::Stopped),
+                ))
+            }
+            (DiagnosticDisposition::DeliverTo(_), FailureReaction::RetireMember) => {
+                let (roster, source, failure, operation) = failed.retire_member();
+                self.recovery = awaiting.restore(source);
+                self.roster = roster;
+                let mut proxy_operations = SourceActions::empty();
+                proxy_operations.send(operation);
+                let mut requests = FixedSupervisorRequests::empty();
+                requests.proxy_operations = proxy_operations;
+                requests.diagnostics = InterpreterRequests::one(
+                    self.diagnostics
+                        .action(FixedDiagnostic::WorkerPreparationFailed(failure)),
+                );
+                Ok(Actions::send(requests))
+            }
+            (DiagnosticDisposition::DeliverTo(_), FailureReaction::StopSupervisor) => {
+                let (shutdown, source, failure, operations, schedule) =
+                    failed.stop_supervisor(self.actor_drain);
+                self.recovery = awaiting.restore(source);
+                self.roster = FixedRoster::ShuttingDown(shutdown);
+                let mut proxy_operations = SourceActions::empty();
+                for operation in operations {
+                    proxy_operations.send(operation);
+                }
+                let mut restart_schedules = SourceActions::empty();
+                match schedule {
+                    Some(schedule) => restart_schedules.send(schedule),
+                    None => {}
+                }
+                let mut requests = FixedSupervisorRequests::empty();
+                requests.proxy_operations = proxy_operations;
+                requests.restart_schedules = restart_schedules;
+                requests.diagnostics = InterpreterRequests::one(
+                    self.diagnostics
+                        .action(FixedDiagnostic::WorkerPreparationFailed(failure)),
+                );
+                Ok(Actions::send(requests))
+            }
+        }
+    }
+
+    fn accept_worker_preparation_start(
         &mut self,
         roster: FixedRoster<Role, Worker, Plan>,
         input: ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
@@ -1130,29 +1191,86 @@ where
                 self.recovery = recovery;
                 self.roster = roster;
                 return Err(FixedSupervisorError::InputRejected {
-                    input: FixedSupervisorEvent::WorkerPreparationSettled(input),
+                    input: FixedSupervisorEvent::WorkerPreparationStarted(input),
                 });
             }
         };
         let roster = match roster {
             FixedRoster::ShuttingDown(shutdown) => {
-                return match shutdown.accept_preparation(input) {
-                    Ok((shutdown, returned)) => {
-                        self.recovery = awaiting.retain_for_retirement(returned);
+                return match shutdown.accept_preparation_start(input) {
+                    Ok(ControlFlow::Continue(shutdown)) => {
+                        self.recovery = awaiting.waiting();
+                        self.retain_shutdown(shutdown, Vec::new())
+                    }
+                    Ok(ControlFlow::Break((shutdown, returned))) => {
+                        self.recovery = awaiting
+                            .retain_for_retirement(WorkerPreparationRetirement::Start(returned));
                         self.retain_shutdown(shutdown, Vec::new())
                     }
                     Err((shutdown, input)) => {
                         self.recovery = awaiting.waiting();
                         self.roster = FixedRoster::ShuttingDown(shutdown);
                         Err(FixedSupervisorError::InputRejected {
-                            input: FixedSupervisorEvent::WorkerPreparationSettled(input),
+                            input: FixedSupervisorEvent::WorkerPreparationStarted(input),
                         })
                     }
                 };
             }
             roster => roster,
         };
-        match roster.accept_preparation(input) {
+        match roster.accept_preparation_start(input) {
+            Ok(ControlFlow::Continue(roster)) => {
+                self.recovery = awaiting.waiting();
+                self.roster = roster;
+                Ok(Actions::cont())
+            }
+            Ok(ControlFlow::Break(failed)) => self.apply_failed_preparation(awaiting, failed),
+            Err((roster, input)) => {
+                self.recovery = awaiting.waiting();
+                self.roster = roster;
+                Err(FixedSupervisorError::InputRejected {
+                    input: FixedSupervisorEvent::WorkerPreparationStarted(input),
+                })
+            }
+        }
+    }
+
+    fn accept_worker_preparation_return(
+        &mut self,
+        roster: FixedRoster<Role, Worker, Plan>,
+        returned: WorkerPreparation<Source, Role, Worker, Plan>,
+    ) -> BehaviorActed<Self> {
+        let recovery = mem::replace(&mut self.recovery, SupervisorRecovery::temporary());
+        let awaiting = match recovery.expect_source() {
+            Ok(awaiting) => awaiting,
+            Err(recovery) => {
+                self.recovery = recovery;
+                self.roster = roster;
+                return Err(FixedSupervisorError::InputRejected {
+                    input: FixedSupervisorEvent::WorkerPreparationReturned(returned),
+                });
+            }
+        };
+        let roster = match roster {
+            FixedRoster::ShuttingDown(shutdown) => {
+                return match shutdown.accept_preparation_return(returned) {
+                    Ok((shutdown, returned)) => {
+                        self.recovery = awaiting
+                            .retain_for_retirement(WorkerPreparationRetirement::Returned(returned));
+                        self.retain_shutdown(shutdown, Vec::new())
+                    }
+                    Err((shutdown, returned)) => {
+                        self.recovery = awaiting.waiting();
+                        self.roster = FixedRoster::ShuttingDown(shutdown);
+                        Err(FixedSupervisorError::InputRejected {
+                            input: FixedSupervisorEvent::WorkerPreparationReturned(returned),
+                        })
+                    }
+                };
+            }
+            roster => roster,
+        };
+        match roster.accept_preparation_return(returned) {
             Ok(PreparationAcceptance::Prepared {
                 owners,
                 position,
@@ -1174,66 +1292,13 @@ where
                 }
             },
             Ok(PreparationAcceptance::Failed(failed)) => {
-                match (&self.diagnostics, self.failure_reaction) {
-                    (DiagnosticDisposition::Terminate, _) => {
-                        let (roster, source, failure) = failed.terminate();
-                        self.recovery = awaiting.restore(source);
-                        self.roster = roster;
-                        let mut requests = FixedSupervisorRequests::empty();
-                        requests.diagnostics =
-                            InterpreterRequests::one(DiagnosticAction::terminal(
-                                FixedDiagnostic::WorkerPreparationFailed(failure),
-                            ));
-                        Ok(Actions::new(
-                            requests,
-                            Creations::empty(),
-                            Step::Stop(behavior::Stopped),
-                        ))
-                    }
-                    (DiagnosticDisposition::DeliverTo(_), FailureReaction::RetireMember) => {
-                        let (roster, source, failure, operation) = failed.retire_member();
-                        self.recovery = awaiting.restore(source);
-                        self.roster = roster;
-                        let mut proxy_operations = SourceActions::empty();
-                        proxy_operations.send(operation);
-                        let mut requests = FixedSupervisorRequests::empty();
-                        requests.proxy_operations = proxy_operations;
-                        requests.diagnostics = InterpreterRequests::one(
-                            self.diagnostics
-                                .action(FixedDiagnostic::WorkerPreparationFailed(failure)),
-                        );
-                        Ok(Actions::send(requests))
-                    }
-                    (DiagnosticDisposition::DeliverTo(_), FailureReaction::StopSupervisor) => {
-                        let (shutdown, source, failure, operations, schedule) =
-                            failed.stop_supervisor(self.actor_drain);
-                        self.recovery = awaiting.restore(source);
-                        self.roster = FixedRoster::ShuttingDown(shutdown);
-                        let mut proxy_operations = SourceActions::empty();
-                        for operation in operations {
-                            proxy_operations.send(operation);
-                        }
-                        let mut restart_schedules = SourceActions::empty();
-                        match schedule {
-                            Some(schedule) => restart_schedules.send(schedule),
-                            None => {}
-                        }
-                        let mut requests = FixedSupervisorRequests::empty();
-                        requests.proxy_operations = proxy_operations;
-                        requests.restart_schedules = restart_schedules;
-                        requests.diagnostics = InterpreterRequests::one(
-                            self.diagnostics
-                                .action(FixedDiagnostic::WorkerPreparationFailed(failure)),
-                        );
-                        Ok(Actions::send(requests))
-                    }
-                }
+                self.apply_failed_preparation(awaiting, failed)
             }
-            Err((roster, input)) => {
+            Err((roster, returned)) => {
                 self.recovery = awaiting.waiting();
                 self.roster = roster;
                 Err(FixedSupervisorError::InputRejected {
-                    input: FixedSupervisorEvent::WorkerPreparationSettled(input),
+                    input: FixedSupervisorEvent::WorkerPreparationReturned(returned),
                 })
             }
         }
@@ -1418,6 +1483,7 @@ where
             Worker,
             Plan,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+            WorkerPreparation<Source, Role, Worker, Plan>,
         >,
     ) -> BehaviorActed<Self> {
         let become_ = match &self.diagnostics {
@@ -1452,6 +1518,7 @@ where
                 Worker,
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+                WorkerPreparation<Source, Role, Worker, Plan>,
             >,
         >,
 {
@@ -1464,6 +1531,7 @@ where
         Worker,
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>,
     >;
     type Sends = FixedSupervisorRequests<
         InterpreterRequests<ObserveChild<Worker::Protocol, ChildHead>>,
@@ -1490,6 +1558,7 @@ where
         Worker,
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>,
     >;
     type Birth = Births<StableProxy<Worker, Plan>>;
 
@@ -1526,8 +1595,11 @@ where
                 })
             }
             FixedSupervisorEvent::ProxyStopped(stopped) => self.accept_proxy_exit(roster, stopped),
-            FixedSupervisorEvent::WorkerPreparationSettled(preparation) => {
-                self.accept_worker_preparation(roster, preparation)
+            FixedSupervisorEvent::WorkerPreparationStarted(started) => {
+                self.accept_worker_preparation_start(roster, started)
+            }
+            FixedSupervisorEvent::WorkerPreparationReturned(returned) => {
+                self.accept_worker_preparation_return(roster, returned)
             }
             FixedSupervisorEvent::RestartScheduleSettled(input) => {
                 self.accept_restart_schedule(roster, input)

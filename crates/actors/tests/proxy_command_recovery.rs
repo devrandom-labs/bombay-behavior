@@ -5,7 +5,7 @@ mod installed_control;
 use std::time::{Duration, Instant};
 
 use behavior::{
-    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, Births,
+    ActionItem, ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, Births,
     ChildCreationOutcome, ChildHead, ChildNamespaceExhausted, ChildReport, CreateChild,
     CreationRejection, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
     EstablishedRecipient, EventIngress, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation,
@@ -14,9 +14,10 @@ use behavior::{
 use behavior_actors::atomic::{
     ActivationPlan, ActivationStartRejection, BeginActivation, DynamicSupervisorEvent,
     FixedSupervisorEvent, ImmediateActivation, InitialWorkerOutcome, InitializeWorker,
-    ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyOutcome, ProxyPhase, ReplacementOutcome,
-    StableProxy, WorkerAttempt, WorkerCreationRejection, WorkerInitializationFailure,
-    WorkerInitializationOutcome, WorkerInitializationReport, WorkerStartResult,
+    PrepareWorkers, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyOutcome, ProxyPhase,
+    ReplacementOutcome, StableProxy, WorkerAttempt, WorkerCreationRejection,
+    WorkerInitializationFailure, WorkerInitializationOutcome, WorkerInitializationReport,
+    WorkerPreparation, WorkerStartResult,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ObserveChild,
@@ -110,7 +111,15 @@ fn supervisors_accept_their_stable_proxy_diagnostic_report() {
     {
     }
 
-    require_parent_ingress::<FixedSupervisorEvent<(), Worker, Hydrate, ()>>();
+    require_parent_ingress::<
+        FixedSupervisorEvent<
+            (),
+            Worker,
+            Hydrate,
+            ActionItemResult<PrepareWorkers<Never, (), Worker, Hydrate>>,
+            WorkerPreparation<Never, (), Worker, Hydrate>,
+        >,
+    >();
     require_parent_ingress::<DynamicSupervisorEvent<(), Worker, Hydrate>>();
 }
 

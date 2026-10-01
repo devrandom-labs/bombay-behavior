@@ -134,34 +134,40 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                     }
                 }
 
-                let input = match ending {
+                let event = match ending {
                     PreparationEnding::Prepared => {
+                        let starting = start_worker_preparation!(pool, request);
                         let ControlFlow::Break(preparation) =
-                            request.accept(WorkerSubmission::immediate(SearchWorker))
+                            starting.accept(WorkerSubmission::immediate(SearchWorker))
                         else {
                             panic!("one selected role completes one preparation")
                         };
-                        SettledItem::Attempted(ItemSettlement::Accepted(preparation))
+                        FifoEvent::WorkerPreparationReturned(preparation)
                     }
                     PreparationEnding::WorkerRejected => {
-                        SettledItem::Attempted(ItemSettlement::Accepted(
-                            request.reject(SearchWorkerRejection::Unavailable),
-                        ))
+                        let starting = start_worker_preparation!(pool, request);
+                        FifoEvent::WorkerPreparationReturned(
+                            starting.reject(SearchWorkerRejection::Unavailable),
+                        )
                     }
                     PreparationEnding::SourceRejected => {
-                        SettledItem::Attempted(ItemSettlement::Rejected {
-                            item: request,
-                            reason: SearchSourceRejection::Closed,
-                        })
+                        let starting = start_worker_preparation!(pool, request);
+                        FifoEvent::WorkerPreparationReturned(
+                            starting.reject_source(SearchSourceRejection::Closed),
+                        )
                     }
-                    PreparationEnding::Corrupt => SettledItem::Attempted(ItemSettlement::Corrupt {
-                        item: request,
-                        fault: InterpreterFault::CorruptTraversal,
-                    }),
-                    PreparationEnding::Unattempted => SettledItem::Unattempted(request),
+                    PreparationEnding::Corrupt => FifoEvent::WorkerPreparationStarted(
+                        SettledItem::Attempted(ItemSettlement::Corrupt {
+                            item: request,
+                            fault: InterpreterFault::CorruptTraversal,
+                        }),
+                    ),
+                    PreparationEnding::Unattempted => {
+                        FifoEvent::WorkerPreparationStarted(SettledItem::Unattempted(request))
+                    }
                 };
                 let acted = pool
-                    .transition(FifoEvent::WorkerPreparationSettled(input))
+                    .transition(event)
                     .unwrap_or_else(|error| panic!("worker preparation input failed: {error}"));
 
                 assert!(acted.sends.worker_initializations.is_empty());

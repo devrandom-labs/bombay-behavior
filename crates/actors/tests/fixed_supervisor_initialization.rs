@@ -29,9 +29,9 @@ use behavior_actors::atomic::{
     FixedLifecycleEvent, FixedSupervisor, FixedSupervisorEvent, InitialWorkerOutcome, MemberStatus,
     OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyDiagnostic,
     ProxyInputResult, ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason,
-    ReplacementOutcome, RestartLimit, RestartRelease, StableProxy, Strategy,
-    WorkerInitializationOutcome, WorkerPreparation, WorkerPreparationFailureReason, WorkerSource,
-    WorkerStartResult, WorkerSubmission, fixed,
+    ReplacementOutcome, RestartLimit, RestartRelease, StableProxy, StartingWorkerPreparation,
+    Strategy, WorkerInitializationOutcome, WorkerPreparation, WorkerPreparationFailureReason,
+    WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, Exit, ReplyDelivery, ScheduleAfter,
@@ -45,6 +45,19 @@ use proxy_control::admit_proxy_operation;
 
 const ONE_WORKER: NonZeroUsize = NonZeroUsize::new(1).expect("one is positive");
 const THREE_WORKERS: NonZeroUsize = NonZeroUsize::new(3).expect("three is positive");
+
+macro_rules! start_fixed_preparation {
+    ($supervisor:expr, $request:expr) => {{
+        let (receipt, starting) = $request.start();
+        let actions = $supervisor
+            .transition(FixedSupervisorEvent::WorkerPreparationStarted(
+                SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+            ))
+            .unwrap_or_else(|_| panic!("worker preparation start failed"));
+        assert!(actions.creates.is_empty());
+        starting
+    }};
+}
 
 #[test]
 fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
@@ -76,6 +89,10 @@ where
             ActionItemResult<
                 PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
             >,
+        >,
+    Event: InjectEvent<
+            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+            Here,
         >,
 {
 }
@@ -186,6 +203,7 @@ fn terminal_unexpected<Source>(
     SearchWorker,
     SearchActivation,
     ActionItemResult<PrepareWorkers<Source, SearchRole, SearchWorker, SearchActivation>>,
+    WorkerPreparation<Source, SearchRole, SearchWorker, SearchActivation>,
 >
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
@@ -330,6 +348,7 @@ type SearchSupervisorEvent = FixedSupervisorEvent<
     SearchWorker,
     SearchActivation,
     ActionItemResult<PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>>,
+    WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
 >;
 
 fn shutdown_supervisor_event(from: RuntimeAddr) -> SearchSupervisorEvent {
@@ -671,6 +690,7 @@ fn fixed_runtime_inputs_use_their_declared_sources() {
             ActionItemResult<
                 PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
             >,
+            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
         >,
     >();
 }
@@ -795,7 +815,8 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
         | FixedSupervisorEvent::ProxyReported(_)
         | FixedSupervisorEvent::ProxyDiagnosed(_)
         | FixedSupervisorEvent::ProxyStopped(_)
-        | FixedSupervisorEvent::WorkerPreparationSettled(_)
+        | FixedSupervisorEvent::WorkerPreparationStarted(_)
+        | FixedSupervisorEvent::WorkerPreparationReturned(_)
         | FixedSupervisorEvent::RestartScheduleSettled(_) => {
             panic!("the user projection returns the complete timer event")
         }
@@ -1421,6 +1442,7 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         SettledItem::Unattempted(request) => request,
         SettledItem::Attempted(_) => panic!("the test intercepts tracked preparation"),
     };
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         TrackedWorker {
             drops: Arc::clone(&replacement_drops),
@@ -1433,9 +1455,7 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         ControlFlow::Continue(_) => panic!("one tracked role completes preparation"),
     };
     let denied = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the tracked recovery reaches restart denial"));
     assert!(matches!(denied.become_, Step::Stop(_)));
     assert_eq!(readiness_drops.load(Ordering::SeqCst), 0);
@@ -2393,13 +2413,13 @@ async fn coordinated_preparation(
 }
 
 fn complete_coordinated_preparation(
-    request: PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
 ) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
     prepare_selected_workers(request, &SEARCH_ROLES)
 }
 
 fn prepare_selected_workers(
-    request: PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
     selected_roles: &[SearchRole],
 ) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
     let (role, remaining_roles) = selected_roles
@@ -2500,7 +2520,9 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
     for arrivals in orders {
         let (mut fixed, request, members) =
             coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
-        let mut preparation = Some(complete_coordinated_preparation(request));
+        let mut preparation = Some(complete_coordinated_preparation(start_fixed_preparation!(
+            fixed, request
+        )));
         let shutdown = fixed
             .receive(RuntimeAddr(991), FixedCommand::shutdown())
             .unwrap_or_else(|_| panic!("shutdown adopts every coordinated obligation"));
@@ -2541,12 +2563,10 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
         for (arrival_position, arrival) in arrivals.into_iter().enumerate() {
             let actions = match arrival {
                 CoordinatedShutdownArrival::Preparation => {
-                    fixed.transition(FixedSupervisorEvent::WorkerPreparationSettled(
-                        SettledItem::Attempted(ItemSettlement::Accepted(
-                            preparation
-                                .take()
-                                .expect("the preparation returns exactly once"),
-                        )),
+                    fixed.transition(FixedSupervisorEvent::WorkerPreparationReturned(
+                        preparation
+                            .take()
+                            .expect("the preparation returns exactly once"),
                     ))
                 }
                 CoordinatedShutdownArrival::ProxyOperation(role) => {
@@ -2647,11 +2667,12 @@ async fn rest_for_one_classifies_every_distinct_second_worker_stop() {
                 .copied()
                 .expect("the first stopped role belongs to the roster");
             let preparation = begin_recovery(&mut fixed, first_member);
-            let preparation = prepare_selected_workers(preparation, &selected_roles);
+            let preparation = prepare_selected_workers(
+                start_fixed_preparation!(fixed, preparation),
+                &selected_roles,
+            );
             let admitted = fixed
-                .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-                    SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-                ))
+                .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
                 .unwrap_or_else(|_| panic!("the first recovery is admitted atomically"));
             let replacements = admitted.sends.proxy_operations.unattempted().into_inputs();
             assert_eq!(replacements.len(), selected_roles.len());
@@ -2748,11 +2769,12 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                     .expect("every recovery starts from its declared role");
                 let mut request = begin_recovery(&mut fixed, member);
                 assert_eq!(request.source_and_role().1, role);
-                let preparation = complete_one_for_one_preparation(request, *role);
+                let preparation = complete_one_for_one_preparation(
+                    start_fixed_preparation!(fixed, request),
+                    *role,
+                );
                 let actions = fixed
-                    .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-                        SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-                    ))
+                    .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
                     .unwrap_or_else(|_| panic!("every disjoint preparation remains exact"));
                 let mut emitted = actions.sends.proxy_operations.unattempted().into_inputs();
                 let operation = match emitted
@@ -2938,11 +2960,9 @@ async fn admitted_one_for_all(
 ) {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, maximum, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let admitted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
     let operations = admitted
         .sends
@@ -3084,7 +3104,12 @@ const fn roster_position(role: SearchRole) -> usize {
 }
 
 fn reject_selected_worker(
-    mut preparation: PrepareWorkers<FallibleWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    mut preparation: StartingWorkerPreparation<
+        FallibleWorkshop,
+        SearchRole,
+        SearchWorker,
+        SearchActivation,
+    >,
     selected_roles: &[SearchRole],
     rejected_role: SearchRole,
 ) -> WorkerPreparation<FallibleWorkshop, SearchRole, SearchWorker, SearchActivation> {
@@ -3122,7 +3147,7 @@ fn reject_selected_worker(
 }
 
 fn complete_one_for_one_preparation(
-    request: PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
     role: SearchRole,
 ) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
     prepare_selected_workers(request, core::slice::from_ref(&role))
@@ -3130,8 +3155,10 @@ fn complete_one_for_one_preparation(
 
 #[tokio::test]
 async fn one_for_all_prepares_every_role_in_declaration_order() {
-    let (_, mut request, _) = coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
+    let (mut fixed, mut request, _) =
+        coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
     assert_eq!(request.source_and_role().1, &SearchRole::Search);
+    let request = start_fixed_preparation!(fixed, request);
     let mut request = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -3176,7 +3203,7 @@ async fn every_strategy_selects_each_declared_trigger_range() {
         Strategy::RestForOne,
     ] {
         for trigger in 0..roster.len() {
-            let (_, mut request, _) =
+            let (mut fixed, mut request, _) =
                 coordinated_preparation(strategy, THREE_WORKERS, trigger).await;
             let expected: &[SearchRole] = match strategy {
                 Strategy::OneForOne => &roster[trigger..=trigger],
@@ -3185,6 +3212,7 @@ async fn every_strategy_selects_each_declared_trigger_range() {
             };
             let first = expected.first().expect("every strategy selects a trigger");
             assert_eq!(request.source_and_role().1, first);
+            let request = start_fixed_preparation!(fixed, request);
             match request.accept(WorkerSubmission::activated(worker(first), SearchActivation)) {
                 ControlFlow::Break(_) => assert_eq!(expected.len(), 1),
                 ControlFlow::Continue(request) => {
@@ -3224,6 +3252,7 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
         .collect::<Vec<_>>();
     let mut request = request;
     assert_eq!(request.source_and_role().1, &SearchRole::Search);
+    let request = start_fixed_preparation!(fixed, request);
     let mut request = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -3255,9 +3284,7 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
         }
     };
     let accepted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("prepared initial peers retain their exact startup state"));
     let replacement_proxy_ids = accepted
         .sends
@@ -3465,8 +3492,10 @@ async fn preparing_recovery_maps_an_online_peer_only_from_its_proxy() {
 
 #[tokio::test]
 async fn rest_for_one_prepares_the_trigger_and_declared_suffix() {
-    let (_, mut request, _) = coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
+    let (mut fixed, mut request, _) =
+        coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
     assert_eq!(request.source_and_role().1, &SearchRole::Index);
+    let request = start_fixed_preparation!(fixed, request);
     let mut request = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Index),
         SearchActivation,
@@ -3530,11 +3559,9 @@ async fn shutdown_drains_every_proxy_selected_for_coordinated_recovery_in_roster
 async fn coordinated_preparation_issues_ready_replacements_in_declaration_order() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let accepted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact coordinated result restores its worker source"));
     assert!(accepted.creates.is_empty());
     assert!(accepted.sends.proxy_observations.is_empty());
@@ -3655,11 +3682,9 @@ async fn waiting_peer_stop_requires_its_proxy_and_worker() {
 async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
     let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
     let replacement = match replacements.remove(0) {
@@ -3752,11 +3777,9 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
 async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, ONE_WORKER, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
     let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
     let replacement = match replacements
@@ -3836,11 +3859,9 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
 async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
     let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
     let replacement = match replacements.remove(0) {
@@ -3907,6 +3928,7 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
 async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recovering() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
+    let request = start_fixed_preparation!(fixed, request);
     let request = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Index),
         SearchActivation,
@@ -3926,9 +3948,7 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
         }
     };
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the suffix recovery is admitted"));
     let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
     let replacement = match replacements.remove(0) {
@@ -3990,12 +4010,12 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
 async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
-    let preparation =
-        prepare_selected_workers(request, &[SearchRole::Index, SearchRole::Spellcheck]);
+    let preparation = prepare_selected_workers(
+        start_fixed_preparation!(fixed, request),
+        &[SearchRole::Index, SearchRole::Spellcheck],
+    );
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the suffix recovery is admitted"));
     let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
     let index_replacement = match replacements.remove(0) {
@@ -4063,6 +4083,7 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     };
     let mut second = begin_recovery(&mut fixed, &successor);
     assert_eq!(second.source_and_role().1, &SearchRole::Spellcheck);
+    let second = start_fixed_preparation!(fixed, second);
     match second.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Spellcheck),
         SearchActivation,
@@ -4080,11 +4101,12 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     let (mut fixed, members) = ready_three_role_roster(Strategy::OneForOne, ONE_WORKER).await;
 
     let search = begin_recovery(&mut fixed, &members[0]);
-    let search = complete_one_for_one_preparation(search, SearchRole::Search);
+    let search = complete_one_for_one_preparation(
+        start_fixed_preparation!(fixed, search),
+        SearchRole::Search,
+    );
     let search_issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(search)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(search))
         .unwrap_or_else(|_| panic!("the first recovery occupies the activation slot"));
     let search_operation = match search_issued
         .sends
@@ -4102,20 +4124,20 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     assert_eq!(search_operation.creation(), members[0].proxy);
 
     let spellcheck = begin_recovery(&mut fixed, &members[2]);
-    let spellcheck = complete_one_for_one_preparation(spellcheck, SearchRole::Spellcheck);
+    let spellcheck = complete_one_for_one_preparation(
+        start_fixed_preparation!(fixed, spellcheck),
+        SearchRole::Spellcheck,
+    );
     let spellcheck_waiting = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(spellcheck)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(spellcheck))
         .unwrap_or_else(|_| panic!("the later role waits for activation capacity"));
     assert!(spellcheck_waiting.sends.proxy_operations.is_empty());
 
     let index = begin_recovery(&mut fixed, &members[1]);
-    let index = complete_one_for_one_preparation(index, SearchRole::Index);
+    let index =
+        complete_one_for_one_preparation(start_fixed_preparation!(fixed, index), SearchRole::Index);
     let index_waiting = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(index)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(index))
         .unwrap_or_else(|_| panic!("the earlier role also waits for activation capacity"));
     assert!(index_waiting.sends.proxy_operations.is_empty());
 
@@ -5223,6 +5245,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
         DiagnosticDisposition::deliver_to(diagnostics.clone()),
     )
     .await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -5233,9 +5256,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
         }
     };
     let admitted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the admitted recovery emits one replacement"));
     assert_eq!(admitted.sends.proxy_operations.len(), 1);
 
@@ -5694,7 +5715,7 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
         .unwrap_or_else(|_| panic!("the exact proxy exits"));
     assert!(matches!(waiting_for_source.become_, Step::Continue));
     let stopped = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(request),
         ))
         .unwrap_or_else(|_| panic!("the exact late preparation return closes shutdown"));
@@ -5803,6 +5824,7 @@ async fn one_replacement_operation() -> (
     };
     let submission =
         WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(submission) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -5811,9 +5833,7 @@ async fn one_replacement_operation() -> (
     };
 
     let accepted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact preparation returns to its recovery owner"));
     assert!(matches!(accepted.become_, Step::Continue));
     let mut replacements = accepted.sends.proxy_operations.unattempted().into_inputs();
@@ -5934,11 +5954,9 @@ async fn replacement_rejects_its_outcome_from_another_proxy() {
 async fn replacement_rejects_a_stop_for_another_predecessor() {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
     let issued = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
     let replacement = match issued
         .sends
@@ -6353,6 +6371,7 @@ async fn zero_restart_limit_denies_prepared_recovery_without_replacement() {
         DiagnosticDisposition::terminate(),
     )
     .await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6364,9 +6383,7 @@ async fn zero_restart_limit_denies_prepared_recovery_without_replacement() {
     };
 
     let denied = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact prepared recovery reaches restart policy"));
     assert!(matches!(denied.become_, Step::Stop(_)));
     assert!(denied.sends.proxy_operations.is_empty());
@@ -6410,12 +6427,10 @@ async fn coordinated_recovery_charges_every_selected_worker_to_the_restart_limit
     )
     .await;
     let request = begin_recovery(&mut fixed, &members[0]);
-    let preparation = complete_coordinated_preparation(request);
+    let preparation = complete_coordinated_preparation(start_fixed_preparation!(fixed, request));
 
     let denied = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact preparation reaches restart admission"));
     assert!(matches!(denied.become_, Step::Stop(_)));
     assert!(denied.sends.proxy_operations.is_empty());
@@ -6461,6 +6476,7 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
         DiagnosticDisposition::deliver_to(diagnostic_route),
     )
     .await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6472,9 +6488,7 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     };
 
     let accepted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("diagnostic routing does not change recovery admission"));
     let replacement = match accepted
         .sends
@@ -6574,6 +6588,7 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
         DiagnosticDisposition::deliver_to(diagnostic_route),
     )
     .await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6585,9 +6600,7 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
     };
 
     let denied = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("routed denial applies its topology reaction"));
     let mut diagnostics = denied.sends.diagnostics.into_requests();
     match diagnostics.pop().expect("one restart denial is delivered") {
@@ -6643,6 +6656,7 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
         DiagnosticDisposition::deliver_to(diagnostic_route),
     )
     .await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6653,9 +6667,7 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
         }
     };
     let denied = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("routed denial starts complete shutdown"));
     let mut diagnostics = denied.sends.diagnostics.into_requests();
     match diagnostics.pop().expect("one restart denial is delivered") {
@@ -6708,6 +6720,7 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
         RestartRelease::constant(delay).expect("the delay is positive"),
     );
     let (mut fixed, request, proxy) = preparing_one_for_one_with_recovery(recovery).await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6719,9 +6732,7 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
     };
 
     let scheduled = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact prepared recovery commits one schedule"));
     assert!(scheduled.sends.proxy_operations.is_empty());
     let mut schedules = scheduled
@@ -6807,6 +6818,7 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
         RestartRelease::constant(Duration::from_secs(3)).expect("the delay is positive"),
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -6817,9 +6829,7 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
         }
     };
     let admitted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the delayed recovery emits its schedule"));
     let schedule = match admitted
         .sends
@@ -7091,6 +7101,7 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
         RestartRelease::constant(Duration::from_secs(3)).expect("the delay is positive"),
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -7101,9 +7112,7 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
         }
     };
     let admitted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the delayed recovery emits its schedule"));
     let schedule = match admitted
         .sends
@@ -7163,14 +7172,14 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
 #[tokio::test]
 async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
     let (mut fixed, request, _) = preparing_one_for_one().await;
-    let submission =
-        WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
-    let preparation = match request.accept(submission) {
-        ControlFlow::Break(preparation) => preparation,
-        ControlFlow::Continue(_) => {
-            panic!("one selected role completes in one preparation")
-        }
-    };
+    let (receipt, starting) = request.start();
+    let started = fixed
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
+            SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+        ))
+        .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
+    assert!(matches!(started.become_, Step::Continue));
+    assert!(started.creates.is_empty());
     let shutting_down = fixed
         .receive(RuntimeAddr(942), atomic::FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("shutdown retains the outstanding preparation"));
@@ -7188,10 +7197,17 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
         }
     };
 
+    let submission =
+        WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+    let preparation = match starting.accept(submission) {
+        ControlFlow::Break(preparation) => preparation,
+        ControlFlow::Continue(_) => {
+            panic!("one selected role completes in one preparation")
+        }
+    };
+
     let awaiting_proxy = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact late preparation is retained"));
     assert!(matches!(awaiting_proxy.become_, Step::Continue));
     assert_eq!(awaiting_proxy.sends.proxy_operations.len(), 0);
@@ -7242,7 +7258,7 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
         }
     };
     let retained = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Attempted(ItemSettlement::Corrupt {
                 item: request,
                 fault: InterpreterFault::CorruptTraversal,
@@ -7312,12 +7328,10 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
         .on(ChildStopped::new(route, Ok(Exit::Normal), Instant::now()))
         .unwrap_or_else(|_| panic!("the exact stable proxy exits"));
     assert!(matches!(waiting_for_source.become_, Step::Continue));
+    let starting = start_fixed_preparation!(source_rejected, request);
     let stopped = source_rejected
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            starting.reject_source(WorkshopRejection::SourceUnavailable),
         ))
         .unwrap_or_else(|_| panic!("the exact source rejection closes shutdown"));
     assert!(matches!(stopped.become_, Step::Stop(_)));
@@ -7329,6 +7343,7 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
         RestartRelease::immediate(),
     );
     let (mut worker_rejected, request, _) = preparing_one_for_one_with_recovery(recovery).await;
+    let request = start_fixed_preparation!(worker_rejected, request);
     let preparation = request.reject(WorkshopRejection::WorkerUnavailable);
     let shutting_down = worker_rejected
         .receive(RuntimeAddr(945), atomic::FixedCommand::shutdown())
@@ -7347,9 +7362,7 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
         }
     };
     let retained = worker_rejected
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact worker rejection remains in shutdown custody"));
     assert!(matches!(retained.become_, Step::Continue));
     let (route, control, receipt) = admit_proxy_operation(
@@ -7390,12 +7403,12 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
         }
     };
     let unexpected = owner
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(source_request),
         ))
         .unwrap_or_else(|_| panic!("the foreign preparation becomes a diagnostic"));
     let returned = match terminal_unexpected(unexpected.sends.diagnostics.into_requests()) {
-        FixedSupervisorEvent::WorkerPreparationSettled(SettledItem::Unattempted(request)) => {
+        FixedSupervisorEvent::WorkerPreparationStarted(SettledItem::Unattempted(request)) => {
             request
         }
         _ => panic!("another recovery ticket cannot close this shutdown"),
@@ -7422,14 +7435,14 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
         .unwrap_or_else(|_| panic!("source shutdown retains its preparation"));
     assert!(matches!(source_shutdown.become_, Step::Continue));
     let accepted_by_source = source
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(returned),
         ))
         .unwrap_or_else(|_| panic!("the unchanged request remains valid for its owner"));
     assert!(matches!(accepted_by_source.become_, Step::Continue));
 
     let stopped = owner
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(owner_request),
         ))
         .unwrap_or_else(|_| panic!("only the owner's exact request closes shutdown"));
@@ -7445,12 +7458,10 @@ async fn terminal_source_rejection_stops_with_one_complete_diagnostic() {
         RestartRelease::immediate(),
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
+    let starting = start_fixed_preparation!(fixed, request);
     let stopped = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            starting.reject_source(WorkshopRejection::SourceUnavailable),
         ))
         .unwrap_or_else(|_| panic!("the exact source rejection terminates the supervisor"));
 
@@ -7486,11 +7497,10 @@ async fn terminal_worker_rejection_keeps_the_exact_failed_role() {
         RestartRelease::immediate(),
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = request.reject(WorkshopRejection::WorkerUnavailable);
     let stopped = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact worker rejection terminates the supervisor"));
     let diagnostic = stopped
         .sends
@@ -7540,6 +7550,7 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
 
     let mut preparation = begin_recovery(&mut fixed, &members[1]);
     assert_eq!(preparation.source_and_role().1, &SearchRole::Search);
+    let preparation = start_fixed_preparation!(fixed, preparation);
     let mut preparation = match preparation.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -7551,9 +7562,7 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
     let rejected = preparation.reject(WorkshopRejection::WorkerUnavailable);
 
     let shutdown = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(rejected)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(rejected))
         .unwrap_or_else(|_| panic!("the coordinated rejection begins supervisor shutdown"));
     assert!(matches!(shutdown.become_, Step::Continue));
     assert!(shutdown.sends.worker_preparations.is_empty());
@@ -7669,20 +7678,26 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                 .await;
                 let trigger_position = roster_position(trigger_role);
                 let request = begin_recovery(&mut fixed, &members[trigger_position]);
-                let returned = match preparation_return {
+                let event = match preparation_return {
                     PreparationReturn::SourceRejected => {
-                        SettledItem::Attempted(ItemSettlement::Rejected {
-                            item: request,
-                            reason: WorkshopRejection::SourceUnavailable,
-                        })
+                        let starting = start_fixed_preparation!(fixed, request);
+                        FixedSupervisorEvent::WorkerPreparationReturned(
+                            starting.reject_source(WorkshopRejection::SourceUnavailable),
+                        )
                     }
                     PreparationReturn::InterpreterCorrupt => {
-                        SettledItem::Attempted(ItemSettlement::Corrupt {
-                            item: request,
-                            fault: InterpreterFault::MissingCapability,
-                        })
+                        FixedSupervisorEvent::WorkerPreparationStarted(SettledItem::Attempted(
+                            ItemSettlement::Corrupt {
+                                item: request,
+                                fault: InterpreterFault::MissingCapability,
+                            },
+                        ))
                     }
-                    PreparationReturn::Unattempted => SettledItem::Unattempted(request),
+                    PreparationReturn::Unattempted => {
+                        FixedSupervisorEvent::WorkerPreparationStarted(SettledItem::Unattempted(
+                            request,
+                        ))
+                    }
                 };
                 let expected_shutdown = match reaction {
                     FailureReaction::RetireMember => vec![members[trigger_position].proxy],
@@ -7691,11 +7706,9 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                     }
                 };
 
-                let failed = fixed
-                    .transition(FixedSupervisorEvent::WorkerPreparationSettled(returned))
-                    .unwrap_or_else(|_| {
-                        panic!("each preparation return applies its configured reaction")
-                    });
+                let failed = fixed.transition(event).unwrap_or_else(|_| {
+                    panic!("each preparation return applies its configured reaction")
+                });
                 assert!(matches!(failed.become_, Step::Continue));
                 assert!(failed.creates.is_empty());
                 assert!(failed.sends.proxy_observations.is_empty());
@@ -7841,8 +7854,11 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                 .await;
                 let trigger_position = roster_position(trigger_role);
                 let preparation = begin_recovery(&mut fixed, &members[trigger_position]);
-                let preparation =
-                    reject_selected_worker(preparation, &selected_roles, rejected_role);
+                let preparation = reject_selected_worker(
+                    start_fixed_preparation!(fixed, preparation),
+                    &selected_roles,
+                    rejected_role,
+                );
                 let expected_shutdown = match reaction {
                     FailureReaction::RetireMember => vec![members[trigger_position].proxy],
                     FailureReaction::StopSupervisor => {
@@ -7851,9 +7867,7 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                 };
 
                 let failed = fixed
-                    .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-                        SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-                    ))
+                    .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
                     .unwrap_or_else(|_| {
                         panic!("every exact coordinated rejection applies its configured reaction")
                     });
@@ -7942,7 +7956,7 @@ async fn terminal_corrupt_preparation_keeps_interpreter_fault_and_selected_role(
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let stopped = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Attempted(ItemSettlement::Corrupt {
                 item: request,
                 fault: InterpreterFault::MissingCapability,
@@ -7981,7 +7995,7 @@ async fn terminal_unattempted_preparation_keeps_selected_role() {
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let stopped = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(request),
         ))
         .unwrap_or_else(|_| panic!("the exact unattempted preparation terminates the supervisor"));
@@ -8027,12 +8041,10 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
         DiagnosticDisposition::deliver_to(diagnostics.clone()),
     )
     .await;
+    let starting = start_fixed_preparation!(fixed, request);
     let failed = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            starting.reject_source(WorkshopRejection::SourceUnavailable),
         ))
         .unwrap_or_else(|_| panic!("the exact rejection starts member retirement"));
 
@@ -8213,7 +8225,7 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
 
     let search_request = begin_recovery(&mut fixed, &members[0]);
     let search_failed = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(search_request),
         ))
         .unwrap_or_else(|_| panic!("the first preparation failure retires Search"));
@@ -8233,7 +8245,7 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
 
     let index_request = begin_recovery(&mut fixed, &members[1]);
     let index_failed = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(index_request),
         ))
         .unwrap_or_else(|_| panic!("the second preparation failure retires Index"));
@@ -8329,12 +8341,10 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
         SettledItem::Unattempted(request) => request,
         SettledItem::Attempted(_) => panic!("the test intercepts the request"),
     };
+    let starting = start_fixed_preparation!(fixed, request);
     let failed = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            starting.reject_source(WorkshopRejection::SourceUnavailable),
         ))
         .unwrap_or_else(|_| panic!("the routed failure starts member retirement"));
     assert!(failed.sends.lifecycle.is_empty());
@@ -8428,7 +8438,7 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     )
     .await;
     let failed = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
+        .transition(FixedSupervisorEvent::WorkerPreparationStarted(
             SettledItem::Unattempted(request),
         ))
         .unwrap_or_else(|_| panic!("the exact failure starts complete supervisor shutdown"));
@@ -8635,6 +8645,7 @@ where
     );
     let (mut fixed, request, _, _) =
         preparing_one_for_one_with_policies(recovery, failure_reaction, diagnostics).await;
+    let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(WorkerSubmission::activated(
         SearchWorker(SearchRole::Search),
         SearchActivation,
@@ -8645,9 +8656,7 @@ where
         }
     };
     let admitted = fixed
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(preparation)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the delayed recovery emits its schedule"));
     let schedule = match admitted
         .sends
@@ -8669,6 +8678,7 @@ async fn another_recoverys_preparation_returns_unchanged_to_its_owner() {
     let (mut source, source_request, _) = preparing_one_for_one().await;
     let source_submission =
         WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+    let source_request = start_fixed_preparation!(source, source_request);
     let source_preparation = match source_request.accept(source_submission) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -8677,20 +8687,16 @@ async fn another_recoverys_preparation_returns_unchanged_to_its_owner() {
     };
 
     let unexpected = owner
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(source_preparation)),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            source_preparation,
         ))
         .unwrap_or_else(|_| panic!("the foreign preparation becomes a diagnostic"));
     let returned = match terminal_unexpected(unexpected.sends.diagnostics.into_requests()) {
-        FixedSupervisorEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Accepted(preparation),
-        )) => preparation,
+        FixedSupervisorEvent::WorkerPreparationReturned(preparation) => preparation,
         _ => panic!("another recovery ticket cannot advance this owner"),
     };
     let source_accepted = source
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Accepted(returned)),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(returned))
         .unwrap_or_else(|_| panic!("the unchanged preparation remains valid for its owner"));
     assert!(matches!(source_accepted.become_, Step::Continue));
     drop(owner_request);
@@ -8714,40 +8720,25 @@ async fn another_recoverys_source_rejection_returns_unchanged_to_its_owner() {
     let (mut source, source_request, _) =
         preparing_one_for_one_with_recovery(source_recovery).await;
 
+    let source_starting = start_fixed_preparation!(source, source_request);
+    let foreign = source_starting.reject_source(WorkshopRejection::SourceUnavailable);
+
     let unexpected = owner
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: source_request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(foreign))
         .unwrap_or_else(|_| panic!("the foreign rejection becomes a diagnostic"));
     let returned = match terminal_unexpected(unexpected.sends.diagnostics.into_requests()) {
-        FixedSupervisorEvent::WorkerPreparationSettled(SettledItem::Attempted(
-            ItemSettlement::Rejected { item, reason },
-        )) => {
-            assert_eq!(reason, WorkshopRejection::SourceUnavailable);
-            (item, reason)
-        }
+        FixedSupervisorEvent::WorkerPreparationReturned(returned) => returned,
         _ => panic!("another recovery ticket cannot terminate this owner"),
     };
-    let (returned, reason) = returned;
     let source_stopped = source
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: returned,
-                reason,
-            }),
-        ))
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(returned))
         .unwrap_or_else(|_| panic!("the unchanged rejection remains valid for its owner"));
     assert!(matches!(source_stopped.become_, Step::Stop(_)));
 
+    let owner_starting = start_fixed_preparation!(owner, owner_request);
     let owner_stopped = owner
-        .transition(FixedSupervisorEvent::WorkerPreparationSettled(
-            SettledItem::Attempted(ItemSettlement::Rejected {
-                item: owner_request,
-                reason: WorkshopRejection::SourceUnavailable,
-            }),
+        .transition(FixedSupervisorEvent::WorkerPreparationReturned(
+            owner_starting.reject_source(WorkshopRejection::SourceUnavailable),
         ))
         .unwrap_or_else(|_| panic!("the owner still accepts its exact source rejection"));
     assert!(matches!(owner_stopped.become_, Step::Stop(_)));

@@ -101,7 +101,7 @@ where
         Self::New(members)
     }
 
-    pub(super) fn begin<Preparation>(
+    pub(super) fn begin<PreparationStart, PreparationReturn>(
         self,
         creations: &mut CreationSequence,
     ) -> Result<
@@ -110,7 +110,10 @@ where
             Vec<ObserveChild<Worker::Protocol, behavior::ChildHead>>,
             Creations<CreateChild<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>>,
         ),
-        (Self, FixedSupervisorError<Role, Worker, Plan, Preparation>),
+        (
+            Self,
+            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        ),
     > {
         match self {
             Self::New(members) => {
