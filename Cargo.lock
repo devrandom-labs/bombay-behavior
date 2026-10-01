@@ -39,7 +39,7 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "bombay-behavior"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "bombay-behavior-macros",
  "proptest",
@@ -49,7 +49,7 @@ dependencies = [
 
 [[package]]
 name = "bombay-behavior-actors"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "bombay-behavior",
  "bombay-behavior-macros",
@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "bombay-behavior-testkit"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "bombay-behavior",
  "bombay-behavior-actors",
