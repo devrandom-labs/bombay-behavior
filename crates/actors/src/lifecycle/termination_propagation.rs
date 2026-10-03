@@ -550,6 +550,7 @@ mod tests {
             )),
             Err(Crash::Failed),
             Err(Crash::EnvironmentFailed),
+            Err(Crash::CapabilityFailed),
             Err(Crash::Panicked),
             Err(Crash::Cancelled),
         ];
@@ -690,7 +691,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..22,
+            tag in 0_u8..23,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -726,7 +727,8 @@ mod tests {
                 18 => Err(Crash::Failed),
                 19 => Err(Crash::EnvironmentFailed),
                 20 => Err(Crash::Panicked),
-                _ => Err(Crash::Cancelled),
+                21 => Err(Crash::Cancelled),
+                _ => Err(Crash::CapabilityFailed),
             };
             let worker = worker_creation();
             let mut active = child(worker, propagate_all).initialize().unwrap().behavior;

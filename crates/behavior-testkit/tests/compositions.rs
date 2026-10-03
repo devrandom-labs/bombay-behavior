@@ -548,6 +548,7 @@ fn abnormal_death_reaction_outcome_classes() {
     for crash in [
         Crash::Failed,
         Crash::EnvironmentFailed,
+        Crash::CapabilityFailed,
         Crash::Panicked,
         Crash::Cancelled,
     ] {

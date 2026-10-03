@@ -113,7 +113,7 @@ fn predict(current: ExpectedState, policy: Policy, input: Input) -> Prediction {
 }
 
 fn terminal_outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
-    match tag % 22 {
+    match tag % 23 {
         0 => Ok(Exit::Normal),
         1 => Ok(Exit::Collected),
         2 => Ok(Exit::LinkDied(MailAddr(detail))),
@@ -185,7 +185,8 @@ fn terminal_outcome(tag: u8, detail: u64) -> TerminalOutcome<MailAddr> {
         18 => Err(Crash::Failed),
         19 => Err(Crash::EnvironmentFailed),
         20 => Err(Crash::Panicked),
-        _ => Err(Crash::Cancelled),
+        21 => Err(Crash::Cancelled),
+        _ => Err(Crash::CapabilityFailed),
     }
 }
 

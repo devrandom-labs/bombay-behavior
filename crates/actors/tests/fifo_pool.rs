@@ -3565,6 +3565,7 @@ async fn transient_abnormal_stop_emits_one_affine_source_request() {
         )),
         Err(Crash::Failed),
         Err(Crash::EnvironmentFailed),
+        Err(Crash::CapabilityFailed),
         Err(Crash::Panicked),
         Err(Crash::Cancelled),
     ];
