@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.20.0...bombay-behavior-v0.21.0) - 2026-10-03
+
+### Other
+
+- Release alongside Behavior Actors 0.21.0, which adds the distinct capability-task failure cause. Core Behavior semantics are unchanged.
+
 ## [0.19.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.18.0...bombay-behavior-v0.19.0) - 2026-09-30
 
 ### Other
