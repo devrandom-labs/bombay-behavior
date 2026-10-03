@@ -545,7 +545,7 @@ fn named_send_interpretation(
 ) -> TokenStream2 {
     let mut interpretation = quote! {
         #behavior::Interpretation::Complete(#settlements {
-            #(#fields: #fields,)*
+            #(#fields,)*
         })
     };
     for index in (0..fields.len()).rev() {
@@ -564,8 +564,8 @@ fn named_send_interpretation(
                 #behavior::Interpretation::Complete(#field) => #on_complete,
                 #behavior::Interpretation::Corrupt(#field) => {
                     #behavior::Interpretation::Corrupt(#settlements {
-                        #(#prior_fields: #prior_fields,)*
-                        #field: #field,
+                        #(#prior_fields,)*
+                        #field,
                         #(
                             #later_fields: <#later_types as #behavior::SendSettlements>::unattempted(
                                 self.#later_fields,
@@ -602,15 +602,15 @@ fn named_send_custody(
                     }
                     #behavior::SourceCustody::Admitted(#field) => {
                         return #behavior::SourceCustody::Admitted(#settlements {
-                            #(#prior_fields: #prior_fields,)*
-                            #field: #field,
+                            #(#prior_fields,)*
+                            #field,
                             #(#later_fields: self.#later_fields,)*
                         });
                     }
                     #behavior::SourceCustody::Closed(#field) => {
                         return #behavior::SourceCustody::Closed(#settlements {
-                            #(#prior_fields: #prior_fields,)*
-                            #field: #field,
+                            #(#prior_fields,)*
+                            #field,
                             #(#later_fields: self.#later_fields,)*
                         });
                     }
@@ -694,7 +694,7 @@ fn named_settlement_contract(
                     let mut terminal_custody = __BombayTerminalCustody::Unrequired;
                     #(#custody_fields)*
                     let settlements = #name {
-                        #(#fields: #fields,)*
+                        #(#fields,)*
                     };
                     match terminal_custody {
                         __BombayTerminalCustody::Unrequired => {
