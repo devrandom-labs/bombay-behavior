@@ -56,6 +56,9 @@ pub enum RestartDenial {
 pub enum Crash {
     Failed,
     EnvironmentFailed,
+    /// Live actor execution selected a capability task failure as its stop cause.
+    /// Full failure and recoverable actor-state custody belongs to the runtime.
+    CapabilityFailed,
     Panicked,
     Cancelled,
 }

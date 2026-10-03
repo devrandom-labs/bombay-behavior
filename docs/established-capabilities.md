@@ -4,6 +4,18 @@ This document defines the production contract for runtime-issued exact actor
 capabilities. It does not claim that a downstream runtime has already adopted
 the contract.
 
+The shared `TerminalOutcome` preserves the distinct execution cause
+`Crash::CapabilityFailed` when live execution acquires a capability task failure
+as its primary stop cause. It differs from a Behavior failure, affine Environment failure,
+actor-task panic and owner cancellation. Bombay owns detection, retirement,
+joining and full recoverable result custody; reusable actor templates preserve
+the supplied cause and apply their explicit policies. An operation failure
+discovered after an actor has completed remains a coexisting full-result fact
+and does not rewrite that actor's terminal outcome. A returned domain rejection
+is interpreted by its owning policy and is not automatically this crash cause.
+Cancellation selected first remains the primary cause even if a capability
+failure is also available; the full runtime result retains that failure.
+
 ## Semantic classification
 
 Actor-model laws:

@@ -500,6 +500,53 @@ mod tests {
         ));
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "the reaction explicitly consumes the complete terminal report"
+    )]
+    fn acknowledge_capability_failure(
+        _: &mut Probe,
+        stopped: PeerStopped<MailAddr>,
+    ) -> Actions<MailAddr, Never, Vec<u8>, Births<()>> {
+        assert_eq!(stopped.peer, MailAddr(4));
+        assert_eq!(stopped.outcome, Err(Crash::CapabilityFailed));
+        Actions::send(vec![9])
+    }
+
+    #[test]
+    fn capability_failure_reaches_the_reaction_once_without_reclassification() {
+        let initialized =
+            crate::TerminationMonitor::new(Probe, MailAddr(4), acknowledge_capability_failure)
+                .initialize()
+                .unwrap();
+        assert_eq!(initialized.actions.sends.inner, [1]);
+        assert_eq!(
+            initialized.actions.sends.owned,
+            InterpreterRequests::one(crate::ObservePeer::new(MailAddr(4)))
+        );
+        assert!(initialized.actions.creates.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
+        let mut active = initialized.behavior;
+        let actions = active
+            .on_path(PeerStopped::new(MailAddr(4), Err(Crash::CapabilityFailed)))
+            .unwrap();
+        assert_eq!(actions.sends.inner, [9]);
+        assert!(actions.sends.owned.is_empty());
+        assert!(actions.creates.is_empty());
+        assert!(matches!(actions.become_, Step::Continue));
+        assert_eq!(active.observation(), TerminationObservation::Observed);
+
+        let duplicate = PeerStopped::new(MailAddr(4), Err(Crash::CapabilityFailed));
+        let rejected = active.on_path(duplicate.clone());
+        assert!(matches!(
+            rejected,
+            Err(TerminationMonitorError::UnexpectedReport {
+                observation: TerminationObservation::Observed,
+                report,
+            }) if report == duplicate
+        ));
+    }
+
     #[test]
     fn unmatched_terminal_report_is_returned_complete_and_user_actions_still_delegate() {
         let mut active = crate::TerminationMonitor::new(Probe, MailAddr(4), reap)
