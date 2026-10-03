@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.20.0...bombay-behavior-actors-v0.21.0) - 2026-10-03
+
+### Added
+
+- *(actors)* [**breaking**] distinguish capability task failure ([#78](https://github.com/devrandom-labs/bombay-behavior/pull/78))
+
 ## [0.20.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.19.0...bombay-behavior-actors-v0.20.0) - 2026-10-01
 
 ### Added
