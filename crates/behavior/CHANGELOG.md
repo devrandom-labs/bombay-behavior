@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.21.0...bombay-behavior-v0.21.1) - 2026-10-03
+
+### Other
+
+- updated the following local packages: bombay-behavior-macros
+
 ## [0.21.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.20.0...bombay-behavior-v0.21.0) - 2026-10-03
 
 ### Other
