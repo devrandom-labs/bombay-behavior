@@ -1,6 +1,8 @@
 //! Exact-incarnation observation and orderly-shutdown protocols.
 
+use core::fmt;
 use core::marker::PhantomData;
+use std::sync::Arc;
 use std::time::Instant;
 
 use behavior::{
@@ -173,13 +175,216 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ObservationId(pub u64);
 
-/// Request observation of one exact installed protocol incarnation.
+/// Non-authorizing identity of one accepted protocol-indexed relationship.
+///
+/// The protocol brand cannot be changed even when the address is shared:
+/// ```compile_fail,E0308
+/// fn wrong_protocol<P, Q>(relationship: behavior_actors::ObservationRelationship<P>, outcome: Result<behavior_actors::Exit<Q::Addr>, behavior_actors::Crash>, at: std::time::Instant) -> behavior_actors::EstablishedObservation<Q>
+/// where P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>, Q::Addr: behavior::RecipientAddress {
+///     behavior_actors::EstablishedObservation::Stopped { relationship, outcome, at }
+/// }
+/// ```
+/// A read-only relationship is not a cancellation permission:
+/// ```compile_fail,E0308
+/// fn permission<P: behavior::Protocol>(relationship: behavior_actors::ObservationRelationship<P>) -> behavior_actors::ObservationAuthority<P> {
+///     relationship
+/// }
+/// ```
+///
+/// Same-protocol terminal reports and read-only identity transfer remain valid.
+/// ```no_run
+/// pub fn stopped<P, Q>(relationship: behavior_actors::ObservationRelationship<P>, outcome: Result<behavior_actors::Exit<P::Addr>, behavior_actors::Crash>, at: std::time::Instant) -> behavior_actors::EstablishedObservation<P>
+/// where P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>, P::Addr: behavior::RecipientAddress {
+///     behavior_actors::EstablishedObservation::Stopped { relationship, outcome, at }
+/// }
+/// ```
+/// ```no_run
+/// pub fn retained_relationship<P: behavior::Protocol>(relationship: behavior_actors::ObservationRelationship<P>) -> behavior_actors::ObservationRelationship<P> {
+///     relationship
+/// }
+/// ```
+pub struct ObservationRelationship<P: Protocol> {
+    identity: Arc<ObservationId>,
+    protocol: PhantomData<fn(P) -> P>,
+}
+
+impl<P: Protocol> fmt::Debug for ObservationRelationship<P> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ObservationRelationship")
+            .field("id", &self.id())
+            .finish_non_exhaustive()
+    }
+}
+
+impl<P: Protocol> ObservationRelationship<P> {
+    #[must_use]
+    pub fn id(&self) -> ObservationId {
+        *self.identity
+    }
+
+    /// Borrow the strong accepted identity for exact runtime membership checks.
+    ///
+    /// Reading or cloning this Arc confers no cancellation permission and
+    /// cannot reconstruct or rebrand a relationship.
+    #[must_use]
+    pub fn identity(&self) -> &Arc<ObservationId> {
+        &self.identity
+    }
+}
+
+impl<P: Protocol> Clone for ObservationRelationship<P> {
+    fn clone(&self) -> Self {
+        Self {
+            identity: self.identity.clone(),
+            protocol: PhantomData,
+        }
+    }
+}
+
+impl<P: Protocol> PartialEq for ObservationRelationship<P> {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.identity, &other.identity)
+    }
+}
+
+impl<P: Protocol> Eq for ObservationRelationship<P> {}
+
+/// Affine permission to attempt cancellation of one exact relationship.
+///
+/// A permission does not assert that its registration remains live.
+/// It transfers once and cannot be reused after constructing cancellation:
+/// ```compile_fail,E0382
+/// fn duplicate<P: behavior::Protocol>(authority: behavior_actors::ObservationAuthority<P>) {
+///     let first = behavior_actors::CancelObservation::new(authority);
+///     let second = behavior_actors::CancelObservation::new(authority);
+///     drop((first, second));
+/// }
+/// ```
+/// A different protocol cannot consume the grant:
+/// ```compile_fail,E0308
+/// fn wrong_protocol<P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>>(authority: behavior_actors::ObservationAuthority<P>) -> behavior_actors::CancelObservation<Q> {
+///     behavior_actors::CancelObservation::new(authority)
+/// }
+/// ```
+///
+/// A same-protocol grant transfers into exactly one cancellation request.
+/// ```no_run
+/// pub fn cancellation<P: behavior::Protocol>(authority: behavior_actors::ObservationAuthority<P>) {
+///     let first = behavior_actors::CancelObservation::new(authority);
+///     drop(first);
+/// }
+/// ```
+/// ```no_run
+/// pub fn cancellation<P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>>(authority: behavior_actors::ObservationAuthority<P>) -> behavior_actors::CancelObservation<P> {
+///     behavior_actors::CancelObservation::new(authority)
+/// }
+/// ```
+pub struct ObservationAuthority<P: Protocol> {
+    relationship: ObservationRelationship<P>,
+}
+
+impl<P: Protocol> fmt::Debug for ObservationAuthority<P> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ObservationAuthority")
+            .field("relationship", &self.relationship)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<P: Protocol> ObservationAuthority<P> {
+    /// Transfer the original private request identity into its affine authority.
+    ///
+    /// This advanced-host operation consumes the original request. The host
+    /// must commit the same identity to its exact membership owner before
+    /// publishing Started. Perform issuance outside all Behavior folds.
+    /// Never issue for a rejected request or return an admitted original.
+    #[must_use]
+    pub fn issued(request: ObserveEstablished<P>) -> Self
+    where
+        P::Addr: RecipientAddress,
+    {
+        let ObserveEstablished {
+            correlation,
+            recipient,
+        } = request;
+        drop(recipient);
+        Self {
+            relationship: ObservationRelationship {
+                identity: correlation,
+                protocol: PhantomData,
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn relationship(&self) -> &ObservationRelationship<P> {
+        &self.relationship
+    }
+
+    pub(crate) fn matches_request(&self, correlation: &Arc<ObservationId>) -> bool {
+        Arc::ptr_eq(self.relationship.identity(), correlation)
+    }
+
+    /// Discharge permission and retain the exact non-authorizing relationship.
+    #[must_use]
+    pub fn into_relationship(self) -> ObservationRelationship<P> {
+        self.relationship
+    }
+}
+
+/// One affine request for exact protocol-indexed termination observation.
+///
+/// The admitted original transfers once into its authority. Nested request
+/// lanes require separate report ingress at each structural path.
+/// ```no_run
+/// pub fn accepted_request<P>(request: behavior_actors::ObserveEstablished<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObservationAuthority::issued(request);
+///     drop(first);
+/// }
+/// ```
+/// ```compile_fail,E0382
+/// pub fn accepted_request<P>(request: behavior_actors::ObserveEstablished<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObservationAuthority::issued(request);
+///     let second = behavior_actors::ObservationAuthority::issued(request);
+///     drop((first, second));
+/// }
+/// ```
+/// ```no_run
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn independent_acknowledgements<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::ObserveEstablished<P>>, Vec<behavior::Never>>>>();
+/// }
+/// ```
+/// ```compile_fail,E0277
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn independent_acknowledgements<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::ObserveEstablished<P>>, Vec<behavior::Never>>>>();
+/// }
+/// ```
+/// A request remains affine and cannot be cloned:
+/// ```no_run
+/// pub fn transfer<P>(request: behavior_actors::ObserveEstablished<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { request }
+/// ```
+/// ```compile_fail,E0599
+/// pub fn transfer<P>(request: behavior_actors::ObserveEstablished<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { request.clone() }
+/// ```
+/// Reading a relationship cannot reconstruct its old request identity:
+/// ```no_run
+/// pub fn new_request<P>(relationship: behavior_actors::ObservationRelationship<P>, recipient: behavior::EstablishedRecipient<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { behavior_actors::ObserveEstablished::new(relationship.id(), recipient) }
+/// ```
+/// ```compile_fail,E0451
+/// pub fn old_request<P>(relationship: behavior_actors::ObservationRelationship<P>, recipient: behavior::EstablishedRecipient<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { behavior_actors::ObserveEstablished { correlation: relationship.identity().clone(), recipient } }
+/// ```
 pub struct ObserveEstablished<P>
 where
     P: Protocol,
     P::Addr: RecipientAddress,
 {
-    pub id: ObservationId,
+    correlation: Arc<ObservationId>,
     recipient: EstablishedRecipient<P>,
 }
 
@@ -188,24 +393,45 @@ where
     P: Protocol,
     P::Addr: RecipientAddress,
 {
+    /// Construct one affine request with a fresh private correlation.
+    ///
+    /// Issue the request outside Behavior folds, then transfer the whole
+    /// original into its owning Actions lane. A never-accepted rejected
+    /// original may be transferred again; new construction has fresh identity.
     #[must_use]
-    pub const fn new(id: ObservationId, recipient: EstablishedRecipient<P>) -> Self {
-        Self { id, recipient }
+    pub fn new(id: ObservationId, recipient: EstablishedRecipient<P>) -> Self {
+        Self {
+            correlation: Arc::new(id),
+            recipient,
+        }
     }
 
-    /// Transfer the endpoint through the explicit power-user interpretation
-    /// boundary.
+    #[must_use]
+    pub fn id(&self) -> ObservationId {
+        *self.correlation
+    }
+
+    pub(crate) fn correlation(&self) -> &Arc<ObservationId> {
+        &self.correlation
+    }
+
+    /// Discharge this request correlation and recover the original inputs.
+    #[must_use]
+    pub fn into_inputs(self) -> (ObservationId, EstablishedRecipient<P>) {
+        (*self.correlation, self.recipient)
+    }
+
     pub fn interpret<I>(self, interpreter: &mut I) -> I::Output
     where
         I: InterpretEstablishedObservation<P>,
     {
-        self.recipient.interpret(&mut ObservationTransfer {
-            id: self.id,
+        let recipient = self.recipient.clone();
+        recipient.interpret(&mut ObservationTransfer {
+            request: Some(self),
             interpreter,
         })
     }
 
-    /// Transfer this request and return its unconditional action settlement.
     pub fn settle<I>(self, interpreter: &mut I) -> ItemSettlement<Self, (), Never, Never>
     where
         I: InterpretEstablishedObservation<P, Output = ()>,
@@ -235,19 +461,53 @@ where
     type Prerequisite = Never;
 }
 
-/// Cancel one exact observer-local relationship.
+/// One affine attempt to cancel the exact accepted relationship.
+///
+/// Cancellation acknowledgements require their own typed report ingress.
+/// ```no_run
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn cancellation_acknowledgement<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>, behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>>();
+/// }
+/// ```
+/// ```compile_fail,E0277
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn cancellation_acknowledgement<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::User<P::Addr, P::Msg>, behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>>();
+/// }
+/// ```
 pub struct CancelObservation<P: Protocol> {
-    pub id: ObservationId,
-    protocol: PhantomData<fn() -> P>,
+    authority: ObservationAuthority<P>,
 }
 
 impl<P: Protocol> CancelObservation<P> {
     #[must_use]
-    pub const fn new(id: ObservationId) -> Self {
-        Self {
-            id,
-            protocol: PhantomData,
-        }
+    pub fn new(authority: ObservationAuthority<P>) -> Self {
+        Self { authority }
+    }
+
+    #[must_use]
+    pub fn id(&self) -> ObservationId {
+        self.authority.relationship().id()
+    }
+
+    #[must_use]
+    pub fn relationship(&self) -> &ObservationRelationship<P> {
+        self.authority.relationship()
+    }
+
+    /// Recover the same permission from an unconsumed cancellation request.
+    #[must_use]
+    pub fn into_authority(self) -> ObservationAuthority<P> {
+        self.authority
+    }
+
+    /// Consume permission and retain the exact non-authorizing receipt.
+    #[must_use]
+    pub fn into_relationship(self) -> ObservationRelationship<P> {
+        self.authority.into_relationship()
     }
 
     pub fn interpret<I>(self, interpreter: &mut I) -> I::Output
@@ -255,10 +515,9 @@ impl<P: Protocol> CancelObservation<P> {
         P::Addr: RecipientAddress,
         I: InterpretEstablishedObservation<P>,
     {
-        interpreter.cancel(self.id)
+        interpreter.cancel(self)
     }
 
-    /// Transfer this request and return its unconditional action settlement.
     pub fn settle<I>(self, interpreter: &mut I) -> ItemSettlement<Self, (), Never, Never>
     where
         P::Addr: RecipientAddress,
@@ -269,20 +528,18 @@ impl<P: Protocol> CancelObservation<P> {
     }
 }
 
-impl<P: Protocol> Copy for CancelObservation<P> {}
-
-impl<P: Protocol> Clone for CancelObservation<P> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<P: Protocol> InterpreterRequest for CancelObservation<P> {
+impl<P: Protocol> InterpreterRequest for CancelObservation<P>
+where
+    P::Addr: RecipientAddress,
+{
     type ReturnToEmitter = ReturnsToEmitter<EstablishedObservation<P>, behavior::Here>;
     type LogicalProtocols = behavior::NoBirthProtocols;
 }
 
-impl<P: Protocol> ActionItem for CancelObservation<P> {
+impl<P: Protocol> ActionItem for CancelObservation<P>
+where
+    P::Addr: RecipientAddress,
+{
     type Accepted = ();
     type Rejection = Never;
     type Prerequisite = Never;
@@ -301,96 +558,92 @@ pub enum ObservationRejection {
     /// This observation ID already names a live relationship.
     #[error("the observation ID is already bound")]
     IdAlreadyBound,
-    /// Cancellation named no live relationship.
-    #[error("the observation ID is not bound")]
+    /// Cancellation named no exact registered relationship.
+    #[error("the exact observation relationship is not registered")]
     NotObserved,
 }
 
-/// Complete report algebra for one exact observation relationship.
-pub enum EstablishedObservation<P: Protocol> {
-    /// The observation relationship was installed.
+/// Whole protocol-indexed observation and cancellation receipts.
+pub enum EstablishedObservation<P>
+where
+    P: Protocol,
+    P::Addr: RecipientAddress,
+{
     Started {
-        id: ObservationId,
-        protocol: PhantomData<fn() -> P>,
+        authority: ObservationAuthority<P>,
     },
-    /// Cancellation consumed the live relationship.
-    Cancelled {
-        id: ObservationId,
-        protocol: PhantomData<fn() -> P>,
-    },
-    /// Starting or cancelling the relationship was rejected.
-    Rejected {
-        id: ObservationId,
-        operation: ObservationOperation,
-        reason: ObservationRejection,
-        protocol: PhantomData<fn() -> P>,
-    },
-    /// The exact observed incarnation terminated, consuming the relationship.
     Stopped {
-        id: ObservationId,
+        relationship: ObservationRelationship<P>,
         outcome: Result<Exit<P::Addr>, Crash>,
         at: Instant,
-        protocol: PhantomData<fn() -> P>,
+    },
+    Cancelled {
+        relationship: ObservationRelationship<P>,
+    },
+    ObserveRejected {
+        request: ObserveEstablished<P>,
+        reason: ObservationRejection,
+    },
+    CancelRejected {
+        request: CancelObservation<P>,
+        reason: ObservationRejection,
     },
 }
 
-impl<P: Protocol> EstablishedObservation<P> {
+impl<P> EstablishedObservation<P>
+where
+    P: Protocol,
+    P::Addr: RecipientAddress,
+{
     #[must_use]
-    pub const fn started(id: ObservationId) -> Self {
-        Self::Started {
-            id,
-            protocol: PhantomData,
-        }
+    pub fn started(authority: ObservationAuthority<P>) -> Self {
+        Self::Started { authority }
     }
 
     #[must_use]
-    pub const fn cancelled(id: ObservationId) -> Self {
-        Self::Cancelled {
-            id,
-            protocol: PhantomData,
-        }
-    }
-
-    #[must_use]
-    pub const fn rejected(
-        id: ObservationId,
-        operation: ObservationOperation,
-        reason: ObservationRejection,
-    ) -> Self {
-        Self::Rejected {
-            id,
-            operation,
-            reason,
-            protocol: PhantomData,
-        }
-    }
-
-    #[must_use]
-    pub const fn stopped(
-        id: ObservationId,
+    pub fn stopped(
+        relationship: ObservationRelationship<P>,
         outcome: Result<Exit<P::Addr>, Crash>,
         at: Instant,
     ) -> Self {
         Self::Stopped {
-            id,
+            relationship,
             outcome,
             at,
-            protocol: PhantomData,
         }
     }
 
     #[must_use]
-    pub const fn id(&self) -> ObservationId {
+    pub fn cancelled(request: CancelObservation<P>) -> Self {
+        Self::Cancelled {
+            relationship: request.into_relationship(),
+        }
+    }
+
+    #[must_use]
+    pub fn observe_rejected(request: ObserveEstablished<P>, reason: ObservationRejection) -> Self {
+        Self::ObserveRejected { request, reason }
+    }
+
+    #[must_use]
+    pub fn cancel_rejected(request: CancelObservation<P>, reason: ObservationRejection) -> Self {
+        Self::CancelRejected { request, reason }
+    }
+
+    #[must_use]
+    pub fn id(&self) -> ObservationId {
         match self {
-            Self::Started { id, .. }
-            | Self::Cancelled { id, .. }
-            | Self::Rejected { id, .. }
-            | Self::Stopped { id, .. } => *id,
+            Self::Started { authority } => authority.relationship().id(),
+            Self::Stopped { relationship, .. } | Self::Cancelled { relationship } => {
+                relationship.id()
+            }
+            Self::ObserveRejected { request, .. } => request.id(),
+            Self::CancelRejected { request, .. } => request.id(),
         }
     }
 }
 
-/// Public power-user boundary for exact observation transfer.
+/// Advanced-host transfer of the whole original requests and exact endpoint.
 pub trait InterpretEstablishedObservation<P>
 where
     P: Protocol,
@@ -400,19 +653,22 @@ where
 
     fn observe(
         &mut self,
-        id: ObservationId,
+        request: ObserveEstablished<P>,
         endpoint: <P::Addr as RecipientAddress>::Established<P>,
     ) -> Self::Output;
-
-    fn cancel(&mut self, id: ObservationId) -> Self::Output;
+    fn cancel(&mut self, request: CancelObservation<P>) -> Self::Output;
 }
 
-struct ObservationTransfer<'a, I> {
-    id: ObservationId,
+struct ObservationTransfer<'a, P, I>
+where
+    P: Protocol,
+    P::Addr: RecipientAddress,
+{
+    request: Option<ObserveEstablished<P>>,
     interpreter: &'a mut I,
 }
 
-impl<P, I> InterpretEstablished<P> for ObservationTransfer<'_, I>
+impl<P, I> InterpretEstablished<P> for ObservationTransfer<'_, P, I>
 where
     P: Protocol,
     P::Addr: RecipientAddress,
@@ -424,7 +680,10 @@ where
         &mut self,
         endpoint: <P::Addr as RecipientAddress>::Established<P>,
     ) -> Self::Output {
-        self.interpreter.observe(self.id, endpoint)
+        let Some(request) = self.request.take() else {
+            unreachable!("Core transfers one owned established endpoint once");
+        };
+        self.interpreter.observe(request, endpoint)
     }
 }
 
@@ -645,5 +904,83 @@ where
         installed: <behavior::BehaviorAddr<B> as EndpointAddress>::Installed<B>,
     ) -> Self::Output {
         self.interpreter.shutdown(self.id, installed, self.ingress)
+    }
+}
+
+#[cfg(test)]
+mod observation_request_ownership {
+    use std::sync::Arc;
+
+    use behavior::{
+        Address, EstablishedRecipient, InterpretEstablished, Protocol, RecipientAddress,
+    };
+
+    use super::{ObservationAuthority, ObservationId, ObserveEstablished};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct ObservationAddr(u64);
+
+    impl Address for ObservationAddr {
+        type Nonce = u64;
+    }
+    impl RecipientAddress for ObservationAddr {
+        type Established<P>
+            = Arc<Vec<u64>>
+        where
+            P: Protocol<Addr = Self>;
+    }
+
+    struct ObservedProtocol;
+    impl Protocol for ObservedProtocol {
+        type Addr = ObservationAddr;
+        type Msg = ();
+    }
+
+    struct ObservationEndpoint;
+    impl InterpretEstablished<ObservedProtocol> for ObservationEndpoint {
+        type Output = Arc<Vec<u64>>;
+        fn interpret_established(&mut self, endpoint: Arc<Vec<u64>>) -> Self::Output {
+            endpoint
+        }
+    }
+
+    #[test]
+    fn original_request_inputs_return_without_reconstruction() {
+        let values = Arc::new(vec![17, 43, 31]);
+        let original = values.as_ptr();
+        let id = ObservationId(91);
+        let recipient = EstablishedRecipient::<ObservedProtocol>::issued(values);
+        let request = ObserveEstablished::new(id, recipient);
+        let (returned_id, recipient) = request.into_inputs();
+        let returned = recipient.interpret(&mut ObservationEndpoint);
+        assert_eq!(returned_id, id);
+        assert_eq!(returned.as_ptr(), original);
+        assert_eq!(returned.as_slice(), [17, 43, 31]);
+    }
+
+    #[test]
+    fn distinct_request_construction_cannot_alias_preacceptance() {
+        let id = ObservationId(92);
+        let recipient = EstablishedRecipient::<ObservedProtocol>::issued(Arc::new(vec![17]));
+        let first = ObserveEstablished::new(id, recipient.clone());
+        let second = ObserveEstablished::new(id, recipient.clone());
+        let original_correlation = first.correlation().clone();
+        let foreign_correlation = second.correlation().clone();
+        let original_authority = ObservationAuthority::issued(first);
+        let foreign_authority = ObservationAuthority::issued(second);
+        assert!(original_authority.matches_request(&original_correlation));
+        assert!(!original_authority.matches_request(&foreign_correlation));
+        assert_ne!(
+            original_authority.relationship(),
+            foreign_authority.relationship()
+        );
+        assert!(Arc::ptr_eq(
+            original_authority.relationship().identity(),
+            &original_correlation
+        ));
+        assert!(Arc::ptr_eq(
+            foreign_authority.relationship().identity(),
+            &foreign_correlation
+        ));
     }
 }

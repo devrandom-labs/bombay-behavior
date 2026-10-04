@@ -121,12 +121,13 @@ pub use persistence::{
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
     CreationResolved, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
-    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationId,
-    ObservationOperation, ObservationRejection, ObserveChild, ObserveCreation, ObserveEstablished,
-    ObserveEstablishedCreation, ObservePeer, PeerObservationRejection, PeerStopped, ScheduleAfter,
-    ScheduleAfterRejection, ScheduleAt, ScheduleAtRejection, ShutdownChild, ShutdownEstablished,
-    ShutdownId, ShutdownRejection, ShutdownRequested, TimerElapsed, TimerGeneration, TimerId,
-    TimerScheduled, UnwatchPeer, established_child,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationAuthority,
+    ObservationId, ObservationOperation, ObservationRejection, ObservationRelationship,
+    ObserveChild, ObserveCreation, ObserveEstablished, ObserveEstablishedCreation, ObservePeer,
+    PeerObservationRejection, PeerStopped, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
+    ScheduleAtRejection, ShutdownChild, ShutdownEstablished, ShutdownId, ShutdownRejection,
+    ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, UnwatchPeer,
+    established_child,
 };
 pub use routing::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
