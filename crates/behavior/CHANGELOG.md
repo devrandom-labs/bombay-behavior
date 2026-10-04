@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.21.2...bombay-behavior-v0.22.0) - 2026-10-04
+
+### Other
+
+- Release alongside Behavior Actors 0.22.0 and its exact observation authority contract ([#84](https://github.com/devrandom-labs/bombay-behavior/pull/84)). Core Behavior semantics are unchanged.
+
 ## [0.21.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.21.0...bombay-behavior-v0.21.1) - 2026-10-03
 
 ### Other

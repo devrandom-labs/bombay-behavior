@@ -137,8 +137,8 @@ See [Nominal Behavior attribute](docs/behavior-attribute.md).
 
 ```toml
 [dependencies]
-bombay-behavior = "0.21"
-bombay-behavior-actors = "0.21"
+bombay-behavior = "0.22"
+bombay-behavior-actors = "0.22"
 ```
 
 Composition has two axes. `Behavior::layer` invokes a statically typed
