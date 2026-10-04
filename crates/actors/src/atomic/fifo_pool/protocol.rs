@@ -1,9 +1,11 @@
 //! FIFO submission, assignment, completion, and customer outcomes.
 
+use std::sync::Arc;
+
 use behavior::{Address, BehaviorAddr, EndpointAddress, MessageProtocol};
 
-use crate::ReplyRoute;
 use crate::atomic::RoleName;
+use crate::{ChildStopped, ReplyRoute};
 
 use super::super::pool::worker::{CurrentWorker, WorkerPreparationError, WorkerReplacementError};
 use super::super::pool::{Assignment, JobId, SubmissionId};
@@ -397,8 +399,10 @@ where
 ///
 /// The value is opaque so runtime correlation and private role-sharing evidence
 /// cannot become application construction syntax. The selected diagnostic route
-/// or Bombay's terminal custodian receives the complete owned value; applications
-/// can borrow the associated semantic role when one exists.
+/// or Bombay's terminal custodian receives the complete owned value. Applications
+/// can borrow the associated semantic role when one exists, or consume an original
+/// source rejection with [`Self::into_source_rejection`]. That projection retains
+/// shared role ownership and returns every other complete diagnostic unchanged.
 pub struct FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>
 where
     Role: Send + Sync,
@@ -444,6 +448,34 @@ where
             FifoDiagnosticCause::Unexpected(_)
             | FifoDiagnosticCause::WorkersReturned(_)
             | FifoDiagnosticCause::UnmatchedWorkerReturn { .. } => None,
+        }
+    }
+
+    /// Consume the complete source-rejection diagnostic, returning every other
+    /// diagnostic unchanged. The role retains its original shared allocation;
+    /// this operation does not clone a role or alter the pool's recovery policy.
+    /// The returned source is present only when the existing diagnostic owned it.
+    pub fn into_source_rejection(
+        self,
+    ) -> Result<
+        (
+            Arc<Role>,
+            WorkerAttempt,
+            ChildStopped<BehaviorAddr<W>>,
+            Option<Source>,
+            Source::SourceRejection,
+        ),
+        Self,
+    > {
+        match self.cause {
+            FifoDiagnosticCause::WorkerPreparationFailed {
+                role,
+                previous,
+                stopped,
+                returned_source,
+                error: WorkerPreparationError::SourceRejected(reason),
+            } => Ok((role.into_role(), previous, stopped, returned_source, reason)),
+            cause => Err(Self { cause }),
         }
     }
 }
