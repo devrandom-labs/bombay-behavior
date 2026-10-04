@@ -180,6 +180,31 @@ pub struct ObservationId(pub u64);
 ///
 /// Construct a root outside every enclosing Behavior fold. Derived scopes
 /// use deterministic checked ordinals, and each scope transfers once.
+///
+/// Moving a scope is valid; cloning or transferring it twice is not.
+/// ```no_run
+/// pub fn request_scope(sequence: behavior_actors::ObservationSequence) -> behavior_actors::ObservationSequence {
+///     sequence
+/// }
+/// ```
+/// ```no_run
+/// pub fn request_scope<P>(scope: behavior_actors::ObservationSequence, recipient: behavior::EstablishedRecipient<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient.clone());
+///     drop((first, recipient));
+/// }
+/// ```
+/// ```compile_fail,E0599
+/// pub fn request_scope(sequence: behavior_actors::ObservationSequence) -> behavior_actors::ObservationSequence {
+///     sequence.clone()
+/// }
+/// ```
+/// ```compile_fail,E0382
+/// pub fn request_scope<P>(scope: behavior_actors::ObservationSequence, recipient: behavior::EstablishedRecipient<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient.clone());
+///     let second = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient);
+///     drop((first, second));
+/// }
+/// ```
 pub struct ObservationSequence {
     origin: Arc<()>,
     path: Vec<NonZeroU64>,
@@ -229,13 +254,26 @@ impl ObservationSequence {
 /// The protocol brand cannot be changed even when the address is shared:
 /// ```compile_fail,E0308
 /// fn wrong_protocol<P, Q>(relationship: behavior_actors::ObservationRelationship<P>, outcome: Result<behavior_actors::Exit<Q::Addr>, behavior_actors::Crash>, at: std::time::Instant) -> behavior_actors::EstablishedObservation<Q>
-/// where P: behavior::Protocol, Q: behavior::Protocol, Q::Addr: behavior::RecipientAddress {
+/// where P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>, Q::Addr: behavior::RecipientAddress {
 ///     behavior_actors::EstablishedObservation::Stopped { relationship, outcome, at }
 /// }
 /// ```
 /// A read-only relationship is not a cancellation permission:
 /// ```compile_fail,E0308
 /// fn permission<P: behavior::Protocol>(relationship: behavior_actors::ObservationRelationship<P>) -> behavior_actors::ObservationAuthority<P> {
+///     relationship
+/// }
+/// ```
+///
+/// Same-protocol terminal reports and read-only identity transfer remain valid.
+/// ```no_run
+/// pub fn stopped<P, Q>(relationship: behavior_actors::ObservationRelationship<P>, outcome: Result<behavior_actors::Exit<P::Addr>, behavior_actors::Crash>, at: std::time::Instant) -> behavior_actors::EstablishedObservation<P>
+/// where P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>, P::Addr: behavior::RecipientAddress {
+///     behavior_actors::EstablishedObservation::Stopped { relationship, outcome, at }
+/// }
+/// ```
+/// ```no_run
+/// pub fn retained_relationship<P: behavior::Protocol>(relationship: behavior_actors::ObservationRelationship<P>) -> behavior_actors::ObservationRelationship<P> {
 ///     relationship
 /// }
 /// ```
@@ -299,7 +337,20 @@ impl<P: Protocol> Eq for ObservationRelationship<P> {}
 /// ```
 /// A different protocol cannot consume the grant:
 /// ```compile_fail,E0308
-/// fn wrong_protocol<P: behavior::Protocol, Q: behavior::Protocol>(authority: behavior_actors::ObservationAuthority<P>) -> behavior_actors::CancelObservation<Q> {
+/// fn wrong_protocol<P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>>(authority: behavior_actors::ObservationAuthority<P>) -> behavior_actors::CancelObservation<Q> {
+///     behavior_actors::CancelObservation::new(authority)
+/// }
+/// ```
+///
+/// A same-protocol grant transfers into exactly one cancellation request.
+/// ```no_run
+/// pub fn cancellation<P: behavior::Protocol>(authority: behavior_actors::ObservationAuthority<P>) {
+///     let first = behavior_actors::CancelObservation::new(authority);
+///     drop(first);
+/// }
+/// ```
+/// ```no_run
+/// pub fn cancellation<P: behavior::Protocol, Q: behavior::Protocol<Addr = P::Addr>>(authority: behavior_actors::ObservationAuthority<P>) -> behavior_actors::CancelObservation<P> {
 ///     behavior_actors::CancelObservation::new(authority)
 /// }
 /// ```
@@ -369,6 +420,36 @@ impl<P: Protocol> ObservationAuthority<P> {
 }
 
 /// One affine request for exact protocol-indexed termination observation.
+///
+/// The admitted original transfers once into its authority. Nested request
+/// lanes require separate report ingress at each structural path.
+/// ```no_run
+/// pub fn accepted_request<P>(request: behavior_actors::ObserveEstablished<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObservationAuthority::issued(request);
+///     drop(first);
+/// }
+/// ```
+/// ```compile_fail,E0382
+/// pub fn accepted_request<P>(request: behavior_actors::ObserveEstablished<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     let first = behavior_actors::ObservationAuthority::issued(request);
+///     let second = behavior_actors::ObservationAuthority::issued(request);
+///     drop((first, second));
+/// }
+/// ```
+/// ```no_run
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn independent_acknowledgements<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::ObserveEstablished<P>>, Vec<behavior::Never>>>>();
+/// }
+/// ```
+/// ```compile_fail,E0277
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn independent_acknowledgements<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::ObserveEstablished<P>>, Vec<behavior::Never>>>>();
+/// }
+/// ```
 pub struct ObserveEstablished<P>
 where
     P: Protocol,
@@ -457,6 +538,22 @@ where
 }
 
 /// One affine attempt to cancel the exact accepted relationship.
+///
+/// Cancellation acknowledgements require their own typed report ingress.
+/// ```no_run
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn cancellation_acknowledgement<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>, behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>>();
+/// }
+/// ```
+/// ```compile_fail,E0277
+/// fn accepts<Event, Sends: behavior::SendsFor<Event>>() {}
+///
+/// pub fn cancellation_acknowledgement<P>() where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
+///     accepts::<behavior::User<P::Addr, P::Msg>, behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>>();
+/// }
+/// ```
 pub struct CancelObservation<P: Protocol> {
     authority: ObservationAuthority<P>,
 }
