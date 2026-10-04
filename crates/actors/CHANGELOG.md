@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - *(actors)* [**breaking**] preserve exact observation authority ([#84](https://github.com/devrandom-labs/bombay-behavior/pull/84))
+- Observation reports preserve a protocol-branded `ObservationRelationship`; cancellation consumes its affine `ObservationAuthority`. Numeric IDs alone grant no cancellation permission.
+- Rejected observation requests return their complete inputs, and monitors reject foreign or replayed reports without replacing their accepted relationship.
 
 ## [0.21.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.21.1...bombay-behavior-actors-v0.21.2) - 2026-10-04
 
