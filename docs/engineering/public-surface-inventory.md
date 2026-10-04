@@ -276,12 +276,11 @@ not grow under this controlled comparison.
 
 ## Exact observation surface migration
 
-Three owners represent distinct laws: `ObservationSequence` issues affine
-preacceptance request scopes, `ObservationAuthority<P>` owns one exact
+Two owners represent distinct laws: `ObservationAuthority<P>` owns one exact
 protocol-matched cancellation attempt, and `ObservationRelationship<P>` owns
-cloneable nonauthorizing accepted identity. No fourth key or issuer error type
-is added. `ObserveEstablished::new` consumes a scope; `CancelObservation::new`
-consumes authority and loses its former Copy/Clone API. The established report
+cloneable nonauthorizing accepted identity. `ObserveEstablished::new(id, recipient)`
+owns fresh private correlation without another public issuer, key, or error type;
+construction occurs outside Behavior folds. `CancelObservation::new` consumes authority and loses its former Copy/Clone API. The established report
 sum returns whole rejected requests, so it requires the owning RecipientAddress
 capability contract. Its Started, Stopped and Cancelled variants no longer
 carry a separately forgeable numeric identity. The sealed target request port

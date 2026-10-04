@@ -2,7 +2,6 @@
 
 use core::fmt;
 use core::marker::PhantomData;
-use core::num::NonZeroU64;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -176,79 +175,6 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ObservationId(pub u64);
 
-/// Explicit namespace for deterministic observation-request construction.
-///
-/// Construct a root outside every enclosing Behavior fold. Derived scopes
-/// use deterministic checked ordinals, and each scope transfers once.
-///
-/// Moving a scope is valid; cloning or transferring it twice is not.
-/// ```no_run
-/// pub fn request_scope(sequence: behavior_actors::ObservationSequence) -> behavior_actors::ObservationSequence {
-///     sequence
-/// }
-/// ```
-/// ```no_run
-/// pub fn request_scope<P>(scope: behavior_actors::ObservationSequence, recipient: behavior::EstablishedRecipient<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
-///     let first = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient.clone());
-///     drop((first, recipient));
-/// }
-/// ```
-/// ```compile_fail,E0599
-/// pub fn request_scope(sequence: behavior_actors::ObservationSequence) -> behavior_actors::ObservationSequence {
-///     sequence.clone()
-/// }
-/// ```
-/// ```compile_fail,E0382
-/// pub fn request_scope<P>(scope: behavior_actors::ObservationSequence, recipient: behavior::EstablishedRecipient<P>) where P: behavior::Protocol, P::Addr: behavior::RecipientAddress {
-///     let first = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient.clone());
-///     let second = behavior_actors::ObserveEstablished::new(scope, behavior_actors::ObservationId(4), recipient);
-///     drop((first, second));
-/// }
-/// ```
-pub struct ObservationSequence {
-    origin: Arc<()>,
-    path: Vec<NonZeroU64>,
-    next: Option<NonZeroU64>,
-}
-
-impl fmt::Debug for ObservationSequence {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ObservationSequence")
-            .field("path", &self.path)
-            .field("next", &self.next)
-            .finish_non_exhaustive()
-    }
-}
-
-impl ObservationSequence {
-    /// Issue a fresh root namespace outside every enclosing Behavior fold.
-    #[must_use]
-    pub fn issued() -> Self {
-        Self {
-            origin: Arc::new(()),
-            path: Vec::new(),
-            next: NonZeroU64::new(1),
-        }
-    }
-
-    /// Reserve one unique child scope without moving request inputs.
-    ///
-    /// Returns `None` only after the finite ordinal range is exhausted.
-    #[must_use]
-    pub fn branch(&mut self) -> Option<Self> {
-        let ordinal = self.next?;
-        self.next = ordinal.get().checked_add(1).and_then(NonZeroU64::new);
-        let mut path = self.path.clone();
-        path.push(ordinal);
-        Some(Self {
-            origin: self.origin.clone(),
-            path,
-            next: NonZeroU64::new(1),
-        })
-    }
-}
-
 /// Non-authorizing identity of one accepted protocol-indexed relationship.
 ///
 /// The protocol brand cannot be changed even when the address is shared:
@@ -356,8 +282,6 @@ impl<P: Protocol> Eq for ObservationRelationship<P> {}
 /// ```
 pub struct ObservationAuthority<P: Protocol> {
     relationship: ObservationRelationship<P>,
-    origin: Arc<()>,
-    path: Vec<NonZeroU64>,
 }
 
 impl<P: Protocol> fmt::Debug for ObservationAuthority<P> {
@@ -370,7 +294,7 @@ impl<P: Protocol> fmt::Debug for ObservationAuthority<P> {
 }
 
 impl<P: Protocol> ObservationAuthority<P> {
-    /// Issue one fresh accepted identity from the whole original request.
+    /// Transfer the original private request identity into its affine authority.
     ///
     /// This advanced-host operation consumes the original request. The host
     /// must commit the same identity to its exact membership owner before
@@ -382,19 +306,15 @@ impl<P: Protocol> ObservationAuthority<P> {
         P::Addr: RecipientAddress,
     {
         let ObserveEstablished {
-            id,
-            origin,
-            path,
+            correlation,
             recipient,
         } = request;
         drop(recipient);
         Self {
             relationship: ObservationRelationship {
-                identity: Arc::new(id),
+                identity: correlation,
                 protocol: PhantomData,
             },
-            origin,
-            path,
         }
     }
 
@@ -403,13 +323,8 @@ impl<P: Protocol> ObservationAuthority<P> {
         &self.relationship
     }
 
-    pub(crate) fn matches_request(
-        &self,
-        id: ObservationId,
-        origin: &Arc<()>,
-        path: &[NonZeroU64],
-    ) -> bool {
-        self.relationship.id() == id && Arc::ptr_eq(&self.origin, origin) && self.path == path
+    pub(crate) fn matches_request(&self, correlation: &Arc<ObservationId>) -> bool {
+        Arc::ptr_eq(self.relationship.identity(), correlation)
     }
 
     /// Discharge permission and retain the exact non-authorizing relationship.
@@ -450,14 +365,26 @@ impl<P: Protocol> ObservationAuthority<P> {
 ///     accepts::<behavior::EventLayer<behavior_actors::EstablishedObservation<P>, behavior::User<P::Addr, P::Msg>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::CancelObservation<P>>, behavior::SendLayer<behavior::InterpreterRequests<behavior_actors::ObserveEstablished<P>>, Vec<behavior::Never>>>>();
 /// }
 /// ```
+/// A request remains affine and cannot be cloned:
+/// ```no_run
+/// pub fn transfer<P>(request: behavior_actors::ObserveEstablished<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { request }
+/// ```
+/// ```compile_fail,E0599
+/// pub fn transfer<P>(request: behavior_actors::ObserveEstablished<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { request.clone() }
+/// ```
+/// Reading a relationship cannot reconstruct its old request identity:
+/// ```no_run
+/// pub fn new_request<P>(relationship: behavior_actors::ObservationRelationship<P>, recipient: behavior::EstablishedRecipient<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { behavior_actors::ObserveEstablished::new(relationship.id(), recipient) }
+/// ```
+/// ```compile_fail,E0451
+/// pub fn old_request<P>(relationship: behavior_actors::ObservationRelationship<P>, recipient: behavior::EstablishedRecipient<P>) -> behavior_actors::ObserveEstablished<P> where P: behavior::Protocol, P::Addr: behavior::RecipientAddress { behavior_actors::ObserveEstablished { correlation: relationship.identity().clone(), recipient } }
+/// ```
 pub struct ObserveEstablished<P>
 where
     P: Protocol,
     P::Addr: RecipientAddress,
 {
-    id: ObservationId,
-    origin: Arc<()>,
-    path: Vec<NonZeroU64>,
+    correlation: Arc<ObservationId>,
     recipient: EstablishedRecipient<P>,
 }
 
@@ -466,35 +393,32 @@ where
     P: Protocol,
     P::Addr: RecipientAddress,
 {
-    /// Consume a reserved scope and preserve the exact request inputs.
-    /// No fresh namespace or accepted identity is allocated here.
+    /// Construct one affine request with a fresh private correlation.
+    ///
+    /// Issue the request outside Behavior folds, then transfer the whole
+    /// original into its owning Actions lane. A never-accepted rejected
+    /// original may be transferred again; new construction has fresh identity.
     #[must_use]
-    pub fn new(
-        scope: ObservationSequence,
-        id: ObservationId,
-        recipient: EstablishedRecipient<P>,
-    ) -> Self {
+    pub fn new(id: ObservationId, recipient: EstablishedRecipient<P>) -> Self {
         Self {
-            id,
-            origin: scope.origin,
-            path: scope.path,
+            correlation: Arc::new(id),
             recipient,
         }
     }
 
     #[must_use]
     pub fn id(&self) -> ObservationId {
-        self.id
+        *self.correlation
     }
 
-    pub(crate) fn correlation(&self) -> (&Arc<()>, &[NonZeroU64]) {
-        (&self.origin, &self.path)
+    pub(crate) fn correlation(&self) -> &Arc<ObservationId> {
+        &self.correlation
     }
 
     /// Discharge this request correlation and recover the original inputs.
     #[must_use]
     pub fn into_inputs(self) -> (ObservationId, EstablishedRecipient<P>) {
-        (self.id, self.recipient)
+        (*self.correlation, self.recipient)
     }
 
     pub fn interpret<I>(self, interpreter: &mut I) -> I::Output
@@ -985,14 +909,13 @@ where
 
 #[cfg(test)]
 mod observation_request_ownership {
-    use core::num::NonZeroU64;
     use std::sync::Arc;
 
     use behavior::{
         Address, EstablishedRecipient, InterpretEstablished, Protocol, RecipientAddress,
     };
 
-    use super::{ObservationAuthority, ObservationId, ObservationSequence, ObserveEstablished};
+    use super::{ObservationAuthority, ObservationId, ObserveEstablished};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct ObservationAddr(u64);
@@ -1022,18 +945,12 @@ mod observation_request_ownership {
     }
 
     #[test]
-    fn checked_scope_exhaustion_keeps_whole_request_inputs_and_last_scope() {
-        let mut sequence = ObservationSequence::issued();
-        sequence.next = NonZeroU64::new(u64::MAX);
-        let last = sequence.branch().expect("actual final checked reservation");
-        let exhausted = sequence.branch();
+    fn original_request_inputs_return_without_reconstruction() {
         let values = Arc::new(vec![17, 43, 31]);
         let original = values.as_ptr();
         let id = ObservationId(91);
         let recipient = EstablishedRecipient::<ObservedProtocol>::issued(values);
-        assert!(exhausted.is_none());
-        assert_eq!(last.path.last().copied(), NonZeroU64::new(u64::MAX));
-        let request = ObserveEstablished::new(last, id, recipient);
+        let request = ObserveEstablished::new(id, recipient);
         let (returned_id, recipient) = request.into_inputs();
         let returned = recipient.interpret(&mut ObservationEndpoint);
         assert_eq!(returned_id, id);
@@ -1042,43 +959,28 @@ mod observation_request_ownership {
     }
 
     #[test]
-    fn independent_issuers_and_affine_branches_cannot_alias_preacceptance() {
-        let mut first = ObservationSequence::issued();
-        let mut second = ObservationSequence::issued();
-        let first_branch = first.branch().expect("first original reservation");
-        let next_branch = first.branch().expect("next original reservation");
-        let second_branch = second.branch().expect("independent original reservation");
-        assert!(Arc::ptr_eq(&first_branch.origin, &next_branch.origin));
-        assert!(first_branch.path != next_branch.path);
-        assert!(!Arc::ptr_eq(&first_branch.origin, &second_branch.origin));
-        assert_eq!(first_branch.path, second_branch.path);
+    fn distinct_request_construction_cannot_alias_preacceptance() {
         let id = ObservationId(92);
-        let first_request = ObserveEstablished::<ObservedProtocol>::new(
-            first_branch,
-            id,
-            EstablishedRecipient::issued(Arc::new(vec![17])),
+        let recipient = EstablishedRecipient::<ObservedProtocol>::issued(Arc::new(vec![17]));
+        let first = ObserveEstablished::new(id, recipient.clone());
+        let second = ObserveEstablished::new(id, recipient.clone());
+        let original_correlation = first.correlation().clone();
+        let foreign_correlation = second.correlation().clone();
+        let original_authority = ObservationAuthority::issued(first);
+        let foreign_authority = ObservationAuthority::issued(second);
+        assert!(original_authority.matches_request(&original_correlation));
+        assert!(!original_authority.matches_request(&foreign_correlation));
+        assert_ne!(
+            original_authority.relationship(),
+            foreign_authority.relationship()
         );
-        let next_request = ObserveEstablished::<ObservedProtocol>::new(
-            next_branch,
-            id,
-            EstablishedRecipient::issued(Arc::new(vec![43])),
-        );
-        let second_request = ObserveEstablished::<ObservedProtocol>::new(
-            second_branch,
-            id,
-            EstablishedRecipient::issued(Arc::new(vec![31])),
-        );
-        let next_origin = next_request.origin.clone();
-        let next_path = next_request.path.clone();
-        let second_origin = second_request.origin.clone();
-        let second_path = second_request.path.clone();
-        let original_authority = ObservationAuthority::issued(first_request);
-        assert!(!original_authority.matches_request(id, &next_origin, &next_path));
-        assert!(!original_authority.matches_request(id, &second_origin, &second_path));
-        let next_authority = ObservationAuthority::issued(next_request);
-        let independent_authority = ObservationAuthority::issued(second_request);
-        assert!(original_authority.relationship() != next_authority.relationship());
-        assert!(original_authority.relationship() != independent_authority.relationship());
-        assert!(next_authority.relationship() != independent_authority.relationship());
+        assert!(Arc::ptr_eq(
+            original_authority.relationship().identity(),
+            &original_correlation
+        ));
+        assert!(Arc::ptr_eq(
+            foreign_authority.relationship().identity(),
+            &foreign_correlation
+        ));
     }
 }

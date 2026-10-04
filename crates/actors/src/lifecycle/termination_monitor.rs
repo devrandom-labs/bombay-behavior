@@ -1,7 +1,6 @@
 //! Action-producing peer termination observation.
 
 use core::mem;
-use core::num::NonZeroU64;
 use std::sync::Arc;
 
 use crate::{
@@ -161,11 +160,7 @@ where
     P::Addr: behavior::RecipientAddress,
 {
     Unissued(ObserveEstablished<P>),
-    Requested {
-        id: ObservationId,
-        origin: Arc<()>,
-        path: Vec<NonZeroU64>,
-    },
+    Requested { correlation: Arc<ObservationId> },
     Observing(ObservationAuthority<P>),
     CancelPending(ObservationRelationship<P>),
     CancelRejectedWaiting(CancelObservation<P>),
@@ -270,11 +265,8 @@ where
         let EstablishedTermination::Unissued(request) = &self.observation else {
             return None;
         };
-        let (origin, path) = request.correlation();
         let requested = EstablishedTermination::Requested {
-            id: request.id(),
-            origin: origin.clone(),
-            path: path.to_vec(),
+            correlation: request.correlation().clone(),
         };
         match mem::replace(&mut self.observation, requested) {
             EstablishedTermination::Unissued(request) => Some(request),
@@ -315,8 +307,8 @@ where
     > {
         match report {
             EstablishedObservation::Started { authority } => match &self.observation {
-                EstablishedTermination::Requested { id, origin, path }
-                    if authority.matches_request(*id, origin, path) =>
+                EstablishedTermination::Requested { correlation }
+                    if authority.matches_request(correlation) =>
                 {
                     self.observation = EstablishedTermination::Observing(authority);
                     Ok(Actions::cont())
@@ -325,11 +317,9 @@ where
             },
             EstablishedObservation::ObserveRejected { request, reason } => {
                 match &self.observation {
-                    EstablishedTermination::Requested { id, origin, path }
+                    EstablishedTermination::Requested { correlation }
                         if reason == ObservationRejection::IdAlreadyBound
-                            && request.id() == *id
-                            && Arc::ptr_eq(request.correlation().0, origin)
-                            && request.correlation().1 == path.as_slice() =>
+                            && Arc::ptr_eq(request.correlation(), correlation) =>
                     {
                         self.observation = EstablishedTermination::ObserveRejected(request);
                         Ok(Actions::cont())

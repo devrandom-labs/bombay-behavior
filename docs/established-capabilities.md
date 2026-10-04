@@ -199,21 +199,16 @@ dropped, redirected, or resolved to an older incarnation.
 `ObserveEstablishedCreation<C, O>` requests the committed result of a staged
 creation. It returns `EstablishedCreation<C, O>` to the emitting behavior.
 
-`ObservationSequence::issued()` owns a freshly issued request namespace. Construct
-it outside every enclosing Behavior fold, then retain its affine value in pure
-state or an existing child factory. `branch()` reserves a checked ordinal before
-moving endpoint or policy inputs. It returns `None` on ordinal exhaustion without
-consuming those inputs. Branch derivation inside a fold is deterministic from the
-owned sequence state. There is no `Default`, cloneable issuer, caller-supplied
-namespace constructor, or reconstruction from an old correlation.
-
-`ObserveEstablished::new(scope, id, recipient)` consumes one reserved scope and
-owns the complete endpoint request. The observer-local numeric `ObservationId`
-selects a registration slot; it is not cancellation authority. A never-accepted
-original returned by rejection may be serially retried. Constructing a new
-request instead consumes another scope. Acceptance consumes the original request,
-including when later Started publication fails; it must not reconstruct a rejected
-Observe request after commitment.
+`ObserveEstablished::new(id, recipient)` constructs one affine whole request
+with a freshly allocated private correlation. Construct the request outside every
+Behavior fold, then transfer it into the owning Actions lane; a Behavior may own
+or emit that prepared request, but does not issue fresh request identity during
+its fold. The observer-local numeric `ObservationId` selects a registration slot,
+not cancellation authority. A never-accepted whole original returned by rejection
+may be serially retried with its original correlation. New construction always
+issues a new private correlation, even for the same id and endpoint. Acceptance
+consumes the original, including when later Started publication fails; it never
+reconstructs a rejected Observe request after commitment.
 
 `ObservationAuthority<P>` owns one protocol-indexed permission to attempt
 cancellation of an exact accepted relationship. It is affine, not a claim that
@@ -227,8 +222,8 @@ the type system does not prove that a custom host actually committed membership.
 strong `Arc<ObservationId>` and an invariant protocol brand; the numeric ID is
 derived from that allocation. Its read-only identity may be compared with a
 runtime-owned membership value. It cannot be publicly reconstructed, rebranded,
-or converted back into cancellation permission. A fresh accepted relationship
-always receives a fresh identity even when its numeric slot is reused.
+or converted back into cancellation permission. Each new request owns fresh identity even when its numeric slot is reused;
+acceptance transfers that same original identity into the committed relationship.
 
 `CancelObservation::new(authority)` consumes the exact protocol-matched grant.
 The request owns that grant until successful cancellation consumes it into a

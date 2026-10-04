@@ -9,8 +9,7 @@ use std::time::{Duration, Instant};
 use behavior_actors::{
     CancelObservation, EstablishedObservation, EstablishedTerminationMonitor, Exit,
     InterpretEstablishedObservation, ObservationAuthority, ObservationId, ObservationOperation,
-    ObservationRejection, ObservationSequence, ObserveEstablished, TerminationMonitorError,
-    TerminationObservation,
+    ObservationRejection, ObserveEstablished, TerminationMonitorError, TerminationObservation,
 };
 
 use behavior_core::{
@@ -124,7 +123,7 @@ proptest! {
         let id = ObservationId(selected);
         let mut definition = EstablishedTerminationMonitor::established(
             Subject { terminal_reports: Vec::new() },
-            ObserveEstablished::new(ObservationSequence::issued(), id,
+            ObserveEstablished::new(id,
                 EstablishedRecipient::issued(Endpoint::<Peer> { protocol: PhantomData, values: Arc::new(vec![7, 11]) })),
             record_terminal,
         );
@@ -150,7 +149,7 @@ proptest! {
             let reported = match target {
                 ReportTarget::Selected => relationship.clone(),
                 ReportTarget::Foreign => ObservationAuthority::issued(
-                    ObserveEstablished::new(ObservationSequence::issued(), id,
+                    ObserveEstablished::new(id,
                         EstablishedRecipient::issued(Endpoint::<Peer> { protocol: PhantomData, values: Arc::new(vec![7, 11]) })))
                     .into_relationship(),
             };
@@ -228,14 +227,11 @@ fn exercise_observation_trace(selected: u64, trace: ObservationTrace, reports: &
     let values = Arc::new(vec![selected, 9, 13]);
     let original_allocation = values.as_ptr();
     let original_values = values.clone();
-    let mut sequence = ObservationSequence::issued();
-    let scope = sequence.branch().expect("first owned ordinal exists");
     let mut monitor = EstablishedTerminationMonitor::established(
         Subject {
             terminal_reports: Vec::new(),
         },
         ObserveEstablished::new(
-            scope,
             id,
             EstablishedRecipient::issued(Endpoint::<Peer> {
                 protocol: PhantomData,
@@ -313,11 +309,9 @@ fn exercise_observation_trace(selected: u64, trace: ObservationTrace, reports: &
     assert_eq!(endpoint.values.as_ptr(), original_allocation);
     assert_eq!(endpoint.values.as_slice(), original_values.as_slice());
 
-    // This fresh branch has the SAME numeric ID and endpoint, but cannot
+    // This distinct new request has the SAME numeric ID and endpoint, but cannot
     // satisfy the requested correlation. Whole returned authority is checked.
-    let foreign_scope = sequence.branch().expect("next bounded ordinal exists");
     let foreign_authority = ObservationAuthority::issued(ObserveEstablished::new(
-        foreign_scope,
         id,
         EstablishedRecipient::issued(endpoint.clone()),
     ));

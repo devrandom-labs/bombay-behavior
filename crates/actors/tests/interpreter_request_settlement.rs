@@ -8,7 +8,7 @@ use behavior::{
 };
 use behavior_actors::{
     CancelObservation, Exit, InterpretEstablishedObservation, ObservationAuthority, ObservationId,
-    ObservationSequence, ObserveEstablished, ObserveEstablishedCreation, ReportTerminalOutcome,
+    ObserveEstablished, ObserveEstablishedCreation, ReportTerminalOutcome,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -218,14 +218,12 @@ fn public_interpreter_requests_own_action_item_contracts() {
 async fn public_interpreter_requests_have_accepted_settlements() {
     require_accepted_settlement(ReportTerminalOutcome::<ProbeAddr>::new(Ok(Exit::Normal))).await;
     require_accepted_settlement(ObserveEstablished::<ProbeProtocol>::new(
-        ObservationSequence::issued(),
         ObservationId(11),
         behavior::EstablishedRecipient::issued(ProbeEndpoint(12)),
     ))
     .await;
     require_accepted_settlement(CancelObservation::<ProbeProtocol>::new(
         ObservationAuthority::issued(ObserveEstablished::new(
-            ObservationSequence::issued(),
             ObservationId(13),
             behavior::EstablishedRecipient::issued(ProbeEndpoint(13)),
         )),
@@ -245,7 +243,6 @@ fn unattempted_settlements_return_each_exact_source_request() {
     assert_eq!(report.outcome, Ok(Exit::LinkDied(ProbeAddr(21))));
 
     let observation = recover_unattempted(ObserveEstablished::<ProbeProtocol>::new(
-        ObservationSequence::issued(),
         ObservationId(22),
         behavior::EstablishedRecipient::issued(ProbeEndpoint(23)),
     ));
@@ -257,7 +254,6 @@ fn unattempted_settlements_return_each_exact_source_request() {
 
     let cancellation = recover_unattempted(CancelObservation::<ProbeProtocol>::new(
         ObservationAuthority::issued(ObserveEstablished::new(
-            ObservationSequence::issued(),
             ObservationId(24),
             behavior::EstablishedRecipient::issued(ProbeEndpoint(24)),
         )),
@@ -300,14 +296,12 @@ async fn established_creation_observation_retains_its_blocking_correlation() {
 fn exact_observation_requests_own_their_accepted_settlement() {
     let mut runtime = ObservationSettlementCapture::default();
     let observed = ObserveEstablished::<ProbeProtocol>::new(
-        ObservationSequence::issued(),
         ObservationId(31),
         behavior::EstablishedRecipient::issued(ProbeEndpoint(32)),
     )
     .settle(&mut runtime);
     let cancelled = CancelObservation::<ProbeProtocol>::new(ObservationAuthority::issued(
         ObserveEstablished::new(
-            ObservationSequence::issued(),
             ObservationId(33),
             behavior::EstablishedRecipient::issued(ProbeEndpoint(33)),
         ),

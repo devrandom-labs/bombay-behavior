@@ -10,8 +10,8 @@ pub use established::{
     CancelObservation, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationAuthority,
     ObservationId, ObservationOperation, ObservationRejection, ObservationRelationship,
-    ObservationSequence, ObserveEstablished, ObserveEstablishedCreation, ShutdownEstablished,
-    ShutdownId, ShutdownRejection, established_child,
+    ObserveEstablished, ObserveEstablishedCreation, ShutdownEstablished, ShutdownId,
+    ShutdownRejection, established_child,
 };
 
 use std::time::Duration;

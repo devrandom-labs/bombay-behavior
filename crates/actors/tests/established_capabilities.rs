@@ -14,10 +14,9 @@ use behavior_actors::{
     EstablishedTerminationMonitor, Exit, HeterogeneousShutdownPlan,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapterWithRoute,
     NoShutdownTargets, ObservationAuthority, ObservationId, ObservationRejection,
-    ObservationSequence, ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout,
-    ReplyRoute, ShutdownChoice, ShutdownEstablished, ShutdownId, ShutdownRejection,
-    ShutdownRequested, Stash, StopOnShutdown, TerminationMonitorError, TerminationObservation,
-    Watch, established_child,
+    ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout, ReplyRoute, ShutdownChoice,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
+    TerminationMonitorError, TerminationObservation, Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -557,9 +556,7 @@ impl InterpretEstablishedObservation<WorkerProtocol> for ObservationRuntime {
 fn observation_transfers_whole_original_request_and_exact_endpoint() {
     let endpoint = Endpoint::new(RuntimeAddr(44), 8);
     let recipient = EstablishedRecipient::issued(endpoint);
-    let mut sequence = ObservationSequence::issued();
-    let scope = sequence.branch().expect("initial scope exists");
-    let request = ObserveEstablished::new(scope, ObservationId(5), recipient);
+    let request = ObserveEstablished::new(ObservationId(5), recipient);
     let ObservationCall::Start(request, retained_endpoint) =
         request.interpret(&mut ObservationRuntime)
     else {
@@ -730,9 +727,7 @@ fn exact_monitor_retains_cancel_rejection_and_reacts_once_in_both_arrival_orders
         ObservationArrivalOrder::CancellationFirst,
         ObservationArrivalOrder::CompletionFirst,
     ] {
-        let mut sequence = ObservationSequence::issued();
         let request = ObserveEstablished::new(
-            sequence.branch().expect("scope"),
             ObservationId(6),
             EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
         );
@@ -755,20 +750,16 @@ fn exact_monitor_retains_cancel_rejection_and_reacts_once_in_both_arrival_orders
         assert!(extra_request.is_none());
         let authority = ObservationAuthority::issued(request);
         let relationship = authority.relationship().clone();
-        let mut foreign_namespace = ObservationSequence::issued();
         let foreign_requests = [
             ObserveEstablished::new(
-                foreign_namespace.branch().expect("foreign namespace scope"),
                 ObservationId(6),
                 EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
             ),
             ObserveEstablished::new(
-                sequence.branch().expect("distinct sibling scope"),
                 ObservationId(6),
                 EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
             ),
             ObserveEstablished::new(
-                sequence.branch().expect("distinct explicit id scope"),
                 ObservationId(66),
                 EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
             ),
@@ -904,9 +895,7 @@ fn exact_monitor_retains_cancel_rejection_and_reacts_once_in_both_arrival_orders
 
 #[test]
 fn cancelled_monitor_returns_late_stopped_without_a_terminal_reaction() {
-    let mut sequence = ObservationSequence::issued();
     let request = ObserveEstablished::new(
-        sequence.branch().expect("scope"),
         ObservationId(7),
         EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 10)),
     );
@@ -1203,7 +1192,6 @@ fn outer_shutdown_preserves_whole_rejected_cancel_after_both_report_orders() {
         ObservationArrivalOrder::CompletionFirst,
     ] {
         let request = ObserveEstablished::new(
-            ObservationSequence::issued(),
             ObservationId(93),
             EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13)),
         );
@@ -1312,7 +1300,6 @@ fn inner_shutdown_preserves_whole_rejected_cancel_after_both_report_orders() {
         ObservationArrivalOrder::CompletionFirst,
     ] {
         let request = ObserveEstablished::new(
-            ObservationSequence::issued(),
             ObservationId(93),
             EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13)),
         );
@@ -1432,16 +1419,10 @@ fn existing_worker_factory_result_accepts_affine_observation_definitions() {
         factory
     }
 
-    // Namespace issuance precedes both the captured factory and any fold.
-    let mut sequence = ObservationSequence::issued();
+    // Whole-request construction occurs in the interpreted factory, outside every fold.
     let mut factory = owning_factory(move |role: &u64| {
-        let Some(scope) = sequence.branch() else {
-            // The existing owning factory's application rejection retains the
-            // original borrowed role; no endpoint or policy input was moved.
-            return Err(*role);
-        };
         let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13));
-        let request = ObserveEstablished::new(scope, ObservationId(*role), recipient);
+        let request = ObserveEstablished::new(ObservationId(*role), recipient);
         let monitor = EstablishedTerminationMonitor::established(
             Observer { events: Vec::new() },
             request,
@@ -1460,7 +1441,7 @@ fn existing_worker_factory_result_accepts_affine_observation_definitions() {
         panic!("actual next definition fits the same existing factory result");
     };
     // This is a constructor/trait-syntax proof, not a worker installation or
-    // initializer trace. Private checked-exhaustion coverage lives with the
-    // sequence owner and observes the original endpoint/id there.
+    // initializer trace. Distinct request construction has no finite ordinal
+    // budget; whole input recovery remains covered by its owning request tests.
     drop((first, second));
 }
