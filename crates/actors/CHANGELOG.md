@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.21.1...bombay-behavior-actors-v0.21.2) - 2026-10-04
+
+### Added
+
+- *(actors)* recover exact FIFO source rejections ([#82](https://github.com/devrandom-labs/bombay-behavior/pull/82))
+
 ## [0.21.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.21.0...bombay-behavior-actors-v0.21.1) - 2026-10-03
 
 ### Other
