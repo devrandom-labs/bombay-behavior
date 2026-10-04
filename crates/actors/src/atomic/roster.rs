@@ -13,6 +13,10 @@ impl<Role> RoleName<Role> {
         }
     }
 
+    pub(crate) fn into_role(self) -> Arc<Role> {
+        self.role
+    }
+
     pub(crate) fn role(&self) -> &Role {
         self.role.as_ref()
     }
