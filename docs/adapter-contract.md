@@ -221,5 +221,6 @@ retaining cancellation permission. Completion decision and cancellation share
 one membership owner; a reused numeric ID cannot authorize an old grant. A
 custom interpreter is a trusted issuance boundary, not a compiler-proven
 registration service. See [Established capabilities](established-capabilities.md)
-for deterministic request issuance, serial never-accepted retry, both legal
-control arrival orders, and retirement admission custody.
+for requests constructed outside folds, original input emission, serial
+never-accepted retry, both legal control arrival orders, and retirement
+admission custody.
