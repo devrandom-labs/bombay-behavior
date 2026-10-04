@@ -8,9 +8,10 @@ mod established;
 
 pub use established::{
     CancelObservation, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
-    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationId,
-    ObservationOperation, ObservationRejection, ObserveEstablished, ObserveEstablishedCreation,
-    ShutdownEstablished, ShutdownId, ShutdownRejection, established_child,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationAuthority,
+    ObservationId, ObservationOperation, ObservationRejection, ObservationRelationship,
+    ObservationSequence, ObserveEstablished, ObserveEstablishedCreation, ShutdownEstablished,
+    ShutdownId, ShutdownRejection, established_child,
 };
 
 use std::time::Duration;

@@ -6,13 +6,14 @@ use std::marker::PhantomData;
 use std::time::Instant;
 
 use behavior_actors::{
-    Activate as _, EstablishedObservation, EstablishedTerminationMonitor, Exit, ObservationId,
-    ObservationOperation, ObservationRejection, TerminationMonitorError, TerminationObservation,
+    EstablishedObservation, EstablishedTerminationMonitor, Exit, ObservationAuthority,
+    ObservationId, ObservationRejection, ObservationSequence, ObserveEstablished,
+    TerminationMonitorError, TerminationObservation,
 };
 
 use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress, EstablishedRecipient,
-    Never, NoBirths, Protocol, User,
+    EventLayer, Never, NoBirths, Protocol, Step, User,
 };
 use proptest::prelude::*;
 
@@ -103,110 +104,201 @@ fn record_terminal(
     Actions::cont()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ModelPhase {
-    Requested,
-    Observing,
-    Observed,
-    Cancelled,
-    Rejected,
-}
-
 #[derive(Debug, Clone, Copy)]
 enum ReportTarget {
     Selected,
     Foreign,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ReportKind {
-    Started,
-    Cancelled,
-    Rejected,
-    Stopped,
+proptest! {
+    #[test]
+    fn exact_monitor_delivers_one_terminal_and_denies_foreign_same_numeric_id(
+        selected in any::<u64>(),
+        targets in prop::collection::vec(
+            prop_oneof![Just(ReportTarget::Selected), Just(ReportTarget::Foreign)], 0..96),
+    ) {
+        let id = ObservationId(selected);
+        let mut definition = EstablishedTerminationMonitor::established(
+            Subject { terminal_reactions: 0 },
+            ObserveEstablished::new(ObservationSequence::issued(), id,
+                EstablishedRecipient::issued(Endpoint::<Peer> { protocol: PhantomData })),
+            record_terminal,
+        );
+        let initialization = behavior_core::initialize(&mut definition).unwrap();
+        prop_assert_eq!(initialization.sends.owned.len(), 1);
+        prop_assert_eq!(initialization.sends.inner.len(), 0);
+        prop_assert_eq!(initialization.creates.len(), 0);
+        prop_assert_eq!(initialization.become_, Step::Continue);
+        let mut emitted = initialization.sends.owned.into_iter();
+        let authority = ObservationAuthority::issued(emitted.next().expect("actual original request"));
+        let extra = emitted.next();
+        prop_assert!(extra.is_none());
+        let relationship = authority.relationship().clone();
+        let started = behavior_core::delegate_transition(&mut definition,
+            EventLayer::Owned(EstablishedObservation::started(authority))).unwrap();
+        prop_assert_eq!(started.sends.owned.len(), 0);
+        prop_assert_eq!(started.sends.inner.len(), 0);
+        prop_assert_eq!(started.creates.len(), 0);
+        prop_assert_eq!(started.become_, Step::Continue);
+        let timestamp = Instant::now();
+        let mut remaining_reactions = 1usize;
+        for target in targets {
+            let reported = match target {
+                ReportTarget::Selected => relationship.clone(),
+                ReportTarget::Foreign => ObservationAuthority::issued(
+                    ObserveEstablished::new(ObservationSequence::issued(), id,
+                        EstablishedRecipient::issued(Endpoint::<Peer> { protocol: PhantomData })))
+                    .into_relationship(),
+            };
+            let expected = match target {
+                ReportTarget::Selected => remaining_reactions,
+                ReportTarget::Foreign => 0,
+            };
+            let original = reported.clone();
+            let report = EstablishedObservation::stopped(reported, Ok(Exit::Normal), timestamp);
+            let before = definition.observation();
+            let returned = behavior_core::delegate_transition(&mut definition, EventLayer::Owned(report));
+            match returned {
+                Ok(actions) => {
+                    prop_assert_eq!(expected, 1);
+                    remaining_reactions = 0;
+                    prop_assert_eq!(actions.sends.owned.len(), 0);
+                    prop_assert_eq!(actions.sends.inner.len(), 0);
+                    prop_assert_eq!(actions.creates.len(), 0);
+                    prop_assert_eq!(actions.become_, Step::Continue);
+                }
+                Err(TerminationMonitorError::UnexpectedReport { observation, report }) => {
+                    prop_assert_eq!(expected, 0);
+                    prop_assert_eq!(observation, before);
+                    let EstablishedObservation::Stopped { relationship: returned, outcome, at } = report else {
+                        panic!("whole exact terminal report is returned");
+                    };
+                    prop_assert!(returned == original);
+                    prop_assert_eq!(outcome, Ok(Exit::Normal));
+                    prop_assert_eq!(at, timestamp);
+                }
+                Err(TerminationMonitorError::Inner(never)) => match never {},
+            }
+            prop_assert_eq!(definition.base().terminal_reactions, 1 - remaining_reactions);
+            let expected_phase = match remaining_reactions {
+                0 => TerminationObservation::Observed,
+                1 => TerminationObservation::Observing,
+                _ => unreachable!("one affine terminal reaction"),
+            };
+            prop_assert_eq!(definition.observation(), expected_phase);
+        }
+    }
 }
 
-fn actual_phase(observation: TerminationObservation) -> ModelPhase {
-    match observation {
-        TerminationObservation::Requested => ModelPhase::Requested,
-        TerminationObservation::Observing => ModelPhase::Observing,
-        TerminationObservation::Observed => ModelPhase::Observed,
-        TerminationObservation::Cancelled => ModelPhase::Cancelled,
-        TerminationObservation::Rejected { .. } => ModelPhase::Rejected,
-    }
+#[derive(Clone, Copy, Debug)]
+enum ObservationReportKind {
+    Started,
+    Stopped,
+    Cancelled,
+    ObserveRejected,
+    CancelRejected,
 }
 
 proptest! {
     #[test]
-    fn exact_monitor_matches_the_independent_single_terminal_model(
-        operations in prop::collection::vec((
-            prop_oneof![Just(ReportTarget::Selected), Just(ReportTarget::Foreign)],
-            prop_oneof![
-                Just(ReportKind::Started),
-                Just(ReportKind::Cancelled),
-                Just(ReportKind::Rejected),
-                Just(ReportKind::Stopped),
-            ],
-        ), 0..96),
+    fn every_owned_report_has_complete_actions_and_consumable_rejection_custody(
+        selected in any::<u64>(),
+        kinds in prop::collection::vec(prop_oneof![
+            Just(ObservationReportKind::Started), Just(ObservationReportKind::Stopped),
+            Just(ObservationReportKind::Cancelled), Just(ObservationReportKind::ObserveRejected),
+            Just(ObservationReportKind::CancelRejected),
+        ], 1..32),
     ) {
-        let selected = ObservationId(7);
-        let recipient = EstablishedRecipient::issued(Endpoint::<Peer> {
-            protocol: PhantomData,
-        });
-        let mut subject = EstablishedTerminationMonitor::established(
-            Subject { terminal_reactions: 0 },
-            selected,
-            recipient,
-            record_terminal,
-        )
-        .initialize()
-        .unwrap()
-        .behavior;
-        let timestamp = Instant::now();
-        let mut model = ModelPhase::Requested;
-        let mut terminal_reactions = 0;
-
-        for (target, operation) in operations {
-            let id = match target {
-                ReportTarget::Selected => selected,
-                ReportTarget::Foreign => ObservationId(8),
-            };
-            let report = match operation {
-                ReportKind::Started => EstablishedObservation::started(id),
-                ReportKind::Cancelled => EstablishedObservation::cancelled(id),
-                ReportKind::Rejected => EstablishedObservation::rejected(
-                    id,
-                    ObservationOperation::Start,
-                    ObservationRejection::IdAlreadyBound,
-                ),
-                ReportKind::Stopped => EstablishedObservation::stopped(id, Ok(Exit::Normal), timestamp),
-            };
-
-            let next_phase = match (target, model, operation) {
-                (ReportTarget::Selected, ModelPhase::Requested, ReportKind::Started) => Some(ModelPhase::Observing),
-                (ReportTarget::Selected, ModelPhase::Requested | ModelPhase::Observing, ReportKind::Rejected) => Some(ModelPhase::Rejected),
-                (ReportTarget::Selected, ModelPhase::Observing, ReportKind::Cancelled) => Some(ModelPhase::Cancelled),
-                (ReportTarget::Selected, ModelPhase::Observing, ReportKind::Stopped) => Some(ModelPhase::Observed),
-                _ => None,
-            };
-            let before = subject.observation();
-            match (subject.on_path(report), next_phase) {
-                (Ok(_), Some(next)) => {
-                    if matches!(next, ModelPhase::Observed) {
-                        terminal_reactions += 1;
+        for kind in kinds {
+            let id = ObservationId(selected);
+            let mut monitor = EstablishedTerminationMonitor::established(
+                Subject { terminal_reactions: 0 },
+                ObserveEstablished::new(ObservationSequence::issued(), id,
+                    EstablishedRecipient::issued(Endpoint::<Peer> { protocol: PhantomData })),
+                record_terminal,
+            );
+            let initialized = behavior_core::initialize(&mut monitor).unwrap();
+            prop_assert_eq!(initialized.sends.owned.len(), 1);
+            prop_assert_eq!(initialized.sends.inner.len(), 0);
+            prop_assert_eq!(initialized.creates.len(), 0);
+            prop_assert_eq!(initialized.become_, Step::Continue);
+            let mut emitted = initialized.sends.owned.into_iter();
+            let request = emitted.next().expect("actual emitted original");
+            let extra = emitted.next();
+            prop_assert!(extra.is_none());
+            let at = Instant::now();
+            match kind {
+                ObservationReportKind::ObserveRejected => {
+                    let actions = behavior_core::delegate_transition(&mut monitor,
+                        EventLayer::Owned(EstablishedObservation::observe_rejected(request, ObservationRejection::IdAlreadyBound))).unwrap();
+                    prop_assert_eq!(actions.sends.owned.len(), 0);
+                    prop_assert_eq!(actions.sends.inner.len(), 0);
+                    prop_assert_eq!(actions.creates.len(), 0);
+                    prop_assert_eq!(actions.become_, Step::Continue);
+                    prop_assert_eq!(monitor.base().terminal_reactions, 0);
+                    let (subject, target) = monitor.into_parts();
+                    let Ok((original, reason)) = target.into_rejected_observe() else { panic!("whole start rejection is consumingly available"); };
+                    let (returned_id, _returned_recipient) = original.into_inputs();
+                    prop_assert_eq!(returned_id, id);
+                    prop_assert_eq!(reason, ObservationRejection::IdAlreadyBound);
+                    prop_assert_eq!(subject.terminal_reactions, 0);
+                }
+                ObservationReportKind::Started | ObservationReportKind::Stopped |
+                ObservationReportKind::Cancelled | ObservationReportKind::CancelRejected => {
+                    let authority = ObservationAuthority::issued(request);
+                    let relationship = authority.relationship().clone();
+                    let started = behavior_core::delegate_transition(&mut monitor,
+                        EventLayer::Owned(EstablishedObservation::started(authority))).unwrap();
+                    prop_assert_eq!(started.sends.owned.len(), 0);
+                    prop_assert_eq!(started.sends.inner.len(), 0);
+                    prop_assert_eq!(started.creates.len(), 0);
+                    prop_assert_eq!(started.become_, Step::Continue);
+                    prop_assert_eq!(monitor.observation(), TerminationObservation::Observing);
+                    prop_assert_eq!(monitor.base().terminal_reactions, 0);
+                    let report = match kind {
+                        ObservationReportKind::Started | ObservationReportKind::Stopped =>
+                            EstablishedObservation::stopped(relationship.clone(), Ok(Exit::Normal), at),
+                        ObservationReportKind::Cancelled => EstablishedObservation::cancelled(
+                            monitor.take_cancellation().expect("one affine cancellation")),
+                        ObservationReportKind::CancelRejected => EstablishedObservation::cancel_rejected(
+                            monitor.take_cancellation().expect("one affine cancellation"), ObservationRejection::NotObserved),
+                        ObservationReportKind::ObserveRejected => unreachable!("start rejection owns its separate original"),
+                    };
+                    let actions = behavior_core::delegate_transition(&mut monitor, EventLayer::Owned(report)).unwrap();
+                    prop_assert_eq!(actions.sends.owned.len(), 0);
+                    prop_assert_eq!(actions.sends.inner.len(), 0);
+                    prop_assert_eq!(actions.creates.len(), 0);
+                    prop_assert_eq!(actions.become_, Step::Continue);
+                    match kind {
+                        ObservationReportKind::Started | ObservationReportKind::Stopped => {
+                            prop_assert_eq!(monitor.observation(), TerminationObservation::Observed);
+                            prop_assert_eq!(monitor.base().terminal_reactions, 1);
+                        }
+                        ObservationReportKind::Cancelled => {
+                            prop_assert_eq!(monitor.observation(), TerminationObservation::Cancelled);
+                            prop_assert_eq!(monitor.base().terminal_reactions, 0);
+                        }
+                        ObservationReportKind::CancelRejected => {
+                            prop_assert_eq!(monitor.observation(), TerminationObservation::Observing);
+                            let stopped = behavior_core::delegate_transition(&mut monitor,
+                                EventLayer::Owned(EstablishedObservation::stopped(relationship.clone(), Ok(Exit::Normal), at))).unwrap();
+                            prop_assert_eq!(stopped.sends.owned.len(), 0);
+                            prop_assert_eq!(stopped.sends.inner.len(), 0);
+                            prop_assert_eq!(stopped.creates.len(), 0);
+                            prop_assert_eq!(stopped.become_, Step::Continue);
+                            prop_assert_eq!(monitor.base().terminal_reactions, 1);
+                            let (subject, target) = monitor.into_parts();
+                            let Ok((original, reason)) = target.into_rejected_cancel() else { panic!("whole rejected grant coexists with terminal reaction"); };
+                            prop_assert!(original.relationship() == &relationship);
+                            prop_assert_eq!(original.id(), id);
+                            prop_assert_eq!(reason, ObservationRejection::NotObserved);
+                            prop_assert_eq!(subject.terminal_reactions, 1);
+                            drop(original);
+                        }
+                        ObservationReportKind::ObserveRejected => unreachable!("separate start-rejection path"),
                     }
-                    model = next;
                 }
-                (Err(TerminationMonitorError::UnexpectedReport { observation, report }), None) => {
-                    prop_assert_eq!(observation, before);
-                    prop_assert_eq!(report.id(), id);
-                }
-                (Err(TerminationMonitorError::Inner(never)), _) => match never {},
-                _ => prop_assert!(false, "report settlement diverged from the model"),
             }
-
-            prop_assert_eq!(actual_phase(subject.observation()), model);
-            prop_assert_eq!(subject.base().terminal_reactions, terminal_reactions);
         }
     }
 }

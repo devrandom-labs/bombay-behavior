@@ -30,7 +30,9 @@ impl<B> StopOnShutdown<B> {
         Self { inner }
     }
 
-    pub(crate) fn into_inner(self) -> B {
+    /// Recover the original wrapped behavior after this wrapper is consumed.
+    #[must_use]
+    pub fn into_inner(self) -> B {
         self.inner
     }
 }

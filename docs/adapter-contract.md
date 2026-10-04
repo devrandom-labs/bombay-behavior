@@ -209,3 +209,17 @@ not presented as laws of this crate.
 - no erased envelopes, registries, downcasts, or hidden side effects; and
 - no success, restart, stop, or observation fact is inferred from failed
   mechanics.
+
+## Exact observation ownership
+
+The exact observation interpreter consumes the whole `ObserveEstablished<P>`
+or `CancelObservation<P>` request. It must preserve that original on rejection,
+commit the issued exact relationship before publishing Started, and consume a
+successful cancellation grant into its nonauthorizing relationship receipt.
+Stopped retains exact relationship, outcome and notification timestamp without
+retaining cancellation permission. Completion decision and cancellation share
+one membership owner; a reused numeric ID cannot authorize an old grant. A
+custom interpreter is a trusted issuance boundary, not a compiler-proven
+registration service. See [Established capabilities](established-capabilities.md)
+for deterministic request issuance, serial never-accepted retry, both legal
+control arrival orders, and retirement admission custody.

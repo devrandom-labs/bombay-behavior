@@ -1,12 +1,17 @@
 //! Action-producing peer termination observation.
 
+use core::mem;
+use core::num::NonZeroU64;
+use std::sync::Arc;
+
 use crate::{
-    EstablishedObservation, ObservationId, ObservationOperation, ObservationRejection,
-    ObserveEstablished, ObservePeer, PeerStopped, WatchEvent,
+    CancelObservation, EstablishedObservation, ObservationAuthority, ObservationId,
+    ObservationOperation, ObservationRejection, ObservationRelationship, ObserveEstablished,
+    ObservePeer, PeerStopped, WatchEvent,
 };
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, EndpointAddress, EstablishedRecipient,
-    EventLayer, InterpreterRequest, InterpreterRequests, ReturnsToEmitter, SendEffects, SendLayer,
+    Actions, Address, Behavior, BehaviorActed, BirthMode, EndpointAddress, EventLayer,
+    InterpreterRequest, InterpreterRequests, ReturnsToEmitter, SendEffects, SendLayer,
 };
 
 /// Pure reaction applied to the exact matching terminal report.
@@ -23,7 +28,7 @@ pub type TerminationReaction<B> = fn(
 /// Complete consumption phase of one exact terminal observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminationObservation {
-    /// An exact observation request was emitted but not yet accepted.
+    /// The exact request is retained for emission or awaits its first response.
     Requested,
     /// The configured peer's terminal report has not been accepted.
     Observing,
@@ -79,24 +84,23 @@ pub trait TerminationObservationTarget<B: Behavior>:
         ReturnToEmitter = ReturnsToEmitter<Self::Report, behavior::Here>,
     >;
 
-    fn request(&self) -> Self::Request;
+    fn request(&mut self) -> Option<Self::Request>;
+    fn observation(&self) -> TerminationObservation;
     fn react(
         &mut self,
         inner: &mut B,
-        observation: TerminationObservation,
         report: Self::Report,
-    ) -> Result<
-        (
-            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-            TerminationObservation,
-        ),
-        Self::Report,
-    >;
+    ) -> Result<Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>, Self::Report>;
+}
+
+enum LogicalTermination<A: Address> {
+    Observing(A),
+    Observed(A),
 }
 
 /// Address-selected legacy termination observation.
 pub struct LogicalTerminationTarget<B: Behavior> {
-    peer: behavior::BehaviorAddr<B>,
+    observation: LogicalTermination<behavior::BehaviorAddr<B>>,
     react: TerminationReaction<B>,
 }
 
@@ -106,29 +110,33 @@ impl<B: Behavior> TerminationObservationTarget<B> for LogicalTerminationTarget<B
     type Report = PeerStopped<behavior::BehaviorAddr<B>>;
     type Request = ObservePeer<behavior::BehaviorAddr<B>>;
 
-    fn request(&self) -> Self::Request {
-        ObservePeer::new(self.peer)
+    fn request(&mut self) -> Option<Self::Request> {
+        let peer = match &self.observation {
+            LogicalTermination::Observing(peer) | LogicalTermination::Observed(peer) => *peer,
+        };
+        Some(ObservePeer::new(peer))
+    }
+
+    fn observation(&self) -> TerminationObservation {
+        match self.observation {
+            LogicalTermination::Observing(_) => TerminationObservation::Observing,
+            LogicalTermination::Observed(_) => TerminationObservation::Observed,
+        }
     }
 
     fn react(
         &mut self,
         inner: &mut B,
-        observation: TerminationObservation,
         report: Self::Report,
-    ) -> Result<
-        (
-            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-            TerminationObservation,
-        ),
-        Self::Report,
-    > {
-        if observation != TerminationObservation::Observing || report.peer != self.peer {
+    ) -> Result<Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>, Self::Report> {
+        let LogicalTermination::Observing(peer) = &self.observation else {
+            return Err(report);
+        };
+        if report.peer != *peer {
             return Err(report);
         }
-        Ok((
-            (self.react)(inner, report),
-            TerminationObservation::Observed,
-        ))
+        self.observation = LogicalTermination::Observed(*peer);
+        Ok((self.react)(inner, report))
     }
 }
 
@@ -147,14 +155,34 @@ pub type EstablishedTerminationReaction<B, P> = fn(
     <B as Behavior>::Birth,
 >;
 
-/// Exact-incarnation termination observation policy.
+enum EstablishedTermination<P>
+where
+    P: behavior::Protocol,
+    P::Addr: behavior::RecipientAddress,
+{
+    Unissued(ObserveEstablished<P>),
+    Requested {
+        id: ObservationId,
+        origin: Arc<()>,
+        path: Vec<NonZeroU64>,
+    },
+    Observing(ObservationAuthority<P>),
+    CancelPending(ObservationRelationship<P>),
+    CancelRejectedWaiting(CancelObservation<P>),
+    StoppedAwaitingCancel(ObservationRelationship<P>),
+    ObserveRejected(ObserveEstablished<P>),
+    Stopped,
+    StoppedWithCancelRejected(CancelObservation<P>),
+    Cancelled,
+}
+
+/// Exact-incarnation termination observation policy and its one current value.
 pub struct EstablishedTerminationTarget<B: Behavior, P>
 where
     P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
     behavior::BehaviorAddr<B>: EndpointAddress,
 {
-    id: ObservationId,
-    peer: EstablishedRecipient<P>,
+    observation: EstablishedTermination<P>,
     react: EstablishedTerminationReaction<B, P>,
 }
 
@@ -175,55 +203,197 @@ where
     type Report = EstablishedObservation<P>;
     type Request = ObserveEstablished<P>;
 
-    fn request(&self) -> Self::Request {
-        ObserveEstablished::new(self.id, self.peer.clone())
+    fn request(&mut self) -> Option<Self::Request> {
+        self.request_once()
     }
-
+    fn observation(&self) -> TerminationObservation {
+        self.current_observation()
+    }
     fn react(
         &mut self,
         inner: &mut B,
-        observation: TerminationObservation,
         report: Self::Report,
-    ) -> Result<
-        (
-            Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-            TerminationObservation,
-        ),
-        Self::Report,
-    > {
-        if report.id() != self.id {
-            return Err(report);
+    ) -> Result<Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>, Self::Report> {
+        self.accept_report(inner, report)
+    }
+}
+
+impl<B, P> EstablishedTerminationTarget<B, P>
+where
+    B: Behavior,
+    P: behavior::Protocol<Addr = behavior::BehaviorAddr<B>>,
+    behavior::BehaviorAddr<B>: EndpointAddress,
+{
+    /// Transfer the one current grant into a typed cancellation request.
+    /// The caller must return that request in its owning Actions lane.
+    #[must_use]
+    pub fn take_cancellation(&mut self) -> Option<CancelObservation<P>> {
+        let EstablishedTermination::Observing(authority) = &self.observation else {
+            return None;
+        };
+        let pending = EstablishedTermination::CancelPending(authority.relationship().clone());
+        match mem::replace(&mut self.observation, pending) {
+            EstablishedTermination::Observing(authority) => Some(CancelObservation::new(authority)),
+            _ => unreachable!("the exclusive target held its one observed grant"),
         }
-        match (observation, &report) {
-            (TerminationObservation::Requested, EstablishedObservation::Started { .. }) => {
-                Ok((Actions::cont(), TerminationObservation::Observing))
+    }
+
+    /// Recover the whole rejected start or return every current target value.
+    pub fn into_rejected_observe(
+        self,
+    ) -> Result<(ObserveEstablished<P>, ObservationRejection), Self> {
+        match self {
+            Self {
+                observation: EstablishedTermination::ObserveRejected(request),
+                ..
+            } => Ok((request, ObservationRejection::IdAlreadyBound)),
+            other => Err(other),
+        }
+    }
+
+    /// Recover the whole rejected cancellation or return the current target.
+    pub fn into_rejected_cancel(
+        self,
+    ) -> Result<(CancelObservation<P>, ObservationRejection), Self> {
+        match self {
+            Self {
+                observation:
+                    EstablishedTermination::CancelRejectedWaiting(request)
+                    | EstablishedTermination::StoppedWithCancelRejected(request),
+                ..
+            } => Ok((request, ObservationRejection::NotObserved)),
+            other => Err(other),
+        }
+    }
+
+    fn request_once(&mut self) -> Option<ObserveEstablished<P>> {
+        let EstablishedTermination::Unissued(request) = &self.observation else {
+            return None;
+        };
+        let (origin, path) = request.correlation();
+        let requested = EstablishedTermination::Requested {
+            id: request.id(),
+            origin: origin.clone(),
+            path: path.to_vec(),
+        };
+        match mem::replace(&mut self.observation, requested) {
+            EstablishedTermination::Unissued(request) => Some(request),
+            _ => unreachable!("the exclusive target held its unissued request"),
+        }
+    }
+
+    fn current_observation(&self) -> TerminationObservation {
+        match &self.observation {
+            EstablishedTermination::Unissued(_) | EstablishedTermination::Requested { .. } => {
+                TerminationObservation::Requested
             }
-            (
-                TerminationObservation::Requested,
-                EstablishedObservation::Rejected {
-                    operation, reason, ..
-                },
-            )
-            | (
-                TerminationObservation::Observing,
-                EstablishedObservation::Rejected {
-                    operation, reason, ..
-                },
-            ) => Ok((
-                Actions::cont(),
-                TerminationObservation::Rejected {
-                    operation: *operation,
-                    reason: *reason,
-                },
-            )),
-            (TerminationObservation::Observing, EstablishedObservation::Cancelled { .. }) => {
-                Ok((Actions::cont(), TerminationObservation::Cancelled))
+            EstablishedTermination::Observing(_)
+            | EstablishedTermination::CancelPending(_)
+            | EstablishedTermination::CancelRejectedWaiting(..) => {
+                TerminationObservation::Observing
             }
-            (TerminationObservation::Observing, EstablishedObservation::Stopped { .. }) => Ok((
-                (self.react)(inner, report),
-                TerminationObservation::Observed,
-            )),
-            _ => Err(report),
+            EstablishedTermination::Stopped
+            | EstablishedTermination::StoppedAwaitingCancel(_)
+            | EstablishedTermination::StoppedWithCancelRejected(..) => {
+                TerminationObservation::Observed
+            }
+            EstablishedTermination::Cancelled => TerminationObservation::Cancelled,
+            EstablishedTermination::ObserveRejected(_) => TerminationObservation::Rejected {
+                operation: ObservationOperation::Start,
+                reason: ObservationRejection::IdAlreadyBound,
+            },
+        }
+    }
+
+    fn accept_report(
+        &mut self,
+        inner: &mut B,
+        report: EstablishedObservation<P>,
+    ) -> Result<
+        Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
+        EstablishedObservation<P>,
+    > {
+        match report {
+            EstablishedObservation::Started { authority } => match &self.observation {
+                EstablishedTermination::Requested { id, origin, path }
+                    if authority.matches_request(*id, origin, path) =>
+                {
+                    self.observation = EstablishedTermination::Observing(authority);
+                    Ok(Actions::cont())
+                }
+                _ => Err(EstablishedObservation::Started { authority }),
+            },
+            EstablishedObservation::ObserveRejected { request, reason } => {
+                match &self.observation {
+                    EstablishedTermination::Requested { id, origin, path }
+                        if reason == ObservationRejection::IdAlreadyBound
+                            && request.id() == *id
+                            && Arc::ptr_eq(request.correlation().0, origin)
+                            && request.correlation().1 == path.as_slice() =>
+                    {
+                        self.observation = EstablishedTermination::ObserveRejected(request);
+                        Ok(Actions::cont())
+                    }
+                    _ => Err(EstablishedObservation::ObserveRejected { request, reason }),
+                }
+            }
+            EstablishedObservation::CancelRejected { request, reason } => match &self.observation {
+                EstablishedTermination::CancelPending(expected)
+                    if reason == ObservationRejection::NotObserved
+                        && expected == request.relationship() =>
+                {
+                    self.observation = EstablishedTermination::CancelRejectedWaiting(request);
+                    Ok(Actions::cont())
+                }
+                EstablishedTermination::StoppedAwaitingCancel(expected)
+                    if reason == ObservationRejection::NotObserved
+                        && expected == request.relationship() =>
+                {
+                    self.observation = EstablishedTermination::StoppedWithCancelRejected(request);
+                    Ok(Actions::cont())
+                }
+                _ => Err(EstablishedObservation::CancelRejected { request, reason }),
+            },
+            EstablishedObservation::Cancelled { relationship } => match &self.observation {
+                EstablishedTermination::CancelPending(expected) if expected == &relationship => {
+                    self.observation = EstablishedTermination::Cancelled;
+                    drop(relationship);
+                    Ok(Actions::cont())
+                }
+                _ => Err(EstablishedObservation::Cancelled { relationship }),
+            },
+            stopped @ EstablishedObservation::Stopped { .. } => {
+                let EstablishedObservation::Stopped { relationship, .. } = &stopped else {
+                    unreachable!("this branch owns a complete Stopped report");
+                };
+                match &self.observation {
+                    EstablishedTermination::Observing(authority)
+                        if authority.relationship() == relationship =>
+                    {
+                        self.observation = EstablishedTermination::Stopped;
+                    }
+                    EstablishedTermination::CancelPending(expected) if expected == relationship => {
+                        self.observation =
+                            EstablishedTermination::StoppedAwaitingCancel(expected.clone());
+                    }
+                    EstablishedTermination::CancelRejectedWaiting(request)
+                        if request.relationship() == relationship =>
+                    {
+                        let terminal =
+                            mem::replace(&mut self.observation, EstablishedTermination::Stopped);
+                        let EstablishedTermination::CancelRejectedWaiting(request) = terminal
+                        else {
+                            unreachable!("the exclusive target retained its rejected cancellation");
+                        };
+                        self.observation =
+                            EstablishedTermination::StoppedWithCancelRejected(request);
+                    }
+                    _ => return Err(stopped),
+                }
+                // Every still-owned rejection is already in the genuine next
+                // state before an application callback may consume/panic.
+                Ok((self.react)(inner, stopped))
+            }
         }
     }
 }
@@ -256,7 +426,6 @@ where
 pub struct TerminationMonitorWith<B: Behavior, Target: TerminationObservationTarget<B>> {
     inner: B,
     target: Target,
-    observation: TerminationObservation,
 }
 
 /// Address-selected action-producing termination monitor.
@@ -287,10 +456,9 @@ impl<B: Behavior> TerminationMonitorWith<B, LogicalTerminationTarget<B>> {
         Self {
             inner,
             target: LogicalTerminationTarget {
-                peer,
+                observation: LogicalTermination::Observing(peer),
                 react: on_stopped,
             },
-            observation: TerminationObservation::Observing,
         }
     }
 }
@@ -304,23 +472,36 @@ where
     #[must_use]
     pub fn established(
         inner: B,
-        id: ObservationId,
-        peer: EstablishedRecipient<P>,
+        request: ObserveEstablished<P>,
         react: EstablishedTerminationReaction<B, P>,
     ) -> Self {
         Self {
             inner,
-            target: EstablishedTerminationTarget { id, peer, react },
-            observation: TerminationObservation::Requested,
+            target: EstablishedTerminationTarget {
+                observation: EstablishedTermination::Unissued(request),
+                react,
+            },
         }
+    }
+
+    /// Transfer the target's one cancellation request for an enclosing Actions lane.
+    #[must_use]
+    pub fn take_cancellation(&mut self) -> Option<CancelObservation<P>> {
+        self.target.take_cancellation()
     }
 }
 
 impl<B: Behavior, Target: TerminationObservationTarget<B>> TerminationMonitorWith<B, Target> {
     /// Return whether this monitor awaits or has consumed its terminal report.
     #[must_use]
-    pub const fn observation(&self) -> TerminationObservation {
-        self.observation
+    pub fn observation(&self) -> TerminationObservation {
+        self.target.observation()
+    }
+
+    /// Recover the exact inner behavior and sole current observation target.
+    #[must_use]
+    pub fn into_parts(self) -> (B, Target) {
+        (self.inner, self.target)
     }
 
     fn wrap(
@@ -374,21 +555,23 @@ where
             behavior::initialize(&mut self.inner).map_err(TerminationMonitorError::Inner)?;
         Ok(Self::wrap(
             actions,
-            InterpreterRequests::one(self.target.request()),
+            match self.target.request() {
+                Some(request) => InterpreterRequests::one(request),
+                None => InterpreterRequests::empty(),
+            },
         ))
     }
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(report) => {
-                let (actions, next) = self
+                let actions = self
                     .target
-                    .react(&mut self.inner, self.observation, report)
+                    .react(&mut self.inner, report)
                     .map_err(|report| TerminationMonitorError::UnexpectedReport {
-                        observation: self.observation,
+                        observation: self.target.observation(),
                         report,
                     })?;
-                self.observation = next;
                 Ok(Self::wrap(actions, InterpreterRequests::empty()))
             }
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)

@@ -199,18 +199,72 @@ dropped, redirected, or resolved to an older incarnation.
 `ObserveEstablishedCreation<C, O>` requests the committed result of a staged
 creation. It returns `EstablishedCreation<C, O>` to the emitting behavior.
 
-`ObserveEstablished<P>` starts observation of an exact endpoint under a fresh
-observer-local `ObservationId`. `CancelObservation<P>` cancels that exact
-relationship. `EstablishedObservation<P>` exhaustively reports:
+`ObservationSequence::issued()` owns a freshly issued request namespace. Construct
+it outside every enclosing Behavior fold, then retain its affine value in pure
+state or an existing child factory. `branch()` reserves a checked ordinal before
+moving endpoint or policy inputs. It returns `None` on ordinal exhaustion without
+consuming those inputs. Branch derivation inside a fold is deterministic from the
+owned sequence state. There is no `Default`, cloneable issuer, caller-supplied
+namespace constructor, or reconstruction from an old correlation.
 
-- `Started`;
-- `Cancelled`;
-- `Rejected { operation, reason }`; or
-- `Stopped { outcome, at }`.
+`ObserveEstablished::new(scope, id, recipient)` consumes one reserved scope and
+owns the complete endpoint request. The observer-local numeric `ObservationId`
+selects a registration slot; it is not cancellation authority. A never-accepted
+original returned by rejection may be serially retried. Constructing a new
+request instead consumes another scope. Acceptance consumes the original request,
+including when later Started publication fails; it must not reconstruct a rejected
+Observe request after commitment.
 
-Duplicate IDs and cancellation of an absent relationship are typed
-rejections. Cancellation does not retract a stop fact already admitted to the
-mailbox.
+`ObservationAuthority<P>` owns one protocol-indexed permission to attempt
+cancellation of an exact accepted relationship. It is affine, not a claim that
+the observed actor or membership is still live. The advanced interpreter consumes
+the complete Observe request when issuing the original authority, commits its
+same identity in its sole membership owner, and only then publishes Started.
+Public interpretation and issuance remain trusted advanced-host boundaries;
+the type system does not prove that a custom host actually committed membership.
+
+`ObservationRelationship<P>` is cloneable nonauthorizing identity. It owns one
+strong `Arc<ObservationId>` and an invariant protocol brand; the numeric ID is
+derived from that allocation. Its read-only identity may be compared with a
+runtime-owned membership value. It cannot be publicly reconstructed, rebranded,
+or converted back into cancellation permission. A fresh accepted relationship
+always receives a fresh identity even when its numeric slot is reused.
+
+`CancelObservation::new(authority)` consumes the exact protocol-matched grant.
+The request owns that grant until successful cancellation consumes it into a
+nonauthorizing receipt, or rejection returns the whole original request.
+Retrying that rejected cancellation retains the same relationship, not a fresh
+Observe attempt. `EstablishedObservation<P>` reports exactly:
+
+- `Started { authority }`;
+- `Stopped { relationship, outcome, at }`;
+- `Cancelled { relationship }`;
+- `ObserveRejected { request, reason }`; or
+- `CancelRejected { request, reason }`.
+
+Stopped carries no actionable permission. Every rejected Observe or Cancel
+retains its complete original request. Duplicate live numeric slots reject an
+Observe with `IdAlreadyBound`; a missing exact relationship rejects a Cancel
+with `NotObserved`, including when another relationship now occupies that ID.
+
+The interpreter serializes completion's irrevocable decision to admit a Stopped
+fact and exact-member removal against cancellation. Cancellation winning that
+cut publishes Cancelled and permits no later Stopped. Completion winning the
+cut publishes Stopped and returns a later Cancel as NotObserved. If conversion
+occurs outside the membership guard, NotObserved may arrive before Stopped;
+this does not turn a cancellation rejection into an observation terminal fact.
+Retirement takes the same notification-admission owner before draining control.
+An already acquired converted event that cannot be admitted remains an original
+returned event in the existing task hierarchy.
+
+The exact monitor owns one target control sum, emits its original Observe once,
+and consumes Started only when its request correlation matches. Its cancellation
+transfer must be returned in the aggregate's typed Actions lane. A rejected
+cancellation coexists with eventual Stopped and remains consumingly recoverable;
+its arrival does not suppress the terminal reaction. Monitor `into_parts` and
+the target's consuming rejection methods preserve all original current values
+on the wrong extraction kind. `StopOnShutdown::into_inner` consumes that wrapper
+without inventing mutable active-actor authority.
 
 Legacy address-based `ObservePeer<A>` remains a different operation. It asks a
 runtime to select an incarnation by logical address and therefore still needs

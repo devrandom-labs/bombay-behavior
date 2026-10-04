@@ -273,3 +273,19 @@ including macro and actor implementations; the observation cannot attribute
 the difference to any one A13 bound or predict downstream compile time. It
 does show that this branch's actor-library metadata and cold check cost did
 not grow under this controlled comparison.
+
+## Exact observation surface migration
+
+Three owners represent distinct laws: `ObservationSequence` issues affine
+preacceptance request scopes, `ObservationAuthority<P>` owns one exact
+protocol-matched cancellation attempt, and `ObservationRelationship<P>` owns
+cloneable nonauthorizing accepted identity. No fourth key or issuer error type
+is added. `ObserveEstablished::new` consumes a scope; `CancelObservation::new`
+consumes authority and loses its former Copy/Clone API. The established report
+sum returns whole rejected requests, so it requires the owning RecipientAddress
+capability contract. Its Started, Stopped and Cancelled variants no longer
+carry a separately forgeable numeric identity. The sealed target request port
+is mutable one-shot emission, the public monitor constructor consumes a prepared
+Observe, and consuming monitor/target/shutdown access recovers whole owned
+values. These existing-signature and variant changes are breaking even though
+there are only three new public nominal types.

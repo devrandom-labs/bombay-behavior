@@ -1,21 +1,23 @@
 use behavior::{
-    Actions, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead, ChildOccurrence, ChildRole,
-    CommittedChild, ComposedEvent, CreationId, CreationKind, CreationRejection, CreationSequence,
-    Creations, DeclaredChildOccurrence, Delivery, EndpointAddress, EstablishedActor,
-    EstablishedCreation, EstablishedDelivery, EstablishedRecipient, EventLayer,
-    ExactDeliveryReason, Here, Ingress, InjectEvent, InterpretEstablished, InterpretItem,
+    Actions, ActiveTurn, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead, ChildOccurrence,
+    ChildRole, CommittedChild, ComposedEvent, CreationId, CreationKind, CreationRejection,
+    CreationSequence, Creations, DeclaredChildOccurrence, Delivery, EndpointAddress,
+    EstablishedActor, EstablishedCreation, EstablishedDelivery, EstablishedRecipient, EventLayer,
+    ExactDeliveryReason, Here, Ingress, InjectEvent, Inside, InterpretEstablished, InterpretItem,
     InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryReason,
-    Never, NoBirths, Protocol, Recipient, ResolveChildOccurrence, SendEffects, SendLayer, User,
-    UserEvent,
+    Never, NoBirths, NoSends, Protocol, Recipient, ResolveChildOccurrence, SendEffects, SendLayer,
+    Step, User, UserEvent,
 };
+use behavior_actors::atomic::{ImmediateActivation, WorkerSubmission};
 use behavior_actors::{
     Activate as _, CancelObservation, DeliveryRoute, EstablishedObservation,
     EstablishedTerminationMonitor, Exit, HeterogeneousShutdownPlan,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapterWithRoute,
-    NoShutdownTargets, ObservationId, ObservationOperation, ObservationRejection,
-    ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout, ReplyRoute, ShutdownChoice,
-    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
-    TerminationMonitorError, TerminationObservation, Watch, established_child,
+    NoShutdownTargets, ObservationAuthority, ObservationId, ObservationRejection,
+    ObservationSequence, ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout,
+    ReplyRoute, ShutdownChoice, ShutdownEstablished, ShutdownId, ShutdownRejection,
+    ShutdownRequested, Stash, StopOnShutdown, TerminationMonitorError, TerminationObservation,
+    Watch, established_child,
 };
 use core::future::Future;
 use core::marker::PhantomData;
@@ -136,7 +138,7 @@ impl Behavior for Worker {
     type Error = Never;
     type Birth = NoBirths;
 
-    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             EventLayer::Owned(_) => Ok(Actions::stop()),
             EventLayer::Inner(_) => Ok(Actions::cont()),
@@ -267,11 +269,11 @@ impl Behavior for Parent {
                 Vec::new(),
             ),
             Creations::one(behavior::CreateChild::birth(self.child, Worker)),
-            behavior::Step::Continue,
+            Step::Continue,
         ))
     }
 
-    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
             ParentEvent::Command(_) => Ok(Actions::cont()),
             ParentEvent::Creation(creation) => {
@@ -528,66 +530,87 @@ fn rejected_creation_retains_no_capability_and_produces_no_effect() {
     ));
 }
 
-#[derive(Debug, PartialEq, Eq)]
 enum ObservationCall {
-    Start(ObservationId, RuntimeAddr, u64),
-    Cancel(ObservationId),
+    Start(ObserveEstablished<WorkerProtocol>, Endpoint<WorkerProtocol>),
+    Cancel(CancelObservation<WorkerProtocol>),
 }
 
-#[derive(Default)]
-struct ObservationRuntime(Vec<ObservationCall>);
+struct ObservationRuntime;
 
 impl InterpretEstablishedObservation<WorkerProtocol> for ObservationRuntime {
-    type Output = ();
+    type Output = ObservationCall;
 
-    fn observe(&mut self, id: ObservationId, endpoint: Endpoint<WorkerProtocol>) {
-        self.0
-            .push(ObservationCall::Start(id, endpoint.address, endpoint.slot));
+    fn observe(
+        &mut self,
+        request: ObserveEstablished<WorkerProtocol>,
+        endpoint: Endpoint<WorkerProtocol>,
+    ) -> Self::Output {
+        ObservationCall::Start(request, endpoint)
     }
 
-    fn cancel(&mut self, id: ObservationId) {
-        self.0.push(ObservationCall::Cancel(id));
+    fn cancel(&mut self, request: CancelObservation<WorkerProtocol>) -> Self::Output {
+        ObservationCall::Cancel(request)
     }
 }
 
 #[test]
-fn observation_uses_exact_endpoint_and_separate_relationship_correlation() {
-    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(44), 8));
-    let mut runtime = ObservationRuntime::default();
-
-    ObserveEstablished::new(ObservationId(5), recipient).interpret(&mut runtime);
-    CancelObservation::<WorkerProtocol>::new(ObservationId(5)).interpret(&mut runtime);
-
-    assert_eq!(
-        runtime.0,
-        [
-            ObservationCall::Start(ObservationId(5), RuntimeAddr(44), 8),
-            ObservationCall::Cancel(ObservationId(5)),
-        ]
-    );
-    let rejected = EstablishedObservation::<WorkerProtocol>::rejected(
-        ObservationId(9),
-        ObservationOperation::Cancel,
-        ObservationRejection::NotObserved,
-    );
-    assert_eq!(rejected.id(), ObservationId(9));
-    assert!(matches!(
-        rejected,
-        EstablishedObservation::Rejected {
-            operation: ObservationOperation::Cancel,
-            reason: ObservationRejection::NotObserved,
-            ..
-        }
-    ));
+fn observation_transfers_whole_original_request_and_exact_endpoint() {
+    let endpoint = Endpoint::new(RuntimeAddr(44), 8);
+    let recipient = EstablishedRecipient::issued(endpoint);
+    let mut sequence = ObservationSequence::issued();
+    let scope = sequence.branch().expect("initial scope exists");
+    let request = ObserveEstablished::new(scope, ObservationId(5), recipient);
+    let ObservationCall::Start(request, retained_endpoint) =
+        request.interpret(&mut ObservationRuntime)
+    else {
+        panic!("the start request owns its actual endpoint");
+    };
+    assert_eq!(retained_endpoint, endpoint);
+    assert_eq!(request.id(), ObservationId(5));
+    // The advanced host owns actual admission. A never-accepted whole request
+    // can be rejected and serially retried without inventing another attempt.
+    let rejected =
+        EstablishedObservation::observe_rejected(request, ObservationRejection::IdAlreadyBound);
+    let EstablishedObservation::ObserveRejected { request, reason } = rejected else {
+        panic!("rejection preserves the original request");
+    };
+    assert_eq!(reason, ObservationRejection::IdAlreadyBound);
+    let ObservationCall::Start(request, retry_endpoint) =
+        request.interpret(&mut ObservationRuntime)
+    else {
+        panic!("serial retry preserves the whole never-accepted original");
+    };
+    assert_eq!(retry_endpoint, endpoint);
+    let authority = ObservationAuthority::issued(request);
+    let relationship = authority.relationship().clone();
+    let cancellation = CancelObservation::new(authority);
+    let ObservationCall::Cancel(cancellation) = cancellation.interpret(&mut ObservationRuntime)
+    else {
+        panic!("the whole cancellation grant transfers once");
+    };
+    let rejected =
+        EstablishedObservation::cancel_rejected(cancellation, ObservationRejection::NotObserved);
+    let EstablishedObservation::CancelRejected { request, reason } = rejected else {
+        panic!("rejected cancellation returns the original grant");
+    };
+    assert_eq!(reason, ObservationRejection::NotObserved);
+    assert!(request.relationship() == &relationship);
+    let consumed = EstablishedObservation::cancelled(request);
+    let EstablishedObservation::Cancelled {
+        relationship: cancelled,
+    } = consumed
+    else {
+        panic!("successful cancellation consumes permission into a receipt");
+    };
+    assert!(cancelled == relationship);
 }
 
 struct Observer {
-    events: Vec<&'static str>,
+    events: Vec<EstablishedObservation<WorkerProtocol>>,
 }
 
 impl BehaviorBase for Observer {
     type Base = Self;
-
     fn base(&self) -> &Self::Base {
         self
     }
@@ -600,8 +623,7 @@ impl Behavior for Observer {
     type Ph = Never;
     type Error = Never;
     type Birth = NoBirths;
-
-    fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+    fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
         Ok(Actions::cont())
     }
 }
@@ -610,13 +632,67 @@ fn record_observation(
     observer: &mut Observer,
     observation: EstablishedObservation<WorkerProtocol>,
 ) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
-    observer.events.push(match observation {
-        EstablishedObservation::Started { .. } => "started",
-        EstablishedObservation::Cancelled { .. } => "cancelled",
-        EstablishedObservation::Rejected { .. } => "rejected",
-        EstablishedObservation::Stopped { .. } => "stopped",
-    });
+    observer.events.push(observation);
     Actions::cont()
+}
+
+/// A pure aggregate chooses cancellation and returns it in its named owning
+/// InterpreterRequests lane. It owns no sender, runtime or imperative effect.
+struct CancelObserver {
+    monitor: EstablishedTerminationMonitor<Observer, WorkerProtocol>,
+}
+
+impl BehaviorBase for CancelObserver {
+    type Base = Observer;
+    fn base(&self) -> &Observer {
+        self.monitor.base()
+    }
+}
+
+impl Behavior for CancelObserver {
+    type Protocol = ParentProtocol;
+    type Event = EventLayer<
+        EstablishedObservation<WorkerProtocol>,
+        <EstablishedTerminationMonitor<Observer, WorkerProtocol> as Behavior>::Event,
+    >;
+    type Sends = SendLayer<
+        InterpreterRequests<CancelObservation<WorkerProtocol>>,
+        <EstablishedTerminationMonitor<Observer, WorkerProtocol> as Behavior>::Sends,
+    >;
+    type Ph = Never;
+    type Error = TerminationMonitorError<Never, EstablishedObservation<WorkerProtocol>>;
+    type Birth = NoBirths;
+
+    fn init(&mut self, _: behavior::InitializationTurn) -> BehaviorActed<Self> {
+        behavior::initialize(&mut self.monitor).map(|actions| {
+            actions.map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
+        })
+    }
+
+    fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event {
+            EventLayer::Inner(EventLayer::Inner(_)) => {
+                let cancellation = match self.monitor.take_cancellation() {
+                    Some(request) => InterpreterRequests::one(request),
+                    None => InterpreterRequests::empty(),
+                };
+                Ok(Actions::cont().map_sends(|_: Self::Sends| {
+                    SendLayer::new(
+                        cancellation,
+                        SendLayer::new(InterpreterRequests::empty(), Vec::new()),
+                    )
+                }))
+            }
+            EventLayer::Owned(report) | EventLayer::Inner(EventLayer::Owned(report)) => {
+                behavior::delegate_transition(&mut self.monitor, EventLayer::Owned(report)).map(
+                    |actions| {
+                        actions
+                            .map_sends(|inner| SendLayer::new(InterpreterRequests::empty(), inner))
+                    },
+                )
+            }
+        }
+    }
 }
 
 #[test]
@@ -624,136 +700,279 @@ fn outer_shutdown_wrapper_reindexes_exact_observation_return_ingress_only() {
     fn accepts_inside<B, Input>()
     where
         B: Behavior,
-        B::Event: behavior::InjectEvent<Input, behavior::Inside<Here>>,
+        B::Event: InjectEvent<Input, behavior::Inside<Here>>,
     {
     }
-
     accepts_inside::<
         StopOnShutdown<EstablishedTerminationMonitor<Observer, WorkerProtocol>>,
         EstablishedObservation<WorkerProtocol>,
     >();
+    accepts_inside::<CancelObserver, EstablishedObservation<WorkerProtocol>>();
+    fn accepts_nested<B, Input>()
+    where
+        B: Behavior,
+        B::Event: InjectEvent<Input, Inside<Inside<Here>>>,
+    {
+    }
+    accepts_nested::<StopOnShutdown<CancelObserver>, EstablishedObservation<WorkerProtocol>>();
+}
+
+enum ObservationArrivalOrder {
+    CancellationFirst,
+    CompletionFirst,
 }
 
 #[test]
-fn exact_termination_monitor_commits_each_complete_relationship_phase() {
-    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9));
-    let mut active = EstablishedTerminationMonitor::established(
-        Observer { events: Vec::new() },
-        ObservationId(6),
-        recipient,
-        record_observation,
-    )
-    .initialize()
-    .unwrap()
-    .behavior;
-
-    assert_eq!(
-        active.observation(),
-        behavior_actors::TerminationObservation::Requested
-    );
-    let started = active
-        .on_path(EstablishedObservation::<WorkerProtocol>::started(
+fn exact_monitor_retains_cancel_rejection_and_reacts_once_in_both_arrival_orders() {
+    // These pure report rows are a consumer oracle. The actual producer
+    // reversal requires the independent runtime conversion-barrier test.
+    for first in [
+        ObservationArrivalOrder::CancellationFirst,
+        ObservationArrivalOrder::CompletionFirst,
+    ] {
+        let mut sequence = ObservationSequence::issued();
+        let request = ObserveEstablished::new(
+            sequence.branch().expect("scope"),
             ObservationId(6),
-        ))
+            EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
+        );
+        let mut observer = CancelObserver {
+            monitor: EstablishedTerminationMonitor::established(
+                Observer { events: Vec::new() },
+                request,
+                record_observation,
+            ),
+        };
+        let initialization = behavior::initialize(&mut observer).unwrap();
+        assert_eq!(initialization.sends.owned.len(), 0);
+        assert_eq!(initialization.sends.inner.owned.len(), 1);
+        assert_eq!(initialization.sends.inner.inner.len(), 0);
+        assert_eq!(initialization.creates.len(), 0);
+        assert_eq!(initialization.become_, Step::Continue);
+        let mut requests = initialization.sends.inner.owned.into_iter();
+        let request = requests.next().expect("original emitted request");
+        let extra_request = requests.next();
+        assert!(extra_request.is_none());
+        let authority = ObservationAuthority::issued(request);
+        let relationship = authority.relationship().clone();
+        let mut foreign_namespace = ObservationSequence::issued();
+        let foreign_requests = [
+            ObserveEstablished::new(
+                foreign_namespace.branch().expect("foreign namespace scope"),
+                ObservationId(6),
+                EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
+            ),
+            ObserveEstablished::new(
+                sequence.branch().expect("distinct sibling scope"),
+                ObservationId(6),
+                EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
+            ),
+            ObserveEstablished::new(
+                sequence.branch().expect("distinct explicit id scope"),
+                ObservationId(66),
+                EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 9)),
+            ),
+        ];
+        for request in foreign_requests {
+            let foreign_authority = ObservationAuthority::issued(request);
+            let foreign_relationship = foreign_authority.relationship().clone();
+            let denied = behavior::delegate_transition(
+                &mut observer,
+                EventLayer::Inner(EventLayer::Owned(EstablishedObservation::started(
+                    foreign_authority,
+                ))),
+            );
+            let Err(TerminationMonitorError::UnexpectedReport {
+                observation: TerminationObservation::Requested,
+                report: EstablishedObservation::Started { authority },
+            }) = denied
+            else {
+                panic!("foreign Started must return its complete original grant");
+            };
+            assert!(authority.relationship() == &foreign_relationship);
+            drop(authority);
+        }
+        let started = behavior::delegate_transition(
+            &mut observer,
+            EventLayer::Inner(EventLayer::Owned(EstablishedObservation::started(
+                authority,
+            ))),
+        )
         .unwrap();
-    assert!(started.sends.owned.is_empty());
-    assert!(started.sends.inner.is_empty());
-    assert!(started.creates.is_empty());
-    assert_eq!(started.become_, behavior::Step::Continue);
-    assert_eq!(
-        active.observation(),
-        behavior_actors::TerminationObservation::Observing
-    );
-    let cancelled = active
-        .on_path(EstablishedObservation::<WorkerProtocol>::cancelled(
-            ObservationId(6),
-        ))
+        assert_eq!(started.sends.owned.len(), 0);
+        assert_eq!(started.sends.inner.owned.len(), 0);
+        assert_eq!(started.sends.inner.inner.len(), 0);
+        assert_eq!(started.creates.len(), 0);
+        assert_eq!(started.become_, Step::Continue);
+        let cancellation = behavior::delegate_transition(
+            &mut observer,
+            EventLayer::Inner(EventLayer::Inner(User::new(RuntimeAddr(4), ()))),
+        )
         .unwrap();
-    assert!(cancelled.sends.owned.is_empty());
-    assert!(cancelled.sends.inner.is_empty());
-    assert!(cancelled.creates.is_empty());
-    assert_eq!(cancelled.become_, behavior::Step::Continue);
-    assert_eq!(
-        active.observation(),
-        behavior_actors::TerminationObservation::Cancelled
-    );
-    assert!(matches!(
-        active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
-            ObservationId(6),
-            Ok(Exit::Normal),
-            Instant::now(),
-        )),
-        Err(TerminationMonitorError::UnexpectedReport {
-            observation: TerminationObservation::Cancelled,
-            report: unexpected,
-        }) if unexpected.id() == ObservationId(6)
-    ));
-    assert!(matches!(
-        active.on_path(EstablishedObservation::<WorkerProtocol>::started(
-            ObservationId(99),
-        )),
-        Err(TerminationMonitorError::UnexpectedReport {
-            observation: TerminationObservation::Cancelled,
-            report: unexpected,
-        }) if unexpected.id() == ObservationId(99)
-    ));
-    assert!(active.base().events.is_empty());
-    assert_eq!(
-        active.observation(),
-        behavior_actors::TerminationObservation::Cancelled
-    );
+        assert_eq!(cancellation.sends.owned.len(), 1);
+        assert_eq!(cancellation.sends.inner.owned.len(), 0);
+        assert_eq!(cancellation.sends.inner.inner.len(), 0);
+        assert_eq!(cancellation.creates.len(), 0);
+        assert_eq!(cancellation.become_, Step::Continue);
+        let mut requests = cancellation.sends.owned.into_iter();
+        let request = requests.next().expect("original cancellation");
+        let extra_request = requests.next();
+        assert!(extra_request.is_none());
+        assert!(request.relationship() == &relationship);
+        let at = Instant::now();
+        let stopped = EstablishedObservation::stopped(
+            relationship.clone(),
+            Err(behavior_actors::Crash::Panicked),
+            at,
+        );
+        let rejected =
+            EstablishedObservation::cancel_rejected(request, ObservationRejection::NotObserved);
+        let stopped = EventLayer::Inner(EventLayer::Owned(stopped));
+        let rejected = EventLayer::Owned(rejected);
+        let reports = match first {
+            ObservationArrivalOrder::CancellationFirst => [
+                (rejected, TerminationObservation::Observing),
+                (stopped, TerminationObservation::Observed),
+            ],
+            ObservationArrivalOrder::CompletionFirst => [
+                (stopped, TerminationObservation::Observed),
+                (rejected, TerminationObservation::Observed),
+            ],
+        };
+        for (report, expected_observation) in reports {
+            let actions = behavior::delegate_transition(&mut observer, report).unwrap();
+            assert_eq!(observer.monitor.observation(), expected_observation);
+            assert_eq!(actions.sends.owned.len(), 0);
+            assert_eq!(actions.sends.inner.owned.len(), 0);
+            assert_eq!(actions.sends.inner.inner.len(), 0);
+            assert_eq!(actions.creates.len(), 0);
+            assert_eq!(actions.become_, Step::Continue);
+        }
+        assert_eq!(
+            observer.monitor.observation(),
+            TerminationObservation::Observed
+        );
+        let replay = EstablishedObservation::stopped(
+            relationship.clone(),
+            Err(behavior_actors::Crash::Panicked),
+            at,
+        );
+        let replay = behavior::delegate_transition(
+            &mut observer,
+            EventLayer::Inner(EventLayer::Owned(replay)),
+        );
+        let Err(TerminationMonitorError::UnexpectedReport {
+            observation,
+            report,
+        }) = replay
+        else {
+            panic!("the same terminal fact cannot be accepted twice");
+        };
+        assert_eq!(observation, TerminationObservation::Observed);
+        let EstablishedObservation::Stopped {
+            relationship: returned,
+            outcome,
+            at: returned_at,
+        } = report
+        else {
+            panic!("replay returns the whole original terminal fact");
+        };
+        assert!(returned == relationship);
+        assert_eq!(outcome, Err(behavior_actors::Crash::Panicked));
+        assert_eq!(returned_at, at);
+        let (mut observer, target) = observer.monitor.into_parts();
+        assert_eq!(observer.events.len(), 1);
+        let EstablishedObservation::Stopped {
+            relationship: retained,
+            outcome,
+            at: retained_at,
+        } = observer.events.pop().expect("one terminal callback")
+        else {
+            panic!("reaction retains the exact complete stopped fact");
+        };
+        assert!(retained == relationship);
+        assert_eq!(outcome, Err(behavior_actors::Crash::Panicked));
+        assert_eq!(retained_at, at);
+        let (request, reason) = target
+            .into_rejected_cancel()
+            .unwrap_or_else(|_| panic!("whole rejected cancellation"));
+        assert_eq!(reason, ObservationRejection::NotObserved);
+        assert!(request.relationship() == &relationship);
+        drop((request, relationship));
+    }
 }
 
 #[test]
-fn exact_termination_monitor_reacts_once_to_the_matching_stop() {
-    let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 10));
-    let mut active = EstablishedTerminationMonitor::established(
-        Observer { events: Vec::new() },
+fn cancelled_monitor_returns_late_stopped_without_a_terminal_reaction() {
+    let mut sequence = ObservationSequence::issued();
+    let request = ObserveEstablished::new(
+        sequence.branch().expect("scope"),
         ObservationId(7),
-        recipient,
-        record_observation,
-    )
-    .initialize()
-    .unwrap()
-    .behavior;
-
-    let started = active
-        .on_path(EstablishedObservation::<WorkerProtocol>::started(
-            ObservationId(7),
-        ))
-        .unwrap();
-    assert!(started.sends.owned.is_empty());
-    assert!(started.sends.inner.is_empty());
-    assert!(started.creates.is_empty());
-    assert_eq!(started.become_, behavior::Step::Continue);
-    let stopped = active
-        .on_path(EstablishedObservation::<WorkerProtocol>::stopped(
-            ObservationId(7),
-            Ok(Exit::Normal),
-            Instant::now(),
-        ))
-        .unwrap();
-    assert!(stopped.sends.owned.is_empty());
-    assert!(stopped.sends.inner.is_empty());
-    assert!(stopped.creates.is_empty());
-    assert_eq!(stopped.become_, behavior::Step::Continue);
-    assert!(matches!(
-        active.on_path(EstablishedObservation::<WorkerProtocol>::stopped(
-            ObservationId(7),
-            Ok(Exit::Normal),
-            Instant::now(),
-        )),
-        Err(TerminationMonitorError::UnexpectedReport {
-            observation: TerminationObservation::Observed,
-            report: unexpected,
-        }) if unexpected.id() == ObservationId(7)
-    ));
-
-    assert_eq!(active.base().events, ["stopped"]);
-    assert_eq!(
-        active.observation(),
-        behavior_actors::TerminationObservation::Observed
+        EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 10)),
     );
+    let mut monitor = EstablishedTerminationMonitor::established(
+        Observer { events: Vec::new() },
+        request,
+        record_observation,
+    );
+    let initialization = behavior::initialize(&mut monitor).unwrap();
+    assert_eq!(initialization.sends.owned.len(), 1);
+    assert_eq!(initialization.sends.inner.len(), 0);
+    assert_eq!(initialization.creates.len(), 0);
+    assert_eq!(initialization.become_, Step::Continue);
+    let mut requests = initialization.sends.owned.into_iter();
+    let authority = ObservationAuthority::issued(requests.next().expect("actual request"));
+    let extra_request = requests.next();
+    assert!(extra_request.is_none());
+    let relationship = authority.relationship().clone();
+    let actions = behavior::delegate_transition(
+        &mut monitor,
+        EventLayer::Owned(EstablishedObservation::started(authority)),
+    )
+    .unwrap();
+    assert_eq!(actions.sends.owned.len(), 0);
+    assert_eq!(actions.sends.inner.len(), 0);
+    assert_eq!(actions.creates.len(), 0);
+    assert_eq!(actions.become_, Step::Continue);
+    let request = monitor.take_cancellation().expect("sole affine grant");
+    let cancelled = behavior::delegate_transition(
+        &mut monitor,
+        EventLayer::Owned(EstablishedObservation::cancelled(request)),
+    )
+    .unwrap();
+    assert_eq!(cancelled.sends.owned.len(), 0);
+    assert_eq!(cancelled.sends.inner.len(), 0);
+    assert_eq!(cancelled.creates.len(), 0);
+    assert_eq!(cancelled.become_, Step::Continue);
+    let at = Instant::now();
+    let late = behavior::delegate_transition(
+        &mut monitor,
+        EventLayer::Owned(EstablishedObservation::stopped(
+            relationship.clone(),
+            Ok(Exit::Normal),
+            at,
+        )),
+    );
+    let Err(TerminationMonitorError::UnexpectedReport {
+        observation,
+        report,
+    }) = late
+    else {
+        panic!("Cancelled plus later Stopped is an unlawful producer sequence");
+    };
+    assert_eq!(observation, TerminationObservation::Cancelled);
+    let EstablishedObservation::Stopped {
+        relationship: returned,
+        outcome,
+        at: returned_at,
+    } = report
+    else {
+        panic!("whole defensive rejection");
+    };
+    assert!(returned == relationship);
+    assert_eq!(outcome, Ok(Exit::Normal));
+    assert_eq!(returned_at, at);
+    assert_eq!(monitor.base().events.len(), 0);
 }
 
 fn adapt_exact(value: u16) -> u8 {
@@ -918,4 +1137,330 @@ async fn nested_products_interpret_each_exact_delivery_once_in_structural_order(
         runtime.delivered,
         [(RuntimeAddr(5), 21, 2), (RuntimeAddr(5), 21, 1)]
     );
+}
+
+type TerminalPublicationProtocol =
+    behavior::MessageProtocol<RuntimeAddr, EstablishedObservation<WorkerProtocol>>;
+
+// This domain behavior owns a genuine typed reply acquaintance, not a
+// mutable wrapper access mechanism. Both callbacks transfer the whole fact.
+struct TerminalPublisher {
+    reply_to: Recipient<TerminalPublicationProtocol>,
+}
+
+impl BehaviorBase for TerminalPublisher {
+    type Base = Self;
+    fn base(&self) -> &Self {
+        self
+    }
+}
+impl Behavior for TerminalPublisher {
+    type Protocol = ParentProtocol;
+    type Event = User<RuntimeAddr, ()>;
+    type Sends = Vec<Delivery<TerminalPublicationProtocol>>;
+    type Ph = Never;
+    type Error = Never;
+    type Birth = NoBirths;
+    fn transition(&mut self, _: ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
+        Ok(Actions::cont())
+    }
+}
+
+fn publish_terminal(
+    publisher: &mut TerminalPublisher,
+    report: EstablishedObservation<WorkerProtocol>,
+) -> Actions<RuntimeAddr, Never, Vec<Delivery<TerminalPublicationProtocol>>, NoBirths> {
+    Actions::new(
+        vec![Delivery::new(publisher.reply_to.clone(), report)],
+        Creations::empty(),
+        Step::Continue,
+    )
+}
+
+fn publish_terminal_through_shutdown(
+    publisher: &mut StopOnShutdown<TerminalPublisher>,
+    report: EstablishedObservation<WorkerProtocol>,
+) -> Actions<
+    RuntimeAddr,
+    Never,
+    SendLayer<NoSends, Vec<Delivery<TerminalPublicationProtocol>>>,
+    NoBirths,
+> {
+    Actions::new(
+        SendLayer::new(
+            NoSends,
+            vec![Delivery::new(publisher.base().reply_to.clone(), report)],
+        ),
+        Creations::empty(),
+        Step::Continue,
+    )
+}
+
+#[test]
+fn outer_shutdown_preserves_whole_rejected_cancel_after_both_report_orders() {
+    for arrival in [
+        ObservationArrivalOrder::CancellationFirst,
+        ObservationArrivalOrder::CompletionFirst,
+    ] {
+        let request = ObserveEstablished::new(
+            ObservationSequence::issued(),
+            ObservationId(93),
+            EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13)),
+        );
+        let publisher = TerminalPublisher {
+            reply_to: Recipient::global(RuntimeAddr(94)),
+        };
+        let mut monitor =
+            EstablishedTerminationMonitor::established(publisher, request, publish_terminal);
+        let initialized = behavior::initialize(&mut monitor).unwrap();
+        assert_eq!(initialized.sends.owned.len(), 1);
+        assert_eq!(initialized.sends.inner.len(), 0);
+        assert_eq!(initialized.creates.len(), 0);
+        assert_eq!(initialized.become_, Step::Continue);
+        let mut emitted = initialized.sends.owned.into_iter();
+        let authority = ObservationAuthority::issued(emitted.next().expect("whole actual Observe"));
+        let extra = emitted.next();
+        assert!(extra.is_none());
+        let relationship = authority.relationship().clone();
+        let started = behavior::delegate_transition(
+            &mut monitor,
+            EventLayer::Owned(EstablishedObservation::started(authority)),
+        )
+        .unwrap();
+        assert_eq!(started.sends.owned.len(), 0);
+        assert_eq!(started.sends.inner.len(), 0);
+        assert_eq!(started.creates.len(), 0);
+        assert_eq!(started.become_, Step::Continue);
+        // This is the target's pure consuming recovery comparison. The
+        // separate CancelObserver test proves emission from a real fold.
+        let cancellation = monitor.take_cancellation().expect("sole original grant");
+        let emitted = InterpreterRequests::one(cancellation);
+        let mut cancellations = emitted.into_iter();
+        let cancellation = cancellations.next().expect("whole named request lane");
+        let extra = cancellations.next();
+        assert!(extra.is_none());
+        let at = Instant::now();
+        let stopped = EstablishedObservation::stopped(
+            relationship.clone(),
+            Err(behavior_actors::Crash::Panicked),
+            at,
+        );
+        let rejected = EstablishedObservation::cancel_rejected(
+            cancellation,
+            ObservationRejection::NotObserved,
+        );
+        let reports = match arrival {
+            ObservationArrivalOrder::CancellationFirst => [rejected, stopped],
+            ObservationArrivalOrder::CompletionFirst => [stopped, rejected],
+        };
+        let mut publications = Vec::new();
+        for report in reports {
+            let actions =
+                behavior::delegate_transition(&mut monitor, EventLayer::Owned(report)).unwrap();
+            assert_eq!(actions.sends.owned.len(), 0);
+            publications.extend(actions.sends.inner);
+            assert_eq!(actions.creates.len(), 0);
+            assert_eq!(actions.become_, Step::Continue);
+        }
+        let mut shutdown = StopOnShutdown::new(monitor);
+        let stopped =
+            behavior::delegate_transition(&mut shutdown, EventLayer::Owned(ShutdownRequested))
+                .unwrap();
+        assert_eq!(stopped.sends.owned, NoSends);
+        assert_eq!(stopped.sends.inner.owned.len(), 0);
+        assert_eq!(stopped.sends.inner.inner.len(), 0);
+        assert_eq!(stopped.creates.len(), 0);
+        assert!(matches!(stopped.become_, Step::Stop(_)));
+        let (publisher, target) = shutdown.into_inner().into_parts();
+        // Complete pure shutdown actions precede the consuming custody oracle.
+        let Err(target) = target.into_rejected_observe() else {
+            panic!("wrong extraction must return all original target values");
+        };
+        let Ok((original, reason)) = target.into_rejected_cancel() else {
+            panic!("retired wrapper retains whole rejected cancellation");
+        };
+        assert!(original.relationship() == &relationship);
+        assert_eq!(original.id(), ObservationId(93));
+        assert_eq!(reason, ObservationRejection::NotObserved);
+        assert_eq!(publisher.reply_to.address(), RuntimeAddr(94));
+        assert_eq!(publications.len(), 1);
+        let mut published = publications.into_iter();
+        let original_delivery = published.next().expect("one whole terminal publication");
+        let extra = published.next();
+        assert!(extra.is_none());
+        assert!(original_delivery.to == publisher.reply_to);
+        assert_eq!(original_delivery.to.address(), RuntimeAddr(94));
+        let EstablishedObservation::Stopped {
+            relationship: published_relationship,
+            outcome,
+            at: published_at,
+        } = original_delivery.message
+        else {
+            panic!("whole original terminal fact");
+        };
+        assert!(published_relationship == relationship);
+        assert_eq!(outcome, Err(behavior_actors::Crash::Panicked));
+        assert_eq!(published_at, at);
+        drop(original);
+    }
+}
+
+#[test]
+fn inner_shutdown_preserves_whole_rejected_cancel_after_both_report_orders() {
+    for arrival in [
+        ObservationArrivalOrder::CancellationFirst,
+        ObservationArrivalOrder::CompletionFirst,
+    ] {
+        let request = ObserveEstablished::new(
+            ObservationSequence::issued(),
+            ObservationId(93),
+            EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13)),
+        );
+        let publisher = TerminalPublisher {
+            reply_to: Recipient::global(RuntimeAddr(94)),
+        };
+        let mut monitor = EstablishedTerminationMonitor::established(
+            StopOnShutdown::new(publisher),
+            request,
+            publish_terminal_through_shutdown,
+        );
+        let initialized = behavior::initialize(&mut monitor).unwrap();
+        assert_eq!(initialized.sends.owned.len(), 1);
+        assert_eq!(initialized.sends.inner.owned, NoSends);
+        assert_eq!(initialized.sends.inner.inner.len(), 0);
+        assert_eq!(initialized.creates.len(), 0);
+        assert_eq!(initialized.become_, Step::Continue);
+        let mut emitted = initialized.sends.owned.into_iter();
+        let authority = ObservationAuthority::issued(emitted.next().expect("whole actual Observe"));
+        let extra = emitted.next();
+        assert!(extra.is_none());
+        let relationship = authority.relationship().clone();
+        let started = behavior::delegate_transition(
+            &mut monitor,
+            EventLayer::Owned(EstablishedObservation::started(authority)),
+        )
+        .unwrap();
+        assert_eq!(started.sends.owned.len(), 0);
+        assert_eq!(started.sends.inner.owned, NoSends);
+        assert_eq!(started.sends.inner.inner.len(), 0);
+        assert_eq!(started.creates.len(), 0);
+        assert_eq!(started.become_, Step::Continue);
+        // This is the target's pure consuming recovery comparison. The
+        // separate CancelObserver test proves emission from a real fold.
+        let cancellation = monitor.take_cancellation().expect("sole original grant");
+        let emitted = InterpreterRequests::one(cancellation);
+        let mut cancellations = emitted.into_iter();
+        let cancellation = cancellations.next().expect("whole named request lane");
+        let extra = cancellations.next();
+        assert!(extra.is_none());
+        let at = Instant::now();
+        let stopped = EstablishedObservation::stopped(
+            relationship.clone(),
+            Err(behavior_actors::Crash::Panicked),
+            at,
+        );
+        let rejected = EstablishedObservation::cancel_rejected(
+            cancellation,
+            ObservationRejection::NotObserved,
+        );
+        let reports = match arrival {
+            ObservationArrivalOrder::CancellationFirst => [rejected, stopped],
+            ObservationArrivalOrder::CompletionFirst => [stopped, rejected],
+        };
+        let mut publications = Vec::new();
+        for report in reports {
+            let actions =
+                behavior::delegate_transition(&mut monitor, EventLayer::Owned(report)).unwrap();
+            assert_eq!(actions.sends.owned.len(), 0);
+            assert_eq!(actions.sends.inner.owned, NoSends);
+            publications.extend(actions.sends.inner.inner);
+            assert_eq!(actions.creates.len(), 0);
+            assert_eq!(actions.become_, Step::Continue);
+        }
+        let stopped = behavior::delegate_transition(
+            &mut monitor,
+            EventLayer::Inner(EventLayer::Owned(ShutdownRequested)),
+        )
+        .unwrap();
+        assert_eq!(stopped.sends.owned.len(), 0);
+        assert_eq!(stopped.sends.inner.owned, NoSends);
+        assert_eq!(stopped.sends.inner.inner.len(), 0);
+        assert_eq!(stopped.creates.len(), 0);
+        assert!(matches!(stopped.become_, Step::Stop(_)));
+        let (shutdown, target) = monitor.into_parts();
+        let publisher = shutdown.into_inner();
+        // Complete pure shutdown actions precede the consuming custody oracle.
+        let Err(target) = target.into_rejected_observe() else {
+            panic!("wrong extraction must return all original target values");
+        };
+        let Ok((original, reason)) = target.into_rejected_cancel() else {
+            panic!("retired wrapper retains whole rejected cancellation");
+        };
+        assert!(original.relationship() == &relationship);
+        assert_eq!(original.id(), ObservationId(93));
+        assert_eq!(reason, ObservationRejection::NotObserved);
+        assert_eq!(publisher.reply_to.address(), RuntimeAddr(94));
+        assert_eq!(publications.len(), 1);
+        let mut published = publications.into_iter();
+        let original_delivery = published.next().expect("one whole terminal publication");
+        let extra = published.next();
+        assert!(extra.is_none());
+        assert!(original_delivery.to == publisher.reply_to);
+        assert_eq!(original_delivery.to.address(), RuntimeAddr(94));
+        let EstablishedObservation::Stopped {
+            relationship: published_relationship,
+            outcome,
+            at: published_at,
+        } = original_delivery.message
+        else {
+            panic!("whole original terminal fact");
+        };
+        assert!(published_relationship == relationship);
+        assert_eq!(outcome, Err(behavior_actors::Crash::Panicked));
+        assert_eq!(published_at, at);
+        drop(original);
+    }
+}
+
+#[test]
+fn existing_worker_factory_result_accepts_affine_observation_definitions() {
+    type Definition = EstablishedTerminationMonitor<Observer, WorkerProtocol>;
+    fn owning_factory<F>(factory: F) -> F
+    where
+        F: FnMut(&u64) -> Result<WorkerSubmission<Definition, ImmediateActivation>, u64>,
+    {
+        factory
+    }
+
+    // Namespace issuance precedes both the captured factory and any fold.
+    let mut sequence = ObservationSequence::issued();
+    let mut factory = owning_factory(move |role: &u64| {
+        let Some(scope) = sequence.branch() else {
+            // The existing owning factory's application rejection retains the
+            // original borrowed role; no endpoint or policy input was moved.
+            return Err(*role);
+        };
+        let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(45), 13));
+        let request = ObserveEstablished::new(scope, ObservationId(*role), recipient);
+        let monitor = EstablishedTerminationMonitor::established(
+            Observer { events: Vec::new() },
+            request,
+            record_observation,
+        );
+        Ok(WorkerSubmission::immediate(monitor))
+    });
+    let first_role = 101;
+    let second_role = 103;
+    let first = factory(&first_role);
+    let second = factory(&second_role);
+    let Ok(first) = first else {
+        panic!("actual first affine definition fits the existing factory result");
+    };
+    let Ok(second) = second else {
+        panic!("actual next definition fits the same existing factory result");
+    };
+    // This is a constructor/trait-syntax proof, not a worker installation or
+    // initializer trace. Private checked-exhaustion coverage lives with the
+    // sequence owner and observes the original endpoint/id there.
+    drop((first, second));
 }
