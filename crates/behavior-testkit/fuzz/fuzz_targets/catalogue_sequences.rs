@@ -6,21 +6,23 @@ mod installed_control;
 use std::{
     marker::PhantomData,
     num::NonZeroU32,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use behavior_actors::{
-    Activate, BreakerCompletion, BreakerError, BreakerMessage, BreakerOutcome, CircuitBreaker,
-    EstablishedObservation, EstablishedTerminationMonitor, Exit, ObservationAuthority,
-    ObservationId, ObservationRejection, ObservationSequence, ObserveEstablished, Presence,
-    PresenceMessage, PresenceReply, PresenceVersion, RoundRobin, Router, RouterError,
-    RouterMessage, TerminationMonitorError, TimerElapsed, TimerGeneration, TimerId, Workflow,
-    WorkflowDefinition, WorkflowError, WorkflowInput, WorkflowMessage, WorkflowOutcome,
+    Activate, BreakerCompletion, BreakerError, BreakerMessage, BreakerOutcome, CancelObservation,
+    CircuitBreaker, EstablishedObservation, EstablishedTerminationMonitor, Exit,
+    InterpretEstablishedObservation, ObservationAuthority, ObservationId, ObservationOperation,
+    ObservationRejection, ObservationSequence, ObserveEstablished, Presence, PresenceMessage,
+    PresenceReply, PresenceVersion, RoundRobin, Router, RouterError, RouterMessage,
+    TerminationMonitorError, TerminationObservation, TimerElapsed, TimerGeneration, TimerId,
+    Workflow, WorkflowDefinition, WorkflowError, WorkflowInput, WorkflowMessage, WorkflowOutcome,
 };
 
 use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress, EstablishedRecipient,
-    EventLayer, MailAddr, Never, NoBirths, Protocol, Recipient, User,
+    EventLayer, MailAddr, Never, NoBirths, Protocol, Recipient, Step, User,
 };
 use bombay_behavior_fuzz::TestRecipient;
 use libfuzzer_sys::fuzz_target;
@@ -36,11 +38,17 @@ impl Address for RuntimeAddr {
     type Nonce = u64;
 }
 
-struct Endpoint<P>(PhantomData<fn() -> P>);
+struct Endpoint<P> {
+    protocol: PhantomData<fn() -> P>,
+    values: Arc<Vec<u64>>,
+}
 
 impl<P> Clone for Endpoint<P> {
     fn clone(&self) -> Self {
-        Self(PhantomData)
+        Self {
+            protocol: PhantomData,
+            values: self.values.clone(),
+        }
     }
 }
 
@@ -81,7 +89,7 @@ impl Protocol for RouteTarget {
 }
 
 struct MonitorProbe {
-    terminals: usize,
+    terminal_reports: Vec<EstablishedObservation<Peer>>,
 }
 
 impl Protocol for MonitorProbe {
@@ -115,7 +123,7 @@ fn terminal(
     report: EstablishedObservation<Peer>,
 ) -> Actions<RuntimeAddr, Never, Vec<Never>, NoBirths> {
     assert!(matches!(report, EstablishedObservation::Stopped { .. }));
-    probe.terminals += 1;
+    probe.terminal_reports.push(report);
     Actions::cont()
 }
 
@@ -147,11 +155,16 @@ fuzz_target!(|bytes: &[u8]| {
         .behavior;
     let selected_observation = ObservationId(7);
     let mut monitor = EstablishedTerminationMonitor::established(
-        MonitorProbe { terminals: 0 },
+        MonitorProbe {
+            terminal_reports: Vec::new(),
+        },
         ObserveEstablished::new(
             ObservationSequence::issued(),
             selected_observation,
-            EstablishedRecipient::issued(Endpoint::<Peer>(PhantomData)),
+            EstablishedRecipient::issued(Endpoint::<Peer> {
+                protocol: PhantomData,
+                values: Arc::new(vec![7, 11]),
+            }),
         ),
         terminal,
     );
@@ -268,14 +281,15 @@ fuzz_target!(|bytes: &[u8]| {
             )) => {}
         }
 
-        exercise_owned_observation_report(a, b);
-
         let relationship = match b & 1 {
             0 => selected_relationship.clone(),
             _ => ObservationAuthority::issued(ObserveEstablished::new(
                 ObservationSequence::issued(),
                 selected_observation,
-                EstablishedRecipient::issued(Endpoint::<Peer>(PhantomData)),
+                EstablishedRecipient::issued(Endpoint::<Peer> {
+                    protocol: PhantomData,
+                    values: Arc::new(vec![7, 11]),
+                }),
             ))
             .into_relationship(),
         };
@@ -309,7 +323,7 @@ fuzz_target!(|bytes: &[u8]| {
             }
             Err(TerminationMonitorError::Inner(never)) => match never {},
         }
-        assert!(monitor.base().terminals <= 1);
+        assert!(monitor.base().terminal_reports.len() <= 1);
 
         let member = MailAddr(u64::from(b % 8));
         match a % 3 {
@@ -375,141 +389,369 @@ fuzz_target!(|bytes: &[u8]| {
             eligible
         );
     }
+    let selected = bytes.iter().take(8).fold(0u64, |id, byte| {
+        id.wrapping_mul(256).wrapping_add(u64::from(*byte))
+    });
+    for trace in [
+        ObservationTrace::RejectedStartRetried,
+        ObservationTrace::Completion,
+        ObservationTrace::Cancellation,
+        ObservationTrace::CompletionThenRejection,
+        ObservationTrace::RejectionThenCompletion,
+    ] {
+        exercise_observation_trace(selected, trace, bytes);
+    }
 });
 
 #[derive(Clone, Copy)]
-enum ObservationReportCase {
-    ObserveRejected,
-    Started,
-    Stopped,
-    Cancelled,
-    CancelRejected,
+enum ObservationTrace {
+    RejectedStartRetried,
+    Completion,
+    Cancellation,
+    CompletionThenRejection,
+    RejectionThenCompletion,
 }
 
-// Every iteration starts from its actual one-shot emission so affine reports
-// are fuzzed without cloning requests or manufacturing historical grants.
-fn exercise_owned_observation_report(kind: u8, ordinal: u8) {
-    let id = ObservationId(u64::from(ordinal));
+// This host only exposes the original owning port's returned values. It does
+// not register a member, interpret admission, or manufacture a grant.
+struct ObservationInputs;
+
+impl InterpretEstablishedObservation<Peer> for ObservationInputs {
+    type Output = Result<(ObserveEstablished<Peer>, Endpoint<Peer>), CancelObservation<Peer>>;
+
+    fn observe(
+        &mut self,
+        request: ObserveEstablished<Peer>,
+        endpoint: Endpoint<Peer>,
+    ) -> Self::Output {
+        Ok((request, endpoint))
+    }
+
+    fn cancel(&mut self, request: CancelObservation<Peer>) -> Self::Output {
+        Err(request)
+    }
+}
+
+fn exercise_observation_trace(selected: u64, trace: ObservationTrace, reports: &[u8]) {
+    let id = ObservationId(selected);
+    let values = Arc::new(vec![selected, 9, 13]);
+    let original_allocation = values.as_ptr();
+    let original_values = values.clone();
+    let mut sequence = ObservationSequence::issued();
+    let scope = sequence.branch().expect("first owned ordinal exists");
     let mut monitor = EstablishedTerminationMonitor::established(
-        MonitorProbe { terminals: 0 },
+        MonitorProbe {
+            terminal_reports: Vec::new(),
+        },
         ObserveEstablished::new(
-            ObservationSequence::issued(),
+            scope,
             id,
-            EstablishedRecipient::issued(Endpoint::<Peer>(PhantomData)),
+            EstablishedRecipient::issued(Endpoint::<Peer> {
+                protocol: PhantomData,
+                values,
+            }),
         ),
         terminal,
     );
-    let initialized = behavior_core::initialize(&mut monitor).expect("pure initialization");
-    assert_eq!(initialized.sends.owned.len(), 1);
-    assert_eq!(initialized.sends.inner.len(), 0);
-    assert_eq!(initialized.creates.len(), 0);
-    assert_eq!(initialized.become_, behavior_core::Step::Continue);
-    let mut emitted = initialized.sends.owned.into_iter();
-    let request = emitted.next().expect("actual original request");
+    let initial = behavior_core::initialize(&mut monitor).unwrap();
+    assert_eq!(initial.sends.owned.len(), 1);
+    assert_eq!(initial.sends.inner.len(), 0);
+    assert_eq!(initial.creates.len(), 0);
+    assert_eq!(initial.become_, Step::Continue);
+    let mut emitted = initial.sends.owned.into_iter();
+    let mut request = emitted.next().expect("actual emitted request");
     let extra = emitted.next();
     assert!(extra.is_none());
-    let report_case = match kind % 5 {
-        0 => ObservationReportCase::ObserveRejected,
-        1 => ObservationReportCase::Started,
-        2 => ObservationReportCase::Stopped,
-        3 => ObservationReportCase::Cancelled,
-        _ => ObservationReportCase::CancelRejected,
+    let repeated = behavior_core::initialize(&mut monitor).unwrap();
+    assert_eq!(repeated.sends.owned.len(), 0);
+    assert_eq!(repeated.sends.inner.len(), 0);
+    assert_eq!(repeated.creates.len(), 0);
+    assert_eq!(repeated.become_, Step::Continue);
+
+    // A rejected original has never been accepted. Its public owning effect
+    // may be serially retried, without reconstructing its correlation.
+    if matches!(trace, ObservationTrace::RejectedStartRetried) {
+        let rejected = behavior_core::delegate_transition(
+            &mut monitor,
+            EventLayer::Owned(EstablishedObservation::observe_rejected(
+                request,
+                ObservationRejection::IdAlreadyBound,
+            )),
+        )
+        .unwrap();
+        assert_eq!(rejected.sends.owned.len(), 0);
+        assert_eq!(rejected.sends.inner.len(), 0);
+        assert_eq!(rejected.creates.len(), 0);
+        assert_eq!(rejected.become_, Step::Continue);
+        assert_eq!(
+            monitor.observation(),
+            TerminationObservation::Rejected {
+                operation: ObservationOperation::Start,
+                reason: ObservationRejection::IdAlreadyBound
+            }
+        );
+        let (subject, target) = monitor.into_parts();
+        assert_eq!(subject.terminal_reports.len(), 0);
+        let Err(target) = target.into_rejected_cancel() else {
+            panic!("wrong getter cannot consume the observe original");
+        };
+        let Ok((original, reason)) = target.into_rejected_observe() else {
+            panic!("whole observe rejection remains owned");
+        };
+        assert_eq!(reason, ObservationRejection::IdAlreadyBound);
+        let Ok((original, endpoint)) = original.interpret(&mut ObservationInputs) else {
+            panic!("actual observe port returns its original request and endpoint");
+        };
+        assert_eq!(original.id(), id);
+        assert_eq!(endpoint.values.as_ptr(), original_allocation);
+        assert_eq!(endpoint.values.as_slice(), original_values.as_slice());
+        monitor = EstablishedTerminationMonitor::established(subject, original, terminal);
+        let retried = behavior_core::initialize(&mut monitor).unwrap();
+        assert_eq!(retried.sends.owned.len(), 1);
+        assert_eq!(retried.sends.inner.len(), 0);
+        assert_eq!(retried.creates.len(), 0);
+        assert_eq!(retried.become_, Step::Continue);
+        let mut emitted = retried.sends.owned.into_iter();
+        request = emitted.next().expect("same whole never-accepted original");
+        let extra = emitted.next();
+        assert!(extra.is_none());
+    }
+    let Ok((request, endpoint)) = request.interpret(&mut ObservationInputs) else {
+        panic!("whole request is inspected without replacing it");
     };
-    match report_case {
-        ObservationReportCase::ObserveRejected => {
-            let rejected = behavior_core::delegate_transition(
+    assert_eq!(endpoint.values.as_ptr(), original_allocation);
+    assert_eq!(endpoint.values.as_slice(), original_values.as_slice());
+
+    // This fresh branch has the SAME numeric ID and endpoint, but cannot
+    // satisfy the requested correlation. Whole returned authority is checked.
+    let foreign_scope = sequence.branch().expect("next bounded ordinal exists");
+    let foreign_authority = ObservationAuthority::issued(ObserveEstablished::new(
+        foreign_scope,
+        id,
+        EstablishedRecipient::issued(endpoint.clone()),
+    ));
+    let foreign = foreign_authority.relationship().clone();
+    let returned = behavior_core::delegate_transition(
+        &mut monitor,
+        EventLayer::Owned(EstablishedObservation::started(foreign_authority)),
+    );
+    let Err(TerminationMonitorError::UnexpectedReport {
+        observation,
+        report,
+    }) = returned
+    else {
+        panic!("same-ID foreign Started must be returned whole");
+    };
+    assert_eq!(observation, TerminationObservation::Requested);
+    let EstablishedObservation::Started { authority } = report else {
+        panic!("original foreign Started returned");
+    };
+    assert!(authority.relationship() == &foreign);
+    let foreign = authority.into_relationship();
+    assert_eq!(monitor.observation(), TerminationObservation::Requested);
+
+    let authority = ObservationAuthority::issued(request);
+    let relationship = authority.relationship().clone();
+    let started = behavior_core::delegate_transition(
+        &mut monitor,
+        EventLayer::Owned(EstablishedObservation::started(authority)),
+    )
+    .unwrap();
+    assert_eq!(started.sends.owned.len(), 0);
+    assert_eq!(started.sends.inner.len(), 0);
+    assert_eq!(started.creates.len(), 0);
+    assert_eq!(started.become_, Step::Continue);
+    assert_eq!(monitor.observation(), TerminationObservation::Observing);
+    let at = Instant::now();
+    // Each generated foreign report passes through this SAME live monitor.
+    // The expected fact is derived from its foreign origin, not control state.
+    for ordinal in reports.iter().take(64) {
+        let reported_at = at
+            .checked_add(Duration::from_nanos(u64::from(*ordinal)))
+            .expect("bounded timestamp");
+        let returned = behavior_core::delegate_transition(
+            &mut monitor,
+            EventLayer::Owned(EstablishedObservation::stopped(
+                foreign.clone(),
+                Ok(Exit::Normal),
+                reported_at,
+            )),
+        );
+        let Err(TerminationMonitorError::UnexpectedReport {
+            observation,
+            report,
+        }) = returned
+        else {
+            panic!("foreign completion never belongs to this original");
+        };
+        assert_eq!(observation, TerminationObservation::Observing);
+        let EstablishedObservation::Stopped {
+            relationship: original,
+            outcome,
+            at: original_at,
+        } = report
+        else {
+            panic!("whole foreign terminal returned");
+        };
+        assert!(original == foreign);
+        assert!(outcome == Ok(Exit::Normal));
+        assert_eq!(original_at, reported_at);
+        assert_eq!(monitor.base().terminal_reports.len(), 0);
+    }
+    match trace {
+        ObservationTrace::Cancellation => {
+            let request = monitor.take_cancellation().expect("one live grant");
+            let repeated = monitor.take_cancellation();
+            assert!(repeated.is_none());
+            assert!(request.relationship() == &relationship);
+            assert_eq!(request.id(), id);
+            assert_eq!(monitor.observation(), TerminationObservation::Observing);
+            let cancelled = behavior_core::delegate_transition(
                 &mut monitor,
-                EventLayer::Owned(EstablishedObservation::observe_rejected(
-                    request,
-                    ObservationRejection::IdAlreadyBound,
+                EventLayer::Owned(EstablishedObservation::cancelled(request)),
+            )
+            .unwrap();
+            assert_eq!(cancelled.sends.owned.len(), 0);
+            assert_eq!(cancelled.sends.inner.len(), 0);
+            assert_eq!(cancelled.creates.len(), 0);
+            assert_eq!(cancelled.become_, Step::Continue);
+            assert_eq!(monitor.observation(), TerminationObservation::Cancelled);
+            assert_eq!(monitor.base().terminal_reports.len(), 0);
+            // Cancelled+Stopped is not a lawful winning producer trace. This
+            // defensive whole receipt is returned without invoking callback.
+        }
+        ObservationTrace::CompletionThenRejection | ObservationTrace::RejectionThenCompletion => {
+            let request = monitor.take_cancellation().expect("one live grant");
+            let repeated = monitor.take_cancellation();
+            assert!(repeated.is_none());
+            assert!(request.relationship() == &relationship);
+            assert_eq!(request.id(), id);
+            assert_eq!(monitor.observation(), TerminationObservation::Observing);
+            let rejection =
+                EstablishedObservation::cancel_rejected(request, ObservationRejection::NotObserved);
+            let stopped =
+                EstablishedObservation::stopped(relationship.clone(), Ok(Exit::Normal), at);
+            let ordered = match trace {
+                ObservationTrace::CompletionThenRejection => [stopped, rejection],
+                ObservationTrace::RejectionThenCompletion => [rejection, stopped],
+                _ => unreachable!("two lawful completion-winning notification orders"),
+            };
+            for (position, report) in ordered.into_iter().enumerate() {
+                let actions =
+                    behavior_core::delegate_transition(&mut monitor, EventLayer::Owned(report))
+                        .unwrap();
+                assert_eq!(actions.sends.owned.len(), 0);
+                assert_eq!(actions.sends.inner.len(), 0);
+                assert_eq!(actions.creates.len(), 0);
+                assert_eq!(actions.become_, Step::Continue);
+                // Expectations come from the independently supplied fact order,
+                // not from the target's private control-state variants.
+                let (expected_phase, expected_terminals) = match (trace, position) {
+                    (ObservationTrace::RejectionThenCompletion, 0) => {
+                        (TerminationObservation::Observing, 0)
+                    }
+                    _ => (TerminationObservation::Observed, 1),
+                };
+                assert_eq!(monitor.observation(), expected_phase);
+                assert_eq!(monitor.base().terminal_reports.len(), expected_terminals);
+                let permission = monitor.take_cancellation();
+                assert!(permission.is_none());
+            }
+            assert_eq!(monitor.observation(), TerminationObservation::Observed);
+        }
+        ObservationTrace::Completion | ObservationTrace::RejectedStartRetried => {
+            let actions = behavior_core::delegate_transition(
+                &mut monitor,
+                EventLayer::Owned(EstablishedObservation::stopped(
+                    relationship.clone(),
+                    Ok(Exit::Normal),
+                    at,
                 )),
             )
-            .expect("exact start rejection");
-            assert_eq!(rejected.sends.owned.len(), 0);
-            assert_eq!(rejected.sends.inner.len(), 0);
-            assert_eq!(rejected.creates.len(), 0);
-            assert_eq!(rejected.become_, behavior_core::Step::Continue);
-            let (probe, target) = monitor.into_parts();
-            let Ok((request, reason)) = target.into_rejected_observe() else {
-                panic!("owned start rejection");
-            };
-            let (original_id, _returned_recipient) = request.into_inputs();
-            assert_eq!(original_id, id);
-            assert_eq!(reason, ObservationRejection::IdAlreadyBound);
-            assert_eq!(probe.terminals, 0);
-        }
-        ObservationReportCase::Started
-        | ObservationReportCase::Stopped
-        | ObservationReportCase::Cancelled
-        | ObservationReportCase::CancelRejected => {
-            let authority = ObservationAuthority::issued(request);
-            let relationship = authority.relationship().clone();
-            let started = behavior_core::delegate_transition(
-                &mut monitor,
-                EventLayer::Owned(EstablishedObservation::started(authority)),
-            )
-            .expect("exact start acceptance");
-            assert_eq!(started.sends.owned.len(), 0);
-            assert_eq!(started.sends.inner.len(), 0);
-            assert_eq!(started.creates.len(), 0);
-            assert_eq!(started.become_, behavior_core::Step::Continue);
-            assert_eq!(monitor.base().terminals, 0);
-            let at = Instant::now();
-            let report = match report_case {
-                ObservationReportCase::Started | ObservationReportCase::Stopped => {
-                    EstablishedObservation::stopped(relationship.clone(), Ok(Exit::Normal), at)
-                }
-                ObservationReportCase::Cancelled => EstablishedObservation::cancelled(
-                    monitor.take_cancellation().expect("sole original grant"),
-                ),
-                ObservationReportCase::CancelRejected => EstablishedObservation::cancel_rejected(
-                    monitor.take_cancellation().expect("sole original grant"),
-                    ObservationRejection::NotObserved,
-                ),
-                ObservationReportCase::ObserveRejected => {
-                    unreachable!("separate original start rejection")
-                }
-            };
-            let actions =
-                behavior_core::delegate_transition(&mut monitor, EventLayer::Owned(report))
-                    .expect("lawful exact report");
+            .unwrap();
             assert_eq!(actions.sends.owned.len(), 0);
             assert_eq!(actions.sends.inner.len(), 0);
             assert_eq!(actions.creates.len(), 0);
-            assert_eq!(actions.become_, behavior_core::Step::Continue);
-            match report_case {
-                ObservationReportCase::Started | ObservationReportCase::Stopped => {
-                    assert_eq!(monitor.base().terminals, 1)
-                }
-                ObservationReportCase::Cancelled => assert_eq!(monitor.base().terminals, 0),
-                ObservationReportCase::CancelRejected => {
-                    let stopped = behavior_core::delegate_transition(
-                        &mut monitor,
-                        EventLayer::Owned(EstablishedObservation::stopped(
-                            relationship.clone(),
-                            Ok(Exit::Normal),
-                            at,
-                        )),
-                    )
-                    .expect("cancellation rejection cannot suppress termination");
-                    assert_eq!(stopped.sends.owned.len(), 0);
-                    assert_eq!(stopped.sends.inner.len(), 0);
-                    assert_eq!(stopped.creates.len(), 0);
-                    assert_eq!(stopped.become_, behavior_core::Step::Continue);
-                    let (probe, target) = monitor.into_parts();
-                    let Ok((request, reason)) = target.into_rejected_cancel() else {
-                        panic!("whole rejected grant");
-                    };
-                    assert!(request.relationship() == &relationship);
-                    assert_eq!(request.id(), id);
-                    assert_eq!(reason, ObservationRejection::NotObserved);
-                    assert_eq!(probe.terminals, 1);
-                    drop(request);
-                }
-                ObservationReportCase::ObserveRejected => {
-                    unreachable!("separate original start rejection")
-                }
-            }
+            assert_eq!(actions.become_, Step::Continue);
+            let permission = monitor.take_cancellation();
+            assert!(permission.is_none());
+            assert_eq!(monitor.observation(), TerminationObservation::Observed);
         }
     }
+    let expected = match trace {
+        ObservationTrace::Cancellation => 0,
+        _ => 1,
+    };
+    assert_eq!(monitor.base().terminal_reports.len(), expected);
+    for original in &monitor.base().terminal_reports {
+        let EstablishedObservation::Stopped {
+            relationship: original,
+            outcome,
+            at: original_at,
+        } = original
+        else {
+            panic!("callback owns the whole terminal fact");
+        };
+        assert!(original == &relationship);
+        assert!(*outcome == Ok(Exit::Normal));
+        assert_eq!(*original_at, at);
+    }
+    // Read-only terminal identity can be replayed, never an affine grant.
+    // The same monitor returns every replay whole and reacts no second time.
+    for _ in 0..reports.len().clamp(1, 64) {
+        let before = monitor.observation();
+        let returned = behavior_core::delegate_transition(
+            &mut monitor,
+            EventLayer::Owned(EstablishedObservation::stopped(
+                relationship.clone(),
+                Ok(Exit::Normal),
+                at,
+            )),
+        );
+        let Err(TerminationMonitorError::UnexpectedReport {
+            observation,
+            report,
+        }) = returned
+        else {
+            panic!("whole replay cannot trigger another terminal reaction");
+        };
+        assert_eq!(observation, before);
+        let EstablishedObservation::Stopped {
+            relationship: original,
+            outcome,
+            at: original_at,
+        } = report
+        else {
+            panic!("whole replay is returned");
+        };
+        assert!(original == relationship);
+        assert!(outcome == Ok(Exit::Normal));
+        assert_eq!(original_at, at);
+        assert_eq!(monitor.base().terminal_reports.len(), expected);
+    }
+    let (subject, target) = monitor.into_parts();
+    let Err(target) = target.into_rejected_observe() else {
+        panic!("completed or cancelled original is never reconstructed as rejected Observe");
+    };
+    match trace {
+        ObservationTrace::CompletionThenRejection | ObservationTrace::RejectionThenCompletion => {
+            let Ok((original, reason)) = target.into_rejected_cancel() else {
+                panic!("whole rejected grant coexists with completed terminal");
+            };
+            assert_eq!(original.id(), id);
+            assert!(original.relationship() == &relationship);
+            assert_eq!(reason, ObservationRejection::NotObserved);
+            let relation = original.into_relationship();
+            assert!(relation == relationship);
+        }
+        _ => {
+            let Err(target) = target.into_rejected_cancel() else {
+                panic!("no rejected cancellation was acquired");
+            };
+            drop(target);
+        }
+    }
+    assert_eq!(subject.terminal_reports.len(), expected);
+    assert_eq!(endpoint.values.as_ptr(), original_allocation);
+    assert_eq!(endpoint.values.as_slice(), original_values.as_slice());
 }
