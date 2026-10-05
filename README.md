@@ -1,5 +1,11 @@
 # Bombay Behavior
 
+> Research checkpoint: this branch contains an unreleased receiving-custody API
+> comparison. Its source backup and focused results do not establish release
+> eligibility, full Bombay acceptance, or completion of the remaining native,
+> activation, capability, finite, and static verification obligations. Published
+> `0.22` remains a separate registry contract.
+
 Bombay Behavior is the statically typed functional core of the Bombay actor
 stack. `bombay-behavior` defines the pure `Behavior` fold and its explicit
 `Actions`; `bombay-behavior-actors` provides reusable behaviors and typed
