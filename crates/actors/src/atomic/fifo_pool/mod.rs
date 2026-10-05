@@ -878,7 +878,7 @@ where
         previous: super::WorkerAttempt,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
         returned_worker: super::WorkerAttempt,
-        returned_attempt: super::worker::ActivationAttempt,
+        returned_attempt: super::worker::WorkerActivationGrant<W, P>,
         outcome: WorkerActivationOutcome<W, P>,
     ) -> (
         PoolState<Role, W, P, Job, WorkerResult>,

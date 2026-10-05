@@ -106,7 +106,8 @@ pub use stable_proxy::{ProxyControl, ProxyInputReceipt, ProxyInputResult, ProxyO
 pub use stable_proxy::{ProxyDrain, WorkerStartResult};
 pub use worker::{
     ActivationPermit, ActivationStartRejection, BeginActivation, InitializationAttempt,
-    InitializeWorker, WorkerActivation, WorkerInitializationOutcome, WorkerInitializationReport,
+    InitializeWorker, WorkerActivation, WorkerActivationGrant, WorkerInitializationOutcome,
+    WorkerInitializationReport,
 };
 pub use worker::{
     ActivationPlan, ImmediateActivation, InitialWorkerRejection, PreparedWorker, WorkerAttempt,

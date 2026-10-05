@@ -16,7 +16,7 @@ use crate::{
 use super::super::restart::RecoveryCount;
 use super::super::schedule::ScheduleKey;
 use super::super::worker::{
-    ActivationAttempt, WorkerActivationOutcome, WorkerPreparationExpectation,
+    WorkerActivationGrant, WorkerActivationOutcome, WorkerPreparationExpectation,
     WorkerPreparationOutcome,
 };
 use super::super::worker::{
@@ -104,11 +104,11 @@ where
         activation: P,
     },
     ActivationDispatched {
-        attempt: ActivationAttempt,
+        attempt: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     },
     Activating {
-        attempt: ActivationAttempt,
+        attempt: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     },
     Idle,
@@ -611,8 +611,8 @@ where
         permit: ActivationPermit<W>,
         activation: P,
     },
-    ActivationStart(ActivationAttempt),
-    Activation(ActivationAttempt),
+    ActivationStart(WorkerActivationGrant<W, P>),
+    Activation(WorkerActivationGrant<W, P>),
 }
 
 pub(in crate::atomic) enum WorkerShutdownStatus<P, A>
@@ -721,7 +721,7 @@ where
         workers: Vec<RetiringWorker<Role, W, P>>,
         role: RoleName<Role>,
         worker: WorkerAttempt,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         outcome: WorkerActivationOutcome<W, P>,
     },
     Unrelated {
@@ -745,7 +745,7 @@ where
         }
     }
 
-    fn activation(&self) -> Option<&ActivationAttempt> {
+    fn activation(&self) -> Option<&WorkerActivationGrant<W, P>> {
         match &self.state {
             RetirementStatus::Established {
                 startup:

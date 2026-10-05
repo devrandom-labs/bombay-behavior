@@ -22,7 +22,7 @@ mod protocol;
 mod state;
 mod worker;
 
-use super::worker::ActivationAttempt;
+use super::worker::WorkerActivationGrant;
 pub use super::worker::WorkerAttempt;
 pub use super::worker::{
     ActivationPermit, InitializationAttempt, InitializeWorker, WorkerInitializationFailure,
@@ -345,7 +345,7 @@ where
     }
 
     fn admit_activation(
-        progress: &ActivationProgress,
+        progress: &ActivationProgress<W, P>,
         input: WorkerActivation<W, P>,
     ) -> Result<WorkerActivation<W, P>, WorkerActivation<W, P>> {
         let expected = match progress {
@@ -2062,7 +2062,7 @@ where
 
     fn begin_activation_shutdown(
         worker: CurrentWorker<W>,
-        activation: ActivationProgress,
+        activation: ActivationProgress<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     ) -> (
         WorkerActivationShutdown<W, P>,
@@ -2173,9 +2173,10 @@ where
     }
 
     fn advance_activation_during_shutdown(
-        progress: ActivationProgress,
+        progress: ActivationProgress<W, P>,
         input: WorkerActivation<W, P>,
-    ) -> Result<ActivationDuringDeparture<W, P>, (ActivationProgress, WorkerActivation<W, P>)> {
+    ) -> Result<ActivationDuringDeparture<W, P>, (ActivationProgress<W, P>, WorkerActivation<W, P>)>
+    {
         match progress {
             ActivationProgress::WaitingForStart(attempt) => match input.into_started() {
                 Ok(()) => Ok(ActivationDuringDeparture::Pending(
@@ -2203,7 +2204,7 @@ where
     }
 
     fn retain_activation_while_departing(
-        progress: ActivationProgress,
+        progress: ActivationProgress<W, P>,
         departure: WorkerStopping<W>,
         input: WorkerActivation<W, P>,
     ) -> Result<
@@ -2226,7 +2227,7 @@ where
     }
 
     fn retain_activation_after_worker(
-        progress: ActivationProgress,
+        progress: ActivationProgress<W, P>,
         worker: CurrentWorker<W>,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
@@ -3024,7 +3025,7 @@ where
         creations: CreationSequence,
         kind: WorkerStartKind,
         worker: CurrentWorker<W>,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
         input: WorkerActivation<W, P>,
     ) -> (StableProxy<W, P>, ProxyActions<W, P>) {
@@ -3086,7 +3087,7 @@ where
         creations: CreationSequence,
         kind: WorkerStartKind,
         worker: CurrentWorker<W>,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
         input: WorkerActivation<W, P>,
     ) -> (StableProxy<W, P>, ProxyActions<W, P>) {
