@@ -1,11 +1,10 @@
-use core::future::Future;
 use behavior::{
-    SourceProgress,
     Address, Behavior, BehaviorActed, Births, ChildChoice, ChildNamespaceExhausted,
     CreationSequence, CreationSettlement, CreationSettlements, Creations, CreationsSettled,
     EndpointAddress, EventIngress, Never, NoBirths, NoSends, Protocol, SourceAdmission,
-    SourceCustody, SourceSettlementCustody, User,
+    SourceCustody, SourceProgress, SourceSettlementCustody, User,
 };
+use core::future::Future;
 
 mod installed_control;
 use installed_control::InstalledControl;
@@ -115,13 +114,13 @@ impl SourceAdmission<CreatorEvent, Births<Children>, Returned> for Host {
                 if let Some(input) = input.take() {
                     let admission = {
                         match self.admission {
-                                    Admission::Open => {
-                                        let CreatorEvent::Creations(input) = CreatorEvent::ingress(input);
-                                        self.received.push(input);
-                                        Ok(())
-                                    }
-                                    Admission::Closed => Err(input),
-                                }
+                            Admission::Open => {
+                                let CreatorEvent::Creations(input) = CreatorEvent::ingress(input);
+                                self.received.push(input);
+                                Ok(())
+                            }
+                            Admission::Closed => Err(input),
+                        }
                     };
                     *reply = Some(admission);
                 }
@@ -211,14 +210,21 @@ enum NoEvent {}
 
 #[tokio::test]
 async fn no_births_requires_no_admission_port() {
-    let residual =
-        {
+    let residual = {
         let mut source_progress = Some(SourceProgress::Original(Creations::empty()));
-        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::prepare_source(&mut source_progress);
+        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::prepare_source(
+            &mut source_progress,
+        );
         if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
-            <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::offer_next_to_source(custody, &mut NoHost).await;
+            <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::offer_next_to_source(
+                custody,
+                &mut NoHost,
+            )
+            .await;
         }
-        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::finish_source(&mut source_progress);
+        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::finish_source(
+            &mut source_progress,
+        );
         let Some(SourceProgress::Completed(custody)) = source_progress else {
             panic!("the complete original source row did not finish");
         };
