@@ -2,9 +2,11 @@
 
 use crate::{ChildShutdownRejected, ChildShutdownRejection, ChildStopped, ShutdownChild};
 use behavior::{
-    Actions, Address, Behavior, BehaviorActed, BirthMode, ChildHead, ChildRole, ChildTail,
-    CreationId, EventIngress, Here, InjectEvent, Inside, InterpreterRequests, SendEffects,
-    SendLayer,
+    ActionItem, ActionItemResult, Actions, Address, Behavior, BehaviorActed, BirthMode, ChildHead,
+    ChildRole, ChildTail, ClassifySettlement, CreationId, EventIngress, Here, InjectEvent, Inside,
+    Interpretation, InterpretationProgress, InterpreterRequests, ItemSettlement, SendEffects,
+    SendLayer, SettledItem, SourceCustody, SourceProgress, SourceSettlementCustody, finish_item,
+    prepare_item,
 };
 use behavior::{User, UserEvent};
 
@@ -336,17 +338,33 @@ pub(crate) mod heterogeneous {
     }
 
     #[doc(hidden)]
-    pub trait ChoiceSettlements<Occurrence>: Send {
-        type Settlements: Send + behavior::ClassifySettlement;
-
-        fn unattempted(self) -> Self::Settlements;
+    pub trait ChoiceSettlements<Occurrence>: Sized + Send {
+        type Settlements: Send + ClassifySettlement;
+        type InterpretationCustody;
+        fn prepare_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        );
+        fn finish_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        );
+        fn unattempted(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        );
     }
 
     pub trait InterpretChoice<I, E, Path, Occurrence>: ChoiceSettlements<Occurrence> {
         fn settle(
-            self,
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
             interpreter: &mut I,
-        ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send;
+        ) -> impl core::future::Future<Output = ()> + Send;
     }
 
     impl<A: Address> Selection for NoShutdownTargets<A> {
@@ -358,17 +376,46 @@ pub(crate) mod heterogeneous {
 
     impl<A: Address, Occurrence> ChoiceSettlements<Occurrence> for NoShutdownTargets<A> {
         type Settlements = behavior::Never;
-
-        fn unattempted(self) -> Self::Settlements {
-            match self.never {}
+        type InterpretationCustody = Self;
+        fn prepare_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            match progress.take() {
+                Some(
+                    InterpretationProgress::Original(original)
+                    | InterpretationProgress::Interpreting(original),
+                ) => match original.never {},
+                retained => *progress = retained,
+            }
+        }
+        fn finish_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            <Self as ChoiceSettlements<Occurrence>>::prepare_interpretation(progress);
+        }
+        fn unattempted(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            <Self as ChoiceSettlements<Occurrence>>::prepare_interpretation(progress);
         }
     }
 
     impl<I: Send, E, Path, A: Address, Occurrence> InterpretChoice<I, E, Path, Occurrence>
         for NoShutdownTargets<A>
     {
-        async fn settle(self, _: &mut I) -> behavior::Interpretation<Self::Settlements> {
-            match self.never {}
+        async fn settle(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+            _: &mut I,
+        ) {
+            <Self as ChoiceSettlements<Occurrence>>::prepare_interpretation(progress);
         }
     }
 
@@ -390,29 +437,112 @@ pub(crate) mod heterogeneous {
     impl<C, Tail, Occurrence> ChoiceSettlements<Occurrence> for ShutdownChoice<C, Tail>
     where
         C: Behavior,
-        ShutdownChild<C, Occurrence>: behavior::ActionItem,
+        ShutdownChild<C, Occurrence>: ActionItem,
         Tail: ChoiceSettlements<ChildTail<Occurrence>>,
     {
         type Settlements = HeterogeneousShutdownItem<
-            behavior::SettledItem<
-                ShutdownChild<C, Occurrence>,
-                behavior::ItemSettlement<
-                    ShutdownChild<C, Occurrence>,
-                    <ShutdownChild<C, Occurrence> as behavior::ActionItem>::Accepted,
-                    <ShutdownChild<C, Occurrence> as behavior::ActionItem>::Rejection,
-                    <ShutdownChild<C, Occurrence> as behavior::ActionItem>::Prerequisite,
-                >,
-            >,
+            ActionItemResult<ShutdownChild<C, Occurrence>>,
             Tail::Settlements,
         >;
-
-        fn unattempted(self) -> Self::Settlements {
-            match self {
-                Self::Child { creation, .. } => HeterogeneousShutdownItem::Child(
-                    behavior::SettledItem::Unattempted(ShutdownChild::new(creation)),
+        type InterpretationCustody = HeterogeneousShutdownItem<
+            (
+                Option<ShutdownChild<C, Occurrence>>,
+                Option<
+                    ItemSettlement<
+                        ShutdownChild<C, Occurrence>,
+                        <ShutdownChild<C, Occurrence> as ActionItem>::Accepted,
+                        <ShutdownChild<C, Occurrence> as ActionItem>::Rejection,
+                        <ShutdownChild<C, Occurrence> as ActionItem>::Prerequisite,
+                    >,
+                >,
+            ),
+            Option<InterpretationProgress<Tail, Tail::InterpretationCustody, Tail::Settlements>>,
+        >;
+        fn prepare_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            *progress = match progress.take() {
+                Some(InterpretationProgress::Original(Self::Child { creation, .. })) => Some(
+                    InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Child((
+                        Some(ShutdownChild::new(creation)),
+                        None,
+                    ))),
                 ),
-                Self::Other(target) => HeterogeneousShutdownItem::Other(target.unattempted()),
+                Some(InterpretationProgress::Original(Self::Other(target))) => Some(
+                    InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Other(Some(
+                        InterpretationProgress::Original(target),
+                    ))),
+                ),
+                retained => retained,
+            };
+        }
+        fn finish_interpretation(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            let complete = matches!(
+                progress,
+                Some(InterpretationProgress::Interpreting(
+                    HeterogeneousShutdownItem::Child((None, Some(_)))
+                )) | Some(InterpretationProgress::Interpreting(
+                    HeterogeneousShutdownItem::Other(Some(InterpretationProgress::Completed(_)))
+                ))
+            );
+            if !complete {
+                return;
             }
+            *progress = match progress.take() {
+                Some(InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Child((
+                    None,
+                    Some(received),
+                )))) => {
+                    let received = match received {
+                        received @ ItemSettlement::Corrupt { .. } => Interpretation::Corrupt(
+                            HeterogeneousShutdownItem::Child(SettledItem::Attempted(received)),
+                        ),
+                        received => Interpretation::Complete(HeterogeneousShutdownItem::Child(
+                            SettledItem::Attempted(received),
+                        )),
+                    };
+                    Some(InterpretationProgress::Completed(received))
+                }
+                Some(InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Other(
+                    Some(InterpretationProgress::Completed(received)),
+                ))) => Some(InterpretationProgress::Completed(
+                    received.map(HeterogeneousShutdownItem::Other),
+                )),
+                retained => retained,
+            };
+        }
+        fn unattempted(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+        ) {
+            if let Some(InterpretationProgress::Original(Self::Child { .. })) = progress {
+                *progress = match progress.take() {
+                    Some(InterpretationProgress::Original(Self::Child { creation, .. })) => {
+                        Some(InterpretationProgress::Completed(Interpretation::Complete(
+                            HeterogeneousShutdownItem::Child(SettledItem::Unattempted(
+                                ShutdownChild::new(creation),
+                            )),
+                        )))
+                    }
+                    retained => retained,
+                };
+                return;
+            }
+            <Self as ChoiceSettlements<Occurrence>>::prepare_interpretation(progress);
+            if let Some(InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Other(
+                target,
+            ))) = progress
+            {
+                Tail::unattempted(target);
+            }
+            <Self as ChoiceSettlements<Occurrence>>::finish_interpretation(progress);
         }
     }
 
@@ -421,24 +551,35 @@ pub(crate) mod heterogeneous {
     where
         I: behavior::InterpretItem<ShutdownChild<C, Occurrence>, E, Path> + Send,
         C: Behavior,
-        ShutdownChild<C, Occurrence>: behavior::ActionItem,
+        <behavior::BehaviorAddr<C> as Address>::Nonce: Send,
         Tail: InterpretChoice<I, E, Path, ChildTail<Occurrence>>,
+        Tail::InterpretationCustody: Send,
     {
-        async fn settle(self, interpreter: &mut I) -> behavior::Interpretation<Self::Settlements> {
-            match self {
-                Self::Child { creation, .. } => {
-                    behavior::settle_item::<ShutdownChild<C, Occurrence>, I, E, Path>(
-                        ShutdownChild::new(creation),
-                        interpreter,
-                    )
-                    .await
-                    .map(HeterogeneousShutdownItem::Child)
+        async fn settle(
+            progress: &mut Option<
+                InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+            >,
+            interpreter: &mut I,
+        ) {
+            <Self as ChoiceSettlements<Occurrence>>::prepare_interpretation(progress);
+            match progress {
+                Some(InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Child((
+                    input,
+                    received,
+                )))) => {
+                    if matches!((&*input, &*received), (Some(_), None)) {
+                        <I as behavior::InterpretItem<ShutdownChild<C,Occurrence>,E,Path>>::interpret_item(interpreter,input,received).await;
+                    }
                 }
-                Self::Other(target) => target
-                    .settle(interpreter)
-                    .await
-                    .map(HeterogeneousShutdownItem::Other),
+                Some(InterpretationProgress::Interpreting(HeterogeneousShutdownItem::Other(
+                    target,
+                ))) => {
+                    Tail::settle(target, interpreter).await;
+                    Tail::finish_interpretation(target);
+                }
+                _ => return,
             }
+            <Self as ChoiceSettlements<Occurrence>>::finish_interpretation(progress);
         }
     }
 }
@@ -538,28 +679,131 @@ where
     T: heterogeneous::ChoiceSettlements<ChildHead>,
 {
     type Settlements = HeterogeneousShutdownSends<T::Settlements>;
-
-    fn unattempted(self) -> Self::Settlements {
-        HeterogeneousShutdownSends {
-            requests: self
-                .requests
-                .into_iter()
-                .map(heterogeneous::ChoiceSettlements::unattempted)
-                .collect(),
+    type SourceCustody = Self::Settlements;
+    type InterpretationCustody =
+        Vec<Option<InterpretationProgress<T, T::InterpretationCustody, T::Settlements>>>;
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        *progress = match progress.take() {
+            Some(InterpretationProgress::Original(original)) => {
+                Some(InterpretationProgress::Interpreting(
+                    original
+                        .requests
+                        .into_iter()
+                        .map(|request| Some(InterpretationProgress::Original(request)))
+                        .collect(),
+                ))
+            }
+            retained => retained,
+        };
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        let Some(InterpretationProgress::Interpreting(requests)) = progress.as_ref() else {
+            return;
+        };
+        if !requests
+            .iter()
+            .all(|request| matches!(request, Some(InterpretationProgress::Completed(_))))
+        {
+            return;
         }
+        let Some(InterpretationProgress::Interpreting(requests)) = progress.take() else {
+            return;
+        };
+        let mut remaining = requests.into_iter();
+        let mut settled = Vec::with_capacity(remaining.len());
+        while let Some(request) = remaining.next() {
+            match request {
+                Some(InterpretationProgress::Completed(Interpretation::Complete(received))) => {
+                    settled.push(Interpretation::Complete(received))
+                }
+                Some(InterpretationProgress::Completed(Interpretation::Corrupt(received))) => {
+                    settled.push(Interpretation::Corrupt(received));
+                }
+                request => {
+                    *progress = Some(InterpretationProgress::Interpreting(
+                        settled
+                            .into_iter()
+                            .map(|received| Some(InterpretationProgress::Completed(received)))
+                            .chain(core::iter::once(request))
+                            .chain(remaining)
+                            .collect(),
+                    ));
+                    return;
+                }
+            }
+        }
+        let disposition = settled.iter().fold(
+            Interpretation::Complete(()),
+            |disposition, received| match (disposition, received) {
+                (Interpretation::Corrupt(()), _) | (_, Interpretation::Corrupt(_)) => {
+                    Interpretation::Corrupt(())
+                }
+                (Interpretation::Complete(()), Interpretation::Complete(_)) => {
+                    Interpretation::Complete(())
+                }
+            },
+        );
+        let requests = settled
+            .into_iter()
+            .map(Interpretation::into_settlement)
+            .collect();
+        let received = HeterogeneousShutdownSends { requests };
+        *progress = Some(InterpretationProgress::Completed(
+            disposition.map(|()| received),
+        ));
+    }
+    fn unattempted(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        <Self as behavior::SendSettlements>::prepare_interpretation(progress);
+        if let Some(InterpretationProgress::Interpreting(requests)) = progress {
+            for request in requests {
+                T::unattempted(request);
+            }
+        }
+        <Self as behavior::SendSettlements>::finish_interpretation(progress);
     }
 }
 
-impl<Host, RootEvent, T> behavior::SourceSettlementCustody<Host, RootEvent>
-    for HeterogeneousShutdownSends<T>
+impl<Host, RootEvent, T> SourceSettlementCustody<Host, RootEvent> for HeterogeneousShutdownSends<T>
 where
     T: Send,
 {
+    type Custody = Self;
+
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) => Some(SourceProgress::Completed(
+                SourceCustody::Exhausted(original),
+            )),
+            retained => retained,
+        };
+    }
+
     fn offer_next_to_source(
-        self,
+        _: &mut Self::Custody,
         _: &mut Host,
-    ) -> impl core::future::Future<Output = behavior::SourceCustody<Self>> + Send {
-        core::future::ready(behavior::SourceCustody::Exhausted(self))
+    ) -> impl core::future::Future<Output = ()> + Send {
+        core::future::ready(())
+    }
+
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => Some(
+                SourceProgress::Completed(SourceCustody::Exhausted(original)),
+            ),
+            retained => retained,
+        };
     }
 }
 
@@ -567,33 +811,37 @@ impl<I, E, Path, T> behavior::InterpretSends<I, E, Path> for HeterogeneousShutdo
 where
     I: Send,
     T: heterogeneous::InterpretChoice<I, E, Path, ChildHead>,
+    T::InterpretationCustody: Send,
 {
     fn interpret(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
         interpreter: &mut I,
-    ) -> impl core::future::Future<Output = behavior::Interpretation<Self::Settlements>> + Send
-    {
+    ) -> impl core::future::Future<Output = ()> + Send {
         async move {
-            let mut requests = self.requests.into_iter();
-            let mut settlements = Vec::with_capacity(requests.len());
+            <Self as behavior::SendSettlements>::prepare_interpretation(progress);
+            let Some(InterpretationProgress::Interpreting(requests)) = progress else {
+                return;
+            };
+            let mut requests = requests.iter_mut();
             while let Some(request) = requests.next() {
-                match request.settle(interpreter).await {
-                    behavior::Interpretation::Complete(settlement) => {
-                        settlements.push(settlement);
+                if !matches!(request, Some(InterpretationProgress::Completed(_))) {
+                    T::settle(request, interpreter).await;
+                    T::finish_interpretation(request);
+                }
+                match request {
+                    Some(InterpretationProgress::Completed(Interpretation::Complete(_))) => {}
+                    Some(InterpretationProgress::Completed(Interpretation::Corrupt(_))) => {
+                        for untouched in requests {
+                            T::unattempted(untouched);
+                        }
+                        break;
                     }
-                    behavior::Interpretation::Corrupt(settlement) => {
-                        settlements.push(settlement);
-                        settlements
-                            .extend(requests.map(heterogeneous::ChoiceSettlements::unattempted));
-                        return behavior::Interpretation::Corrupt(HeterogeneousShutdownSends {
-                            requests: settlements,
-                        });
-                    }
+                    _ => return,
                 }
             }
-            behavior::Interpretation::Complete(HeterogeneousShutdownSends {
-                requests: settlements,
-            })
+            <Self as behavior::SendSettlements>::finish_interpretation(progress);
         }
     }
 }
@@ -727,6 +975,37 @@ impl<P> behavior::InterpreterRequest for ReportShutdownPlan<P> {
 }
 
 impl<P: Send> behavior::ActionItem for ReportShutdownPlan<P> {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = behavior::Never;
     type Prerequisite = behavior::Never;
@@ -1664,43 +1943,50 @@ mod tests {
 
         struct Recording(Vec<CreationId>);
         impl behavior::InterpretItem<ShutdownChild<PrimaryWorker, ChildHead>, Event, Here> for Recording {
-            fn interpret_item(
-                &mut self,
-                request: ShutdownChild<PrimaryWorker, ChildHead>,
-            ) -> impl Future<
-                Output = behavior::ItemSettlement<
-                    ShutdownChild<PrimaryWorker, ChildHead>,
-                    (),
-                    ChildShutdownRejection,
-                    behavior::CreationCorrelation<<PrimaryWorker as Behavior>::Protocol, ChildHead>,
+            fn interpret_item<'a>(
+                &'a mut self,
+                input: &'a mut Option<ShutdownChild<PrimaryWorker, ChildHead>>,
+                received: &'a mut Option<
+                    <ShutdownChild<PrimaryWorker, ChildHead> as ActionItem>::Reply,
                 >,
-            > + Send {
+            ) -> impl Future<Output = ()> + Send + 'a
+            where
+                ShutdownChild<PrimaryWorker, ChildHead>: 'a,
+            {
                 async move {
+                    if received.is_some() {
+                        return;
+                    }
+                    let Some(request) = input.take() else {
+                        return;
+                    };
                     self.0.push(request.child);
-                    behavior::ItemSettlement::Accepted(())
+                    *received = Some(ItemSettlement::Accepted(()));
                 }
             }
         }
         impl behavior::InterpretItem<ShutdownChild<PoolWorker, ChildTail<ChildHead>>, Event, Here>
             for Recording
         {
-            fn interpret_item(
-                &mut self,
-                request: ShutdownChild<PoolWorker, ChildTail<ChildHead>>,
-            ) -> impl Future<
-                Output = behavior::ItemSettlement<
-                    ShutdownChild<PoolWorker, ChildTail<ChildHead>>,
-                    (),
-                    ChildShutdownRejection,
-                    behavior::CreationCorrelation<
-                        <PoolWorker as Behavior>::Protocol,
-                        ChildTail<ChildHead>,
-                    >,
+            fn interpret_item<'a>(
+                &'a mut self,
+                input: &'a mut Option<ShutdownChild<PoolWorker, ChildTail<ChildHead>>>,
+                received: &'a mut Option<
+                    <ShutdownChild<PoolWorker, ChildTail<ChildHead>> as ActionItem>::Reply,
                 >,
-            > + Send {
+            ) -> impl Future<Output = ()> + Send + 'a
+            where
+                ShutdownChild<PoolWorker, ChildTail<ChildHead>>: 'a,
+            {
                 async move {
+                    if received.is_some() {
+                        return;
+                    }
+                    let Some(request) = input.take() else {
+                        return;
+                    };
                     self.0.push(request.child);
-                    behavior::ItemSettlement::Accepted(())
+                    *received = Some(ItemSettlement::Accepted(()));
                 }
             }
         }
@@ -1711,23 +1997,25 @@ mod tests {
                 Here,
             > for Recording
         {
-            fn interpret_item(
-                &mut self,
-                request: ShutdownChild<PrimaryWorker, ChildTail<ChildTail<ChildHead>>>,
-            ) -> impl Future<
-                Output = behavior::ItemSettlement<
+            fn interpret_item<'a>(
+                &'a mut self,
+                input: &'a mut Option<
                     ShutdownChild<PrimaryWorker, ChildTail<ChildTail<ChildHead>>>,
-                    (),
-                    ChildShutdownRejection,
-                    behavior::CreationCorrelation<
-                        <PrimaryWorker as Behavior>::Protocol,
-                        ChildTail<ChildTail<ChildHead>>,
-                    >,
                 >,
-            > + Send {
+                received: &'a mut Option<<ShutdownChild<PrimaryWorker, ChildTail<ChildTail<ChildHead>>> as ActionItem>::Reply>,
+            ) -> impl Future<Output = ()> + Send + 'a
+            where
+                ShutdownChild<PrimaryWorker, ChildTail<ChildTail<ChildHead>>>: 'a,
+            {
                 async move {
+                    if received.is_some() {
+                        return;
+                    }
+                    let Some(request) = input.take() else {
+                        return;
+                    };
                     self.0.push(request.child);
-                    behavior::ItemSettlement::Accepted(())
+                    *received = Some(ItemSettlement::Accepted(()));
                 }
             }
         }
@@ -1747,9 +2035,12 @@ mod tests {
             ],
         };
         let mut interpreter = Recording(Vec::new());
-        let settlement =
-            <_ as behavior::InterpretSends<_, Event, Here>>::interpret(sends, &mut interpreter)
-                .await;
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as behavior::InterpretSends<_, Event, Here>>::interpret(&mut progress, &mut interpreter)
+            .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual heterogeneous shutdown plan must finish each whole request");
+        };
         assert!(matches!(settlement, behavior::Interpretation::Complete(_)));
         assert_eq!(
             interpreter.0,

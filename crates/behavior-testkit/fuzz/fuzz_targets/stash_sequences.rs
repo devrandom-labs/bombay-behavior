@@ -44,7 +44,7 @@ fn route(message: &u64) -> StashRoute {
 }
 
 fuzz_target!(|bytes: &[u8]| {
-    let behavior = behavior_actors::Stash::new(Recorder::default(), route);
+    let behavior = behavior_actors::Stash::new(Recorder::default(), |_, message| route(message));
     let initialized = behavior.initialize().unwrap();
     assert!(initialized.actions.sends.is_empty());
     assert!(initialized.actions.creates.is_empty());

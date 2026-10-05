@@ -2,7 +2,10 @@
 
 use core::marker::PhantomData;
 
-use crate::{ActionItem, Behavior, MessageProtocol, Never, Protocol};
+use crate::{
+    ActionItem, Behavior, InterpretationProgress, ItemSettlement, MessageProtocol, Never, Protocol,
+    finish_item, prepare_item,
+};
 
 /// A pure logical actor-address namespace.
 ///
@@ -68,15 +71,12 @@ impl Address for MailAddr {
 /// impl<RootEvent, Path> behavior::InterpretItem<behavior::EstablishedDelivery<LocalProtocol>, RootEvent, Path>
 ///     for Runtime
 /// {
-///     fn interpret_item(
-///         &mut self,
-///         delivery: behavior::EstablishedDelivery<LocalProtocol>,
-///     ) -> impl core::future::Future<Output = behavior::ItemSettlement<
-///         behavior::EstablishedDelivery<LocalProtocol>, (), behavior::Never, behavior::Never,
-///     >> + Send {
+///     fn interpret_item<'a>(&'a mut self, input: &'a mut Option<behavior::EstablishedDelivery<LocalProtocol>>, received: &'a mut Option<behavior::ItemSettlement<behavior::EstablishedDelivery<LocalProtocol>, (), behavior::ExactDeliveryReason, behavior::Never>>) -> impl core::future::Future<Output = ()> + Send + 'a where behavior::EstablishedDelivery<LocalProtocol>: 'a {
 ///         async move {
+///             if received.is_some() { return; }
+///             let Some(delivery) = input.take() else { return; };
 ///             drop(delivery);
-///             behavior::ItemSettlement::Accepted(())
+///             *received = Some(behavior::ItemSettlement::Accepted(()));
 ///         }
 ///     }
 /// }
@@ -611,6 +611,37 @@ where
     P::Addr: Send,
     P::Msg: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = LogicalDeliveryReason;
     type Prerequisite = Never;
@@ -720,6 +751,37 @@ where
     <P::Addr as RecipientAddress>::Established<P>: Send,
     P::Msg: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = ExactDeliveryReason;
     type Prerequisite = Never;

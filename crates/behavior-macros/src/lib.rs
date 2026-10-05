@@ -538,86 +538,62 @@ fn product_generics(item: &ItemImpl, fields: &[NamedField]) -> Generics {
 }
 
 fn named_send_interpretation(
-    fields: &[&Ident],
+    loans: &[&Ident],
     field_types: &[&Type],
-    settlements: &Ident,
+    _settlements: &Ident,
     behavior: &TokenStream2,
 ) -> TokenStream2 {
-    let mut interpretation = quote! {
-        #behavior::Interpretation::Complete(#settlements {
-            #(#fields,)*
-        })
-    };
-    for index in (0..fields.len()).rev() {
-        let field = fields[index];
-        let field_ty = field_types[index];
-        let prior_fields = &fields[..index];
-        let later_fields = &fields[index + 1..];
+    let turns = loans.iter().zip(field_types).enumerate().map(|(index, (loan, field_ty))| {
+        let current_loan = loans.iter().enumerate().map(|(position, retained)| {
+            if position == index { quote!(#retained) } else { quote!(_) }
+        }).collect::<Vec<_>>();
+        let remaining_loans = loans.iter().enumerate().map(|(position, retained)| {
+            if position >= index { quote!(#retained) } else { quote!(_) }
+        }).collect::<Vec<_>>();
+        let later_loans = &loans[index + 1..];
         let later_types = &field_types[index + 1..];
-        let on_complete = interpretation;
-        interpretation = quote! {
-            match <#field_ty as #behavior::InterpretSends<
-                __BombayInterpreter,
-                __BombayRootEvent,
-                __BombayPath,
-            >>::interpret(self.#field, interpreter).await {
-                #behavior::Interpretation::Complete(#field) => #on_complete,
-                #behavior::Interpretation::Corrupt(#field) => {
-                    #behavior::Interpretation::Corrupt(#settlements {
-                        #(#prior_fields,)*
-                        #field,
-                        #(
-                            #later_fields: <#later_types as #behavior::SendSettlements>::unattempted(
-                                self.#later_fields,
-                            ),
-                        )*
-                    })
+        quote! {
+            // Only the guaranteed-Send child future crosses this await.
+            // Its input/reply owners and every sibling remain in parent progress.
+            {
+                let ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting(custody)) = progress else { return; };
+                let (#(#current_loan,)*) = custody;
+                <#field_ty as #behavior::InterpretSends<__BombayInterpreter, __BombayRootEvent, __BombayPath>>::interpret(#loan, interpreter)
+            }.await;
+            // All direct child loans below are synchronous and end before
+            // constructing the next child producer.
+            {
+                let ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting(custody)) = progress else { return; };
+                let (#(#remaining_loans,)*) = custody;
+                <#field_ty as #behavior::SendSettlements>::finish_interpretation(#loan);
+                match #loan {
+                    ::core::option::Option::Some(#behavior::InterpretationProgress::Completed(#behavior::Interpretation::Complete(_))) => {},
+                    ::core::option::Option::Some(#behavior::InterpretationProgress::Completed(#behavior::Interpretation::Corrupt(_))) => {
+                        #(<#later_types as #behavior::SendSettlements>::unattempted(#later_loans);)*
+                        <Self as #behavior::SendSettlements>::finish_interpretation(progress);
+                        return;
+                    }
+                    _ => return,
                 }
             }
-        };
+        }
+    }).collect::<Vec<_>>();
+    quote! {
+        <Self as #behavior::SendSettlements>::prepare_interpretation(progress);
+        #(#turns)*
+        <Self as #behavior::SendSettlements>::finish_interpretation(progress);
     }
-    interpretation
 }
 
-fn named_send_custody(
-    fields: &[&Ident],
-    settlements: &Ident,
+fn source_product_custody(
+    settlements: &[TokenStream2],
+    custody: &[TokenStream2],
     behavior: &TokenStream2,
-) -> Vec<TokenStream2> {
-    fields
-        .iter()
-        .enumerate()
-        .map(|(index, field)| {
-            let prior_fields = &fields[..index];
-            let later_fields = &fields[index + 1..];
-            quote! {
-                let #field = match #behavior::SourceSettlementCustody::offer_next_to_source(
-                    self.#field,
-                    host,
-                ).await {
-                    #behavior::SourceCustody::Exhausted(#field) => #field,
-                    #behavior::SourceCustody::Retained(#field) => {
-                        terminal_custody = __BombayTerminalCustody::Required;
-                        #field
-                    }
-                    #behavior::SourceCustody::Admitted(#field) => {
-                        return #behavior::SourceCustody::Admitted(#settlements {
-                            #(#prior_fields,)*
-                            #field,
-                            #(#later_fields: self.#later_fields,)*
-                        });
-                    }
-                    #behavior::SourceCustody::Closed(#field) => {
-                        return #behavior::SourceCustody::Closed(#settlements {
-                            #(#prior_fields,)*
-                            #field,
-                            #(#later_fields: self.#later_fields,)*
-                        });
-                    }
-                };
-            }
-        })
-        .collect()
+) -> (TokenStream2, TokenStream2) {
+    settlements.iter().zip(custody).rev().fold((quote!(#behavior::NoSends), quote!(#behavior::NoSends)), |(later_settlements, later_custody), (earlier_settlements, earlier_custody)| (
+        quote!((#earlier_settlements, #later_settlements)),
+        quote!((::core::option::Option<#behavior::SourceProgress<#earlier_settlements, #earlier_custody>>, ::core::option::Option<#behavior::SourceProgress<#later_settlements, #later_custody>>)),
+    ))
 }
 
 fn named_settlement_contract(
@@ -663,7 +639,18 @@ fn named_settlement_contract(
     }
     let (classification_impl, _, classification_where) = classification_generics.split_for_impl();
     let (custody_impl, _, custody_where) = custody_generics.split_for_impl();
-    let custody_fields = named_send_custody(fields, name, behavior);
+    let source_settlements = field_types.iter().map(|ty| quote!(#ty)).collect::<Vec<_>>();
+    let source_custody = field_types.iter().map(|ty| quote!(<#ty as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::Custody)).collect::<Vec<_>>();
+    let (source_product, source_owner) =
+        source_product_custody(&source_settlements, &source_custody, behavior);
+    let source_input = fields.iter().rev().fold(
+        quote!(#behavior::NoSends),
+        |later, field| quote!((original.#field, #later)),
+    );
+    let source_output = fields
+        .iter()
+        .rev()
+        .fold(quote!(_), |later, field| quote!((#field, #later)));
 
     quote! {
         impl #classification_impl #behavior::ClassifySettlement
@@ -674,39 +661,42 @@ fn named_settlement_contract(
             }
         }
 
-        impl #custody_impl
-            #behavior::SourceSettlementCustody<
-                __BombaySettlementHost,
-                __BombaySettlementEvent,
-            > for #settlement_type #custody_where
-        {
-            fn offer_next_to_source(
-                self,
-                host: &mut __BombaySettlementHost,
-            ) -> impl ::core::future::Future<
-                Output = #behavior::SourceCustody<Self>,
-            > + ::core::marker::Send {
-                async move {
-                    enum __BombayTerminalCustody {
-                        Unrequired,
-                        Required,
-                    }
-                    let mut terminal_custody = __BombayTerminalCustody::Unrequired;
-                    #(#custody_fields)*
-                    let settlements = #name {
-                        #(#fields,)*
-                    };
-                    match terminal_custody {
-                        __BombayTerminalCustody::Unrequired => {
-                            #behavior::SourceCustody::Exhausted(settlements)
-                        }
-                        __BombayTerminalCustody::Required => {
-                            #behavior::SourceCustody::Retained(settlements)
-                        }
-                    }
-                }
+        impl #custody_impl #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent> for #settlement_type #custody_where {
+            type Custody = #source_owner;
+            fn prepare_source(progress: &mut ::core::option::Option<#behavior::SourceProgress<Self, Self::Custody>>) {
+                let original = match progress.take() {
+                    ::core::option::Option::Some(#behavior::SourceProgress::Original(original)) => original,
+                    retained => { *progress = retained; return; }
+                };
+                // The concrete Core tuple prepare only decomposes; it calls no child method.
+                let mut product = ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_input));
+                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::prepare_source(&mut product);
+                *progress = match product {
+                    ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_output)) => ::core::option::Option::Some(#behavior::SourceProgress::Original(#name { #(#fields,)* })),
+                    ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)) => ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)),
+                    ::core::option::Option::Some(#behavior::SourceProgress::Completed(reply)) => ::core::option::Option::Some(#behavior::SourceProgress::Completed(reply.map(|#source_output| #name { #(#fields,)* }))),
+                    ::core::option::Option::None => ::core::option::Option::None,
+                };
+            }
+            fn offer_next_to_source(custody: &mut Self::Custody, host: &mut __BombaySettlementHost) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send {
+                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::offer_next_to_source(custody, host)
+            }
+            fn finish_source(progress: &mut ::core::option::Option<#behavior::SourceProgress<Self, Self::Custody>>) {
+                let custody = match progress.take() {
+                    ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)) => custody,
+                    retained => { *progress = retained; return; }
+                };
+                let mut product = ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody));
+                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::finish_source(&mut product);
+                *progress = match product {
+                    ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_output)) => ::core::option::Option::Some(#behavior::SourceProgress::Original(#name { #(#fields,)* })),
+                    ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)) => ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)),
+                    ::core::option::Option::Some(#behavior::SourceProgress::Completed(reply)) => ::core::option::Option::Some(#behavior::SourceProgress::Completed(reply.map(|#source_output| #name { #(#fields,)* }))),
+                    ::core::option::Option::None => ::core::option::Option::None,
+                };
             }
         }
+
     }
 }
 
@@ -781,12 +771,67 @@ fn named_send_contract(
             >
         );
     }
+    interpretation_generics.make_where_clause().predicates.push(parse_quote!(
+        <#name #type_generics as #behavior::SendSettlements>::InterpretationCustody: ::core::marker::Send
+    ));
     let (effects_impl, _, effects_where) = effects_generics.split_for_impl();
     let (logical_impl, _, logical_where) = logical_generics.split_for_impl();
     let (settlement_impl, _, settlement_where) = settlement_generics.split_for_impl();
     let (lawful_impl, _, lawful_where) = lawful_generics.split_for_impl();
     let (interpretation_impl, _, interpretation_where) = interpretation_generics.split_for_impl();
-    let interpretation = named_send_interpretation(fields, field_types, settlement_name, behavior);
+    let interpretation_loans = fields
+        .iter()
+        .map(|field| {
+            let field_name = field.to_string();
+            format_ident!(
+                "__bombay_{}_interpretation",
+                field_name.trim_start_matches("r#"),
+                span = Span::mixed_site()
+            )
+        })
+        .collect::<Vec<_>>();
+    let loan_fields = interpretation_loans.iter().collect::<Vec<_>>();
+    let remaining_interpretations =
+        Ident::new("__bombay_remaining_interpretations", Span::mixed_site());
+    let interpretation =
+        named_send_interpretation(&loan_fields, field_types, settlement_name, behavior);
+    let source_settlements = field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #behavior::SendSettlements>::Settlements))
+        .collect::<Vec<_>>();
+    let source_custody = field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #behavior::SendSettlements>::SourceCustody))
+        .collect::<Vec<_>>();
+    let (_, source_owner) = source_product_custody(&source_settlements, &source_custody, behavior);
+    let interpretation_custody = field_types
+        .iter()
+        .map(|ty| {
+            quote!(
+                ::core::option::Option<#behavior::InterpretationProgress<
+                    #ty,
+                    <#ty as #behavior::SendSettlements>::InterpretationCustody,
+                    <#ty as #behavior::SendSettlements>::Settlements,
+                >>
+            )
+        })
+        .collect::<Vec<_>>();
+    let completed_controls = fields.iter().map(|_| quote!(::core::option::Option::Some(#behavior::InterpretationProgress::Completed(_)))).collect::<Vec<_>>();
+    let completed_fields = loan_fields
+        .iter()
+        .rev()
+        .fold(quote!(()), |later, field| quote!((#field,#later)));
+    let mut combine = quote!(#behavior::Interpretation::Complete(()));
+    // This pure structural fold invokes no field/user method and crosses no await.
+    for field in loan_fields.iter().rev() {
+        combine = quote! {
+            match (#field,#combine) {
+                (#behavior::Interpretation::Complete(#field),#behavior::Interpretation::Complete(#remaining_interpretations)) => #behavior::Interpretation::Complete((#field,#remaining_interpretations)),
+                (#behavior::Interpretation::Complete(#field) | #behavior::Interpretation::Corrupt(#field), #behavior::Interpretation::Corrupt(#remaining_interpretations)) |
+                (#behavior::Interpretation::Corrupt(#field),#behavior::Interpretation::Complete(#remaining_interpretations)) => #behavior::Interpretation::Corrupt((#field,#remaining_interpretations)),
+            }
+        };
+    }
 
     quote! {
         impl #effects_impl #behavior::SendEffects for #name #type_generics #effects_where {
@@ -820,15 +865,43 @@ fn named_send_contract(
             for #name #type_generics #settlement_where
         {
             type Settlements = #settlement_type;
+            type SourceCustody = #source_owner;
+            type InterpretationCustody = (#(#interpretation_custody,)*);
 
-            fn unattempted(self) -> Self::Settlements {
-                #settlement_name {
-                    #(
-                        #fields: <#field_types as #behavior::SendSettlements>::unattempted(
-                            self.#fields,
-                        ),
-                    )*
+            fn prepare_interpretation(progress: &mut ::core::option::Option<#behavior::InterpretationProgress<Self,Self::InterpretationCustody,Self::Settlements>>) {
+                match progress.take() {
+                    ::core::option::Option::Some(#behavior::InterpretationProgress::Original(original)) => {
+                        *progress = ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting((
+                            #(::core::option::Option::Some(#behavior::InterpretationProgress::Original(original.#fields)),)*
+                        )));
+                    }
+                    retained => *progress = retained,
                 }
+            }
+            fn finish_interpretation(progress: &mut ::core::option::Option<#behavior::InterpretationProgress<Self,Self::InterpretationCustody,Self::Settlements>>) {
+                let ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting(custody)) = progress else { return; };
+                let (#(#loan_fields,)*) = custody;
+                if !matches!((#(&*#loan_fields,)*), (#(#completed_controls,)*)) { return; }
+                match progress.take() {
+                    ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting((
+                        #(::core::option::Option::Some(#behavior::InterpretationProgress::Completed(#loan_fields)),)*
+                    ))) => {
+                        let completed = #combine;
+                        *progress = ::core::option::Option::Some(#behavior::InterpretationProgress::Completed(match completed {
+                            #behavior::Interpretation::Complete(#completed_fields) => #behavior::Interpretation::Complete(#settlement_name { #(#fields: #loan_fields,)* }),
+                            #behavior::Interpretation::Corrupt(#completed_fields) => #behavior::Interpretation::Corrupt(#settlement_name { #(#fields: #loan_fields,)* }),
+                        }));
+                    }
+                    retained => *progress = retained,
+                }
+            }
+            fn unattempted(progress: &mut ::core::option::Option<#behavior::InterpretationProgress<Self,Self::InterpretationCustody,Self::Settlements>>) {
+                <Self as #behavior::SendSettlements>::prepare_interpretation(progress);
+                if let ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting(custody)) = progress {
+                    let (#(#loan_fields,)*) = custody;
+                    #(<#field_types as #behavior::SendSettlements>::unattempted(#loan_fields);)*
+                }
+                <Self as #behavior::SendSettlements>::finish_interpretation(progress);
             }
         }
 
@@ -840,11 +913,9 @@ fn named_send_contract(
             > for #name #type_generics #interpretation_where
         {
             fn interpret(
-                self,
+                progress: &mut ::core::option::Option<#behavior::InterpretationProgress<Self,Self::InterpretationCustody,Self::Settlements>>,
                 interpreter: &mut __BombayInterpreter,
-            ) -> impl ::core::future::Future<
-                Output = #behavior::Interpretation<Self::Settlements>,
-            > + ::core::marker::Send {
+            ) -> impl ::core::future::Future<Output=()> + ::core::marker::Send {
                 async move {
                     #interpretation
                 }

@@ -7,7 +7,8 @@ mod stable_proxy;
 
 use behavior_actors::atomic::{FixedCommand, ImmediateActivation, Recovery, StableProxy};
 use behavior_core::{
-    CreationSequence, EstablishedActor, ItemSettlement, NoSends, SendSettlements, SettledItem, Step,
+    ActionItemResult, CreationSequence, EstablishedActor, ItemSettlement, NoSends, SendSettlements,
+    SettledItem, Step,
 };
 use fixed_supervisor::ready_supervisor;
 use libfuzzer_sys::fuzz_target;
@@ -97,8 +98,10 @@ fn exercise(inputs: &[u8]) {
         match shutting_down
             .sends
             .proxy_operations
-            .unattempted()
-            .into_inputs()
+            .into_items()
+            .into_iter()
+            .map(ActionItemResult::<_>::Unattempted)
+            .collect::<Vec<_>>()
             .pop()
             .expect("one exact proxy shutdown is emitted")
         {

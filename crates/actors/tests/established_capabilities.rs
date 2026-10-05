@@ -1,12 +1,12 @@
 use behavior::{
-    Actions, ActiveTurn, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead, ChildOccurrence,
-    ChildRole, CommittedChild, ComposedEvent, CreationId, CreationKind, CreationRejection,
-    CreationSequence, Creations, DeclaredChildOccurrence, Delivery, EndpointAddress,
-    EstablishedActor, EstablishedCreation, EstablishedDelivery, EstablishedRecipient, EventLayer,
-    ExactDeliveryReason, Here, Ingress, InjectEvent, Inside, InterpretEstablished, InterpretItem,
-    InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryReason,
-    Never, NoBirths, NoSends, Protocol, Recipient, ResolveChildOccurrence, SendEffects, SendLayer,
-    Step, User, UserEvent,
+    ActionItem, Actions, ActiveTurn, Behavior, BehaviorActed, BehaviorBase, Births, ChildHead,
+    ChildOccurrence, ChildRole, CommittedChild, ComposedEvent, CreationId, CreationKind,
+    CreationRejection, CreationSequence, Creations, DeclaredChildOccurrence, Delivery,
+    EndpointAddress, EstablishedActor, EstablishedCreation, EstablishedDelivery,
+    EstablishedRecipient, EventLayer, Here, Ingress, InjectEvent, Inside, InterpretEstablished,
+    InterpretItem, InterpretSends, Interpretation, InterpretationProgress, InterpreterRequests,
+    ItemSettlement, Never, NoBirths, NoSends, Protocol, Recipient, ResolveChildOccurrence,
+    SendEffects, SendLayer, Step, User, UserEvent,
 };
 use behavior_actors::atomic::{ImmediateActivation, WorkerSubmission};
 use behavior_actors::{
@@ -18,7 +18,7 @@ use behavior_actors::{
     ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
     TerminationMonitorError, TerminationObservation, Watch, established_child,
 };
-use core::future::Future;
+use core::future::{Future, ready};
 use core::marker::PhantomData;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
@@ -366,34 +366,46 @@ impl InterpretEstablished<WorkerProtocol> for DeliveryRuntime {
 }
 
 impl<RootEvent, Path> InterpretItem<Delivery<WorkerProtocol>, RootEvent, Path> for DeliveryRuntime {
-    fn interpret_item(
-        &mut self,
-        delivery: Delivery<WorkerProtocol>,
-    ) -> impl Future<
-        Output = ItemSettlement<Delivery<WorkerProtocol>, (), LogicalDeliveryReason, Never>,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<WorkerProtocol>>,
+        received: &'a mut Option<<Delivery<WorkerProtocol> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<WorkerProtocol>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(delivery) = input.take() else {
+            return ready(());
+        };
         self.order.push(DeliveryKind::Logical(
             delivery.to.address(),
             delivery.message,
         ));
-        async { ItemSettlement::Accepted(()) }
+        *received = Some(ItemSettlement::Accepted(()));
+        ready(())
     }
 }
 
 impl<RootEvent, Path> InterpretItem<EstablishedDelivery<WorkerProtocol>, RootEvent, Path>
     for DeliveryRuntime
 {
-    fn interpret_item(
-        &mut self,
-        delivery: EstablishedDelivery<WorkerProtocol>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            EstablishedDelivery<WorkerProtocol>,
-            (),
-            ExactDeliveryReason,
-            Never,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<EstablishedDelivery<WorkerProtocol>>,
+        received: &'a mut Option<<EstablishedDelivery<WorkerProtocol> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        EstablishedDelivery<WorkerProtocol>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(delivery) = input.take() else {
+            return ready(());
+        };
         let endpoint = delivery.to.interpret(self);
         self.delivered
             .push((endpoint.address, endpoint.slot, delivery.message));
@@ -402,7 +414,8 @@ impl<RootEvent, Path> InterpretItem<EstablishedDelivery<WorkerProtocol>, RootEve
             endpoint.slot,
             delivery.message,
         ));
-        async { ItemSettlement::Accepted(()) }
+        *received = Some(ItemSettlement::Accepted(()));
+        ready(())
     }
 }
 
@@ -489,9 +502,14 @@ async fn parent_retains_the_exact_capability_and_emits_delivery_only_through_act
     assert!(actions.creates.is_empty());
 
     let mut runtime = DeliveryRuntime::default();
-    let settlement =
-        <_ as InterpretSends<_, ParentEvent, Here>>::interpret(actions.sends.inner, &mut runtime)
-            .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(actions.sends.inner));
+        <_ as InterpretSends<_, ParentEvent, Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual capability interpretation must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(settlement, Interpretation::Complete(_)));
     assert_eq!(runtime.delivered, [(RuntimeAddr(91), 3, 41)]);
 
@@ -979,11 +997,18 @@ async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
     let actions = active.receive(RuntimeAddr(1), 7).unwrap();
 
     let mut runtime = DeliveryRuntime::default();
-    let settlement = <_ as InterpretSends<_, <ExactAdapter as Behavior>::Event, Here>>::interpret(
-        actions.sends,
-        &mut runtime,
-    )
-    .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(actions.sends));
+        <_ as InterpretSends<_, <ExactAdapter as Behavior>::Event, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual capability interpretation must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(settlement, Interpretation::Complete(_)));
     assert_eq!(runtime.delivered, [(RuntimeAddr(46), 10, 7)]);
 }
@@ -1004,8 +1029,18 @@ async fn mixed_reply_routes_preserve_capability_and_interpretation_order() {
     );
 
     let mut runtime = DeliveryRuntime::default();
-    let settlement =
-        <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual capability interpretation must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(settlement, Interpretation::Complete(_)));
 
     assert_eq!(
@@ -1118,8 +1153,18 @@ async fn nested_products_interpret_each_exact_delivery_once_in_structural_order(
     );
     let mut runtime = DeliveryRuntime::default();
 
-    let settlement =
-        <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual capability interpretation must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(settlement, Interpretation::Complete(_)));
 
     assert_eq!(

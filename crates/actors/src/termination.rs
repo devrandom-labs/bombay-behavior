@@ -1,5 +1,7 @@
 //! Typed lifecycle outcomes used by reusable actor compositions.
 
+use behavior::{InterpretationProgress, ItemSettlement, finish_item, prepare_item};
+
 use behavior::Address;
 
 /// The authoritative terminal fact for one exact actor incarnation.
@@ -92,6 +94,37 @@ impl<A> behavior::ActionItem for ReportTerminalOutcome<A>
 where
     A: Address + Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = behavior::Never;
     type Prerequisite = behavior::Never;

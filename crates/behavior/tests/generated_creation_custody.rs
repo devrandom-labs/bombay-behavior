@@ -1,13 +1,15 @@
 use behavior::{
     ActionItem, ActionItemResult, ActionSettlement, Actions, Address, Behavior, BehaviorActed,
     BehaviorSettlements, Births, ChildCreationOutcome, ChildNamespaceExhausted, ClassifySettlement,
-    CommittedChild, CreateChild, CreationId, CreationSequence, CreationSettlement,
+    CommittedChild, CreateChild, CreationId, CreationKind, CreationSequence, CreationSettlement,
     CreationSettlements, Creations, CreationsSettled, EndpointAddress, EstablishedActor,
-    EventIngress, EventLayer, InterpretItem, InterpretSends, Interpretation, ItemSettlement, Never,
-    Own, Protocol, RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput,
-    SettledItem, SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody, Step, Stopped,
+    EventIngress, EventLayer, InterpretItem, InterpretSends, Interpretation,
+    InterpretationProgress, InterpreterFault, ItemSettlement, Never, Own, Protocol,
+    RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput, SettledItem,
+    SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody, SourceProgress,
+    SourceSettlementCustody, SourceSettlements, Step, Stopped, finish_item, prepare_item,
 };
+use core::future::Future;
 
 mod installed_control;
 use installed_control::InstalledControl;
@@ -129,7 +131,7 @@ fn returning_established() -> (
     let creation = sequence.issue().expect("the first creation ID exists");
     let established = CommittedChild::new(
         creation,
-        behavior::CreationKind::Birth,
+        CreationKind::Birth,
         EstablishedActor::issued(InstalledControl::new(Endpoint(41))),
     );
     (
@@ -204,11 +206,19 @@ impl
         CreationsSettled<RuntimeAddr, ReturningCreatorChildren>,
     > for ReturnHost
 {
-    async fn admit_source(
+    fn admit_source(
         &mut self,
-        _: CreationsSettled<RuntimeAddr, ReturningCreatorChildren>,
-    ) -> Result<(), CreationsSettled<RuntimeAddr, ReturningCreatorChildren>> {
-        Ok(())
+        input: &mut Option<CreationsSettled<RuntimeAddr, ReturningCreatorChildren>>,
+        reply: &mut Option<Result<(), CreationsSettled<RuntimeAddr, ReturningCreatorChildren>>>,
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            if reply.is_none() {
+                if let Some(_input) = input.take() {
+                    let admission = { Ok(()) };
+                    *reply = Some(admission);
+                }
+            }
+        }
     }
 }
 
@@ -219,6 +229,35 @@ struct NoticeOwner;
 struct Notice;
 
 impl ActionItem for Notice {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = u8;
     type Rejection = Never;
     type Prerequisite = Never;
@@ -245,25 +284,44 @@ struct NoticeHost {
 struct NoticeInterpreter;
 
 impl<RootEvent, Path> InterpretItem<Notice, RootEvent, Path> for NoticeInterpreter {
-    fn interpret_item(
-        &mut self,
-        _: Notice,
-    ) -> impl core::future::Future<Output = ItemSettlement<Notice, u8, Never, Never>> + Send {
-        core::future::ready(ItemSettlement::Accepted(9))
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Notice>,
+        received: &'a mut Option<<Notice as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Notice: 'a,
+    {
+        if received.is_none() {
+            if let Some(_notice) = input.take() {
+                *received = Some(ItemSettlement::Accepted(9));
+            }
+        }
+        core::future::ready(())
     }
 }
 
 impl SourceAdmission<NoticeEvent, NoticeOwner, ActionItemResult<Notice>> for NoticeHost {
-    async fn admit_source(
+    fn admit_source(
         &mut self,
-        input: ActionItemResult<Notice>,
-    ) -> Result<(), ActionItemResult<Notice>> {
-        let NoticeEvent::Settled(input) = NoticeEvent::ingress(input);
-        let SettledItem::Attempted(ItemSettlement::Accepted(value)) = input else {
-            panic!("the fixture source settlement must remain accepted")
-        };
-        self.accepted.push(value);
-        Ok(())
+        input: &mut Option<ActionItemResult<Notice>>,
+        reply: &mut Option<Result<(), ActionItemResult<Notice>>>,
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            if reply.is_none() {
+                if let Some(input) = input.take() {
+                    let admission = {
+                        let NoticeEvent::Settled(input) = NoticeEvent::ingress(input);
+                        let SettledItem::Attempted(ItemSettlement::Accepted(value)) = input else {
+                            panic!("the fixture source settlement must remain accepted")
+                        };
+                        self.accepted.push(value);
+                        Ok(())
+                    };
+                    *reply = Some(admission);
+                }
+            }
+        }
     }
 }
 
@@ -272,14 +330,27 @@ async fn generated_retirement_policy_needs_no_creation_event_and_preserves_exact
     requires_custody::<RetiringCreator, NoCreationIngress>();
 
     let settlement = retiring_rejection();
-    let SourceCustody::Retained(settled) = <_ as SourceSettlementCustody<
+    let SourceCustody::Retained(settled) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<
         NoCreationIngress,
         <RetiringCreator as Behavior>::Event,
-    >>::offer_next_to_source(
-        settlement, &mut NoCreationIngress
-    )
-    .await
-    else {
+    >>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<RetirementBirths<RetiringCreatorChildren> as CreationSettlements<RuntimeAddr>>::Settlements as SourceSettlementCustody<
+        NoCreationIngress,
+        <RetiringCreator as Behavior>::Event,
+    >>::offer_next_to_source(custody, &mut NoCreationIngress).await;
+        }
+        <_ as SourceSettlementCustody<
+        NoCreationIngress,
+        <RetiringCreator as Behavior>::Event,
+    >>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("a non-empty retirement creation settlement must remain in terminal custody")
     };
     let CreationSettlement::Rejected { creations, .. } = settled.into_settlement() else {
@@ -296,13 +367,18 @@ async fn generated_retirement_policy_needs_no_creation_event_and_preserves_exact
 async fn retirement_creation_custody_allows_later_source_results_before_terminal_retention() {
     let mut source_actions = SourceActions::<Notice>::empty();
     <SourceActions<Notice> as SendInput<Notice, Own>>::emit(&mut source_actions, Notice);
-    let Interpretation::Complete(sends) = <SourceActions<Notice> as InterpretSends<
+    let Interpretation::Complete(sends) = ({
+        let mut progress = Some(InterpretationProgress::Original(source_actions));
+        <SourceActions<Notice> as InterpretSends<
         NoticeInterpreter,
         NoticeEvent,
         behavior::Here,
-    >>::interpret(source_actions, &mut NoticeInterpreter)
-    .await
-    else {
+    >>::interpret(&mut progress, &mut NoticeInterpreter).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual notice source must return its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("the fixture source action must settle")
     };
     let settlement = ActionSettlement {
@@ -314,14 +390,42 @@ async fn retirement_creation_custody_allows_later_source_results_before_terminal
         accepted: Vec::new(),
     };
 
-    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<NoticeHost, NoticeEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<<RetirementBirths<RetiringCreatorChildren> as CreationSettlements<RuntimeAddr>>::Settlements, SourceSettlements<Notice>, Never> as SourceSettlementCustody<NoticeHost, NoticeEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<NoticeHost, NoticeEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the later live-source result must progress before terminal retention")
     };
     assert_eq!(host.accepted, [9]);
 
-    let SourceCustody::Retained(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Retained(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<NoticeHost, NoticeEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<<RetirementBirths<RetiringCreatorChildren> as CreationSettlements<RuntimeAddr>>::Settlements, SourceSettlements<Notice>, Never> as SourceSettlementCustody<NoticeHost, NoticeEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<NoticeHost, NoticeEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the complete settlement must enter terminal custody after source admission")
     };
     let CreationSettlement::Rejected { creations, .. } = settlement.creations.into_settlement()
@@ -395,4 +499,191 @@ fn composed_behavior_layers_lift_the_creation_settlement_ingress() {
         >>::ingress(CreationsSettled::new(settlement));
 
     assert!(matches!(event, EventLayer::Inner(_)));
+}
+
+#[test]
+fn retirement_creation_total_finish_preserves_original_and_offering_failures_on_replay() {
+    let mut sequence = CreationSequence::new();
+    let rejected_original_id = sequence.issue().expect("the fixture creation ID exists");
+    let rejected_original_requests =
+        Creations::one(CreateChild::birth(rejected_original_id, Worker));
+    let rejected_original_pointer = rejected_original_requests.iter().as_slice().as_ptr();
+    let rejected_original: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(CreationSettlement::Rejected {
+        creations: rejected_original_requests,
+        reason: ChildNamespaceExhausted,
+    });
+    let rejected_offering_id = sequence.issue().expect("the fixture creation ID exists");
+    let rejected_offering_requests =
+        Creations::one(CreateChild::birth(rejected_offering_id, Worker));
+    let rejected_offering_pointer = rejected_offering_requests.iter().as_slice().as_ptr();
+    let rejected_offering: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(CreationSettlement::Rejected {
+        creations: rejected_offering_requests,
+        reason: ChildNamespaceExhausted,
+    });
+    let corrupt_original_id = sequence.issue().expect("the fixture creation ID exists");
+    let corrupt_original_requests = Creations::one(CreateChild::birth(corrupt_original_id, Worker));
+    let corrupt_original_pointer = corrupt_original_requests.iter().as_slice().as_ptr();
+    let corrupt_original: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(CreationSettlement::Corrupt {
+        creations: corrupt_original_requests,
+        fault: InterpreterFault::CorruptTraversal,
+    });
+    let corrupt_offering_id = sequence.issue().expect("the fixture creation ID exists");
+    let corrupt_offering_requests = Creations::one(CreateChild::birth(corrupt_offering_id, Worker));
+    let corrupt_offering_pointer = corrupt_offering_requests.iter().as_slice().as_ptr();
+    let corrupt_offering: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(CreationSettlement::Corrupt {
+        creations: corrupt_offering_requests,
+        fault: InterpreterFault::CorruptTraversal,
+    });
+    for (id, pointer, expected_status, original) in [
+        (
+            rejected_original_id,
+            rejected_original_pointer,
+            SettlementStatus::Rejected,
+            SourceProgress::Original(rejected_original),
+        ),
+        (
+            rejected_offering_id,
+            rejected_offering_pointer,
+            SettlementStatus::Rejected,
+            SourceProgress::Offering(rejected_offering),
+        ),
+        (
+            corrupt_original_id,
+            corrupt_original_pointer,
+            SettlementStatus::Corrupt,
+            SourceProgress::Original(corrupt_original),
+        ),
+        (
+            corrupt_offering_id,
+            corrupt_offering_pointer,
+            SettlementStatus::Corrupt,
+            SourceProgress::Offering(corrupt_offering),
+        ),
+    ] {
+        let mut progress = Some(original);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        let Some(SourceProgress::Completed(SourceCustody::Retained(returned))) = progress else {
+            panic!("total finish and replay must retain the complete nonempty retirement row");
+        };
+        let returned = returned.into_settlement();
+        let actual_status = returned.settlement_status();
+        let creations = match returned {
+            CreationSettlement::Rejected {
+                creations,
+                reason: ChildNamespaceExhausted,
+            } => creations,
+            CreationSettlement::Corrupt {
+                creations,
+                fault: InterpreterFault::CorruptTraversal,
+            } => creations,
+            _ => panic!("total finish changed the exact original creation failure"),
+        };
+        let actual_pointer = creations.iter().as_slice().as_ptr();
+        let mut creations = creations.into_iter();
+        let creation = creations
+            .next()
+            .expect("the exact original child remains owned");
+        let remaining = creations.next();
+        assert_eq!(actual_status, expected_status);
+        assert_eq!(actual_pointer, pointer);
+        assert_eq!(creation.id(), id);
+        assert_eq!(creation.kind(), CreationKind::Birth);
+        assert_eq!(creation.child(), &Worker);
+        assert!(remaining.is_none());
+    }
+}
+
+#[test]
+fn retirement_creation_total_finish_exhausts_only_the_original_empty_settled_batch() {
+    let original: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements =
+        RetirementCreationSettlement::new(CreationSettlement::Settled(Creations::empty()));
+    let offering: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements =
+        RetirementCreationSettlement::new(CreationSettlement::Settled(Creations::empty()));
+    for original in [
+        SourceProgress::Original(original),
+        SourceProgress::Offering(offering),
+    ] {
+        let mut progress = Some(original);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(returned))) = progress else {
+            panic!("only the actual empty settled retirement row is exhausted");
+        };
+        let CreationSettlement::Settled(creations) = returned.into_settlement() else {
+            panic!("total finish changed the empty settled classification");
+        };
+        assert!(creations.is_empty());
+    }
+}
+
+#[test]
+fn retirement_creation_total_finish_preserves_nonempty_settled_original_and_offering() {
+    let (original_id, original) = returning_established();
+    let (offering_id, offering) = returning_established();
+    let CreationSettlement::Settled(original_creations) = &original else {
+        panic!("the existing successful producer returns a settled creation");
+    };
+    let original_pointer = original_creations.iter().as_slice().as_ptr();
+    let CreationSettlement::Settled(offering_creations) = &offering else {
+        panic!("the existing successful producer returns a settled creation");
+    };
+    let offering_pointer = offering_creations.iter().as_slice().as_ptr();
+    let original: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(original);
+    let offering: <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements = RetirementCreationSettlement::new(offering);
+    for (id, pointer, original) in [
+        (
+            original_id,
+            original_pointer,
+            SourceProgress::Original(original),
+        ),
+        (
+            offering_id,
+            offering_pointer,
+            SourceProgress::Offering(offering),
+        ),
+    ] {
+        let mut progress = Some(original);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        <_ as SourceSettlementCustody<NoCreationIngress, <RetiringCreator as Behavior>::Event>>::finish_source(&mut progress);
+        let Some(SourceProgress::Completed(SourceCustody::Retained(returned))) = progress else {
+            panic!(
+                "total finish and replay must retain the genuine successful nonempty retirement row"
+            );
+        };
+        let CreationSettlement::Settled(creations) = returned.into_settlement() else {
+            panic!("total finish changed the complete successful creation classification");
+        };
+        let actual_pointer = creations.iter().as_slice().as_ptr();
+        let mut creations = creations.into_iter();
+        let SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Established(
+            child,
+        ))) = creations
+            .next()
+            .expect("the original accepted child is retained")
+        else {
+            panic!("total finish changed the accepted child outcome");
+        };
+        let remaining = creations.next();
+        assert_eq!(actual_pointer, pointer);
+        assert_eq!(child.id(), id);
+        assert_eq!(child.kind(), CreationKind::Birth);
+        assert!(remaining.is_none());
+    }
 }

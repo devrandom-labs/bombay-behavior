@@ -4,10 +4,11 @@ use core::future::Future;
 use behavior::{
     ActionItem, ActionItemResult, ActionSettlement, ActiveTurn, Address, Behavior, BehaviorActed,
     ChildNamespaceExhausted, CreateChild, CreationSequence, CreationSettlement,
-    CreationSettlements, Creations, EndpointAddress, EventIngress, ItemSettlement, MessageProtocol,
-    Never, NoBirths, NoSends, Own, Protocol, RetirementBirths, SendEffects, SendLayer,
-    SendSettlements, SettledItem, SourceAction, SourceActions, SourceAdmission, SourceCustody,
-    SourceSettlementCustody, Step, Stopped, User,
+    CreationSettlements, Creations, EndpointAddress, EventIngress, Interpretation,
+    InterpretationProgress, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Own,
+    Protocol, RetirementBirths, SendEffects, SendLayer, SendSettlements, SettledItem, SourceAction,
+    SourceActions, SourceAdmission, SourceCustody, SourceProgress, SourceSettlementCustody,
+    SourceSettlements, Step, Stopped, User, finish_item, prepare_item,
 };
 use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
 
@@ -83,6 +84,35 @@ fn assert_creation(settlement: PendingRetirement) {
 struct IndependentRequest(Box<str>);
 
 impl ActionItem for IndependentRequest {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = u8;
     type Prerequisite = Infallible;
@@ -110,6 +140,35 @@ fn assert_independent(mut residual: Vec<ActionItemResult<IndependentRequest>>) {
 struct ReplyRequest(Box<str>);
 
 impl ActionItem for ReplyRequest {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = Infallible;
     type Prerequisite = Infallible;
@@ -140,15 +199,23 @@ struct ReturnHost {
 impl SourceAdmission<ReturnEvent, ReplySource, ActionItemResult<ReplyRequest>> for ReturnHost {
     fn admit_source(
         &mut self,
-        input: ActionItemResult<ReplyRequest>,
-    ) -> impl Future<Output = Result<(), ActionItemResult<ReplyRequest>>> + Send {
+        input: &mut Option<ActionItemResult<ReplyRequest>>,
+        reply: &mut Option<Result<(), ActionItemResult<ReplyRequest>>>,
+    ) -> impl Future<Output = ()> + Send {
         async move {
-            match self.window {
-                AdmissionWindow::Open => {
-                    self.admitted.push(ReturnEvent::ingress(input));
-                    Ok(())
+            if reply.is_none() {
+                if let Some(input) = input.take() {
+                    let admission = {
+                        match self.window {
+                            AdmissionWindow::Open => {
+                                self.admitted.push(ReturnEvent::ingress(input));
+                                Ok(())
+                            }
+                            AdmissionWindow::Closed => Err(input),
+                        }
+                    };
+                    *reply = Some(admission);
                 }
-                AdmissionWindow::Closed => Err(input),
             }
         }
     }
@@ -166,7 +233,13 @@ fn source_result() -> behavior::SourceSettlements<ReplyRequest> {
     let source = <SourceActions<ReplyRequest> as SendEffects>::sending::<ReplyRequest, Own>(
         ReplyRequest(Box::from("returned")),
     );
-    source.unattempted()
+    let mut progress = Some(InterpretationProgress::Original(source));
+    <SourceActions<ReplyRequest> as SendSettlements>::unattempted(&mut progress);
+    let Some(InterpretationProgress::Completed(Interpretation::Complete(settlement))) = progress
+    else {
+        panic!("the untouched source keeps its original complete request");
+    };
+    settlement
 }
 
 fn assert_admitted(host: &mut ReturnHost) {
@@ -198,17 +271,45 @@ async fn retained_inner_diagnostic_allows_later_owned_source_admission() {
         admitted: Vec::new(),
     };
     let product = SendLayer::new(source_result(), retained_diagnostic());
-    let SourceCustody::Admitted(residual) = <_ as SourceSettlementCustody<
+    let SourceCustody::Admitted(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(product));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SendLayer<SourceSettlements<ReplyRequest>, Vec<ActionItemResult<TerminalDiagnostic>>> as SourceSettlementCustody<
         ReturnHost,
         ReturnEvent,
-    >>::offer_next_to_source(product, &mut host)
-    .await
-    else {
+    >>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the later source lane must progress");
     };
     assert_admitted(&mut host);
 
-    let SourceCustody::Retained(residual) = residual.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Retained(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(residual));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SendLayer<SourceSettlements<ReplyRequest>, Vec<ActionItemResult<TerminalDiagnostic>>> as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("terminal custody survives the admitted source input");
     };
     assert_terminal(residual.inner);
@@ -222,17 +323,45 @@ async fn inner_source_admission_precedes_owned_terminal_custody() {
         admitted: Vec::new(),
     };
     let product = SendLayer::new(retained_diagnostic(), source_result());
-    let SourceCustody::Admitted(residual) = <_ as SourceSettlementCustody<
+    let SourceCustody::Admitted(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(product));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SendLayer<Vec<ActionItemResult<TerminalDiagnostic>>, SourceSettlements<ReplyRequest>> as SourceSettlementCustody<
         ReturnHost,
         ReturnEvent,
-    >>::offer_next_to_source(product, &mut host)
-    .await
-    else {
+    >>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the inner source lane must progress first");
     };
     assert_admitted(&mut host);
 
-    let SourceCustody::Retained(residual) = residual.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Retained(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(residual));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SendLayer<Vec<ActionItemResult<TerminalDiagnostic>>, SourceSettlements<ReplyRequest>> as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("terminal custody survives after source admission");
     };
     assert!(residual.inner.into_inputs().is_empty());
@@ -246,12 +375,22 @@ async fn closed_source_retains_its_request_and_terminal_sibling() {
         admitted: Vec::new(),
     };
     let product = SendLayer::new(source_result(), retained_diagnostic());
-    let SourceCustody::Closed(residual) =
-        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
-            product, &mut host,
-        )
-        .await
-    else {
+    let SourceCustody::Closed(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(product));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SendLayer<SourceSettlements<ReplyRequest>, Vec<ActionItemResult<TerminalDiagnostic>>> as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("closed admission retains the entire remaining product");
     };
     assert!(host.admitted.is_empty());
@@ -281,13 +420,67 @@ async fn mixed_retirement_product_admits_source_after_retained_inner_lanes() {
         ),
         become_: Step::<Never, Stopped>::Continue,
     };
-    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                PendingRetirement,
+                SendLayer<
+                    SourceSettlements<ReplyRequest>,
+                    SendLayer<
+                        Vec<ActionItemResult<TerminalDiagnostic>>,
+                        Vec<ActionItemResult<IndependentRequest>>,
+                    >,
+                >,
+                Never,
+            > as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("retained creation and inner lanes must not block source admission");
     };
     assert_admitted(&mut host);
-    let SourceCustody::Retained(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Retained(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                PendingRetirement,
+                SendLayer<
+                    SourceSettlements<ReplyRequest>,
+                    SendLayer<
+                        Vec<ActionItemResult<TerminalDiagnostic>>,
+                        Vec<ActionItemResult<IndependentRequest>>,
+                    >,
+                >,
+                Never,
+            > as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("remaining creation, diagnostic, and rejection need terminal custody");
     };
     assert_creation(settlement.creations);
@@ -311,13 +504,67 @@ async fn mixed_retirement_product_admits_source_through_the_other_layer_order() 
         ),
         become_: Step::<Never, Stopped>::Continue,
     };
-    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                PendingRetirement,
+                SendLayer<
+                    SendLayer<
+                        SourceSettlements<ReplyRequest>,
+                        Vec<ActionItemResult<IndependentRequest>>,
+                    >,
+                    Vec<ActionItemResult<TerminalDiagnostic>>,
+                >,
+                Never,
+            > as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("retained creation and diagnostic must not block inner source admission");
     };
     assert_admitted(&mut host);
-    let SourceCustody::Retained(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Retained(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                PendingRetirement,
+                SendLayer<
+                    SendLayer<
+                        SourceSettlements<ReplyRequest>,
+                        Vec<ActionItemResult<IndependentRequest>>,
+                    >,
+                    Vec<ActionItemResult<TerminalDiagnostic>>,
+                >,
+                Never,
+            > as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("remaining creation, diagnostic, and rejection need terminal custody");
     };
     assert_creation(settlement.creations);
@@ -341,7 +588,35 @@ async fn mixed_retirement_product_returns_every_lane_when_source_closes() {
         ),
         become_: Step::<Never, Stopped>::Continue,
     };
-    let SourceCustody::Closed(settlement) = settlement.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Closed(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                PendingRetirement,
+                SendLayer<
+                    SourceSettlements<ReplyRequest>,
+                    SendLayer<
+                        Vec<ActionItemResult<TerminalDiagnostic>>,
+                        Vec<ActionItemResult<IndependentRequest>>,
+                    >,
+                >,
+                Never,
+            > as SourceSettlementCustody<ReturnHost, ReturnEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<ReturnHost, ReturnEvent>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("a closed source returns the complete mixed product");
     };
     assert!(host.admitted.is_empty());

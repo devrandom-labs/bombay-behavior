@@ -1,3 +1,7 @@
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use behavior::ActionItem;
 use behavior::Actions;
 use behavior::Address;
@@ -5,7 +9,6 @@ use behavior::Behavior;
 use behavior::Births;
 use behavior::ChildCreationOutcome;
 use behavior::ChildHead;
-use behavior::ChildNamespaceExhausted;
 use behavior::CommittedChild;
 use behavior::CreateChild;
 use behavior::CreationCorrelation;
@@ -31,6 +34,7 @@ use behavior::SendLayer;
 use behavior::SettledItem;
 use behavior::Step;
 use behavior::User;
+use behavior::{InterpretationProgress, finish_item, prepare_item};
 use core::marker::PhantomData;
 use std::collections::HashMap;
 
@@ -114,12 +118,70 @@ struct ChildWork {
 struct Independent(u8);
 
 impl ActionItem for ChildWork {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = u8;
     type Rejection = &'static str;
     type Prerequisite = CreationCorrelation<Child, ChildHead>;
 }
 
 impl ActionItem for Independent {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = u8;
     type Rejection = Never;
     type Prerequisite = Never;
@@ -158,20 +220,38 @@ impl Runtime {
 impl<RootEvent, Path> InterpretItem<Creations<CreateChild<RuntimeAddr, Child>>, RootEvent, Path>
     for Runtime
 {
-    async fn interpret_item(
-        &mut self,
-        creations: Creations<CreateChild<RuntimeAddr, Child>>,
-    ) -> ItemSettlement<
-        Creations<CreateChild<RuntimeAddr, Child>>,
-        Creations<RoutedCreation<RuntimeAddr, Child>>,
-        ChildNamespaceExhausted,
-        Never,
-    > {
-        let mut route = 40_u64;
-        ItemSettlement::Accepted(creations.map(|creation| {
-            route += 1;
-            RoutedCreation::new(creation, route)
-        }))
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Creations<CreateChild<RuntimeAddr, Child>>>,
+        received: &'a mut Option<<Creations<CreateChild<RuntimeAddr, Child>> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Creations<CreateChild<RuntimeAddr, Child>>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(creations) = input.take() else {
+                return;
+            };
+            let producer = async move {
+                let mut route = 40_u64;
+                ItemSettlement::Accepted(creations.map(|creation| {
+                    route += 1;
+                    RoutedCreation::new(creation, route)
+                }))
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
@@ -227,32 +307,78 @@ impl EstablishChild<ChildHead, Child> for Runtime {
 }
 
 impl<RootEvent, Path> InterpretItem<ChildWork, RootEvent, Path> for Runtime {
-    async fn interpret_item(
-        &mut self,
-        item: ChildWork,
-    ) -> ItemSettlement<ChildWork, u8, &'static str, CreationCorrelation<Child, ChildHead>> {
-        self.sends.push("child");
-        match self.resolutions.get(&item.creation) {
-            Some(CreationStatus::Created) => ItemSettlement::Accepted(item.value),
-            Some(CreationStatus::Rejected) => ItemSettlement::Blocked {
-                item,
-                prerequisite: CreationCorrelation::new(item.creation),
-            },
-            None => ItemSettlement::Rejected {
-                item,
-                reason: "missing child binding",
-            },
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ChildWork>,
+        received: &'a mut Option<<ChildWork as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ChildWork: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = async move {
+                self.sends.push("child");
+                match self.resolutions.get(&item.creation) {
+                    Some(CreationStatus::Created) => ItemSettlement::Accepted(item.value),
+                    Some(CreationStatus::Rejected) => ItemSettlement::Blocked {
+                        item,
+                        prerequisite: CreationCorrelation::new(item.creation),
+                    },
+                    None => ItemSettlement::Rejected {
+                        item,
+                        reason: "missing child binding",
+                    },
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl<RootEvent, Path> InterpretItem<Independent, RootEvent, Path> for Runtime {
-    async fn interpret_item(
-        &mut self,
-        item: Independent,
-    ) -> ItemSettlement<Independent, u8, Never, Never> {
-        self.sends.push("independent");
-        ItemSettlement::Accepted(item.0)
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Independent>,
+        received: &'a mut Option<<Independent as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Independent: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = async move {
+                self.sends.push("independent");
+                ItemSettlement::Accepted(item.0)
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
@@ -287,8 +413,14 @@ async fn creation_rejection_blocks_only_its_exact_dependents() {
     );
     let mut runtime = Runtime::with_plan(id, CreationPlan::RejectByHost);
 
-    let Interpretation::Complete(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Complete(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        TestActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual dependent creation/actions product must retain its full settlement");
+        };
+        settlement
+    }) else {
         panic!("expected a complete action settlement");
     };
     let CreationSettlement::Settled(creations) = settlement.creations else {
@@ -337,8 +469,14 @@ async fn initialization_rejection_returns_the_current_child_and_exact_error() {
     );
     let mut runtime = Runtime::with_plan(id, CreationPlan::RejectInitialization);
 
-    let Interpretation::Complete(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Complete(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        TestActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual dependent creation/actions product must retain its full settlement");
+        };
+        settlement
+    }) else {
         panic!("expected a complete action settlement");
     };
     let CreationSettlement::Settled(creations) = settlement.creations else {

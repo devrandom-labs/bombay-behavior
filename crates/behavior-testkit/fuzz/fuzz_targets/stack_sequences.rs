@@ -66,7 +66,7 @@ fuzz_target!(|bytes: &[u8]| {
     let peer = MailAddr(44);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(EchoingParent::default(), route),
+            behavior_actors::Stash::new(EchoingParent::default(), |_, message| route(message)),
             peer,
             stop_on_abnormal_death,
         ),

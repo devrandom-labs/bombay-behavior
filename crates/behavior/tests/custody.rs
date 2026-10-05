@@ -1,4 +1,6 @@
+use core::future::Future;
 use behavior::{
+    SourceProgress,
     Address, Behavior, BehaviorActed, Births, ChildChoice, ChildNamespaceExhausted,
     CreationSequence, CreationSettlement, CreationSettlements, Creations, CreationsSettled,
     EndpointAddress, EventIngress, Never, NoBirths, NoSends, Protocol, SourceAdmission,
@@ -103,14 +105,27 @@ struct Host {
 }
 
 impl SourceAdmission<CreatorEvent, Births<Children>, Returned> for Host {
-    async fn admit_source(&mut self, input: Returned) -> Result<(), Returned> {
-        match self.admission {
-            Admission::Open => {
-                let CreatorEvent::Creations(input) = CreatorEvent::ingress(input);
-                self.received.push(input);
-                Ok(())
+    fn admit_source(
+        &mut self,
+        input: &mut Option<Returned>,
+        reply: &mut Option<Result<(), Returned>>,
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            if reply.is_none() {
+                if let Some(input) = input.take() {
+                    let admission = {
+                        match self.admission {
+                                    Admission::Open => {
+                                        let CreatorEvent::Creations(input) = CreatorEvent::ingress(input);
+                                        self.received.push(input);
+                                        Ok(())
+                                    }
+                                    Admission::Closed => Err(input),
+                                }
+                    };
+                    *reply = Some(admission);
+                }
             }
-            Admission::Closed => Err(input),
         }
     }
 }
@@ -139,7 +154,18 @@ async fn open_creator_receives_one_ordered_batch() {
         received: Vec::new(),
     };
 
-    let residual = rejected_children().offer_next_to_source(&mut host).await;
+    let residual = {
+        let mut source_progress = Some(SourceProgress::Original(rejected_children()));
+        <_ as SourceSettlementCustody<Host, CreatorEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<Births<Children> as CreationSettlements<RuntimeAddr>>::Settlements as SourceSettlementCustody<Host, CreatorEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, CreatorEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
 
     assert!(matches!(residual, SourceCustody::Admitted(_)));
     let returned = host.received.pop().expect("one creation batch returned");
@@ -158,7 +184,18 @@ async fn closed_creator_returns_the_complete_batch() {
         received: Vec::new(),
     };
 
-    let residual = rejected_children().offer_next_to_source(&mut host).await;
+    let residual = {
+        let mut source_progress = Some(SourceProgress::Original(rejected_children()));
+        <_ as SourceSettlementCustody<Host, CreatorEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<Births<Children> as CreationSettlements<RuntimeAddr>>::Settlements as SourceSettlementCustody<Host, CreatorEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, CreatorEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
 
     let SourceCustody::Closed(CreationSettlement::Rejected { creations, .. }) = residual else {
         panic!("closed admission lost the rejected creation batch");
@@ -175,11 +212,18 @@ enum NoEvent {}
 #[tokio::test]
 async fn no_births_requires_no_admission_port() {
     let residual =
-        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::offer_next_to_source(
-            Creations::empty(),
-            &mut NoHost,
-        )
-        .await;
+        {
+        let mut source_progress = Some(SourceProgress::Original(Creations::empty()));
+        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::offer_next_to_source(custody, &mut NoHost).await;
+        }
+        <Creations<Never> as SourceSettlementCustody<NoHost, NoEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
 
     assert!(matches!(residual, SourceCustody::Exhausted(creations) if creations.is_empty()));
 }

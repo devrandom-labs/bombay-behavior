@@ -59,22 +59,24 @@ pub trait StashStatus {
 /// }
 /// fn route(_: &()) -> behavior_actors::StashRoute { behavior_actors::StashRoute::Release }
 /// fn requires_behavior<B: behavior::Behavior>(_: &B) {}
-/// requires_behavior(&behavior_actors::Stash::new(Fallible, route));
+/// requires_behavior(&behavior_actors::Stash::new(Fallible, |_, message| route(message)));
 /// ```
 pub struct Stash<B: Behavior> {
     inner: B,
-    route: fn(&behavior::BehaviorMessage<B>) -> StashRoute,
+    route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute,
     held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
 impl<B: Behavior<Ph = Never>> Stash<B> {
-    /// Wrap `inner` with the pure message-routing decision `route`.
+    /// Wrap `inner` with `route`, a pure decision over the actual inner state and message.
     ///
     /// Stashed messages retain FIFO order and ownership until a later
-    /// [`StashRoute::Release`]. Construction performs no transition or runtime
+    /// [`StashRoute::Release`]. Each replay borrows the state returned by the
+    /// preceding inner transition; the route must perform no effect.
+    /// Construction performs no transition or runtime
     /// operation.
     #[must_use]
-    pub fn new(inner: B, route: fn(&behavior::BehaviorMessage<B>) -> StashRoute) -> Self {
+    pub fn new(inner: B, route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute) -> Self {
         Self {
             inner,
             route,
@@ -120,7 +122,7 @@ where
     ) -> Result<(), B::Error> {
         let mut batch = core::mem::take(&mut self.held);
         while let Some(user) = batch.pop_front() {
-            match (self.route)(&user.message) {
+            match (self.route)(&self.inner, &user.message) {
                 StashRoute::Stash => self.held.push_back(user),
                 StashRoute::Deliver | StashRoute::Release => {
                     let actions = behavior::delegate_transition(
@@ -173,7 +175,7 @@ where
             Ok(user) => user,
             Err(other) => return behavior::delegate_transition(&mut self.inner, other),
         };
-        match (self.route)(&user.message) {
+        match (self.route)(&self.inner, &user.message) {
             StashRoute::Stash => {
                 self.held.push_back(user);
                 Ok(Actions::cont())

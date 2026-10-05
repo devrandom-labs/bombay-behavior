@@ -1,6 +1,11 @@
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use behavior::{
-    ActionItem, Here, Inside, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
-    InterpreterRequests, ItemSettlement, SendLayer, SettledItem,
+    ActionItem, Here, Inside, InterpretItem, InterpretSends, Interpretation,
+    InterpretationProgress, InterpreterFault, InterpreterRequests, ItemSettlement, SendLayer,
+    SettledItem, finish_item, prepare_item,
 };
 use std::collections::BTreeMap;
 
@@ -49,12 +54,70 @@ struct Runtime {
 }
 
 impl ActionItem for Watch {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = Receipt;
     type Rejection = Rejection;
     type Prerequisite = Prerequisite;
 }
 
 impl ActionItem for Timer {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = Receipt;
     type Rejection = Rejection;
     type Prerequisite = Prerequisite;
@@ -78,67 +141,99 @@ impl Runtime {
 }
 
 impl<RootEvent, Path> InterpretItem<Watch, RootEvent, Path> for Runtime {
-    fn interpret_item(
-        &mut self,
-        item: Watch,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Watch,
-            <Watch as ActionItem>::Accepted,
-            <Watch as ActionItem>::Rejection,
-            <Watch as ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        let plan = self.next(Kind::Watch, item.0);
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Watch>,
+        received: &'a mut Option<<Watch as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Watch: 'a,
+    {
         async move {
-            match plan {
-                Plan::Accept => ItemSettlement::Accepted(Receipt::Watching),
-                Plan::Reject => ItemSettlement::Rejected {
-                    item,
-                    reason: Rejection::ObserverClosed,
-                },
-                Plan::Block => ItemSettlement::Blocked {
-                    item,
-                    prerequisite: Prerequisite::SubjectCommit,
-                },
-                Plan::Corrupt => ItemSettlement::Corrupt {
-                    item,
-                    fault: InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                let plan = self.next(Kind::Watch, item.0);
+                async move {
+                    match plan {
+                        Plan::Accept => ItemSettlement::Accepted(Receipt::Watching),
+                        Plan::Reject => ItemSettlement::Rejected {
+                            item,
+                            reason: Rejection::ObserverClosed,
+                        },
+                        Plan::Block => ItemSettlement::Blocked {
+                            item,
+                            prerequisite: Prerequisite::SubjectCommit,
+                        },
+                        Plan::Corrupt => ItemSettlement::Corrupt {
+                            item,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl<RootEvent, Path> InterpretItem<Timer, RootEvent, Path> for Runtime {
-    fn interpret_item(
-        &mut self,
-        item: Timer,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Timer,
-            <Timer as ActionItem>::Accepted,
-            <Timer as ActionItem>::Rejection,
-            <Timer as ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        let plan = self.next(Kind::Timer, item.0);
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Timer>,
+        received: &'a mut Option<<Timer as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Timer: 'a,
+    {
         async move {
-            match plan {
-                Plan::Accept => ItemSettlement::Accepted(Receipt::Scheduled),
-                Plan::Reject => ItemSettlement::Rejected {
-                    item,
-                    reason: Rejection::TimerClosed,
-                },
-                Plan::Block => ItemSettlement::Blocked {
-                    item,
-                    prerequisite: Prerequisite::ClockCommit,
-                },
-                Plan::Corrupt => ItemSettlement::Corrupt {
-                    item,
-                    fault: InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                let plan = self.next(Kind::Timer, item.0);
+                async move {
+                    match plan {
+                        Plan::Accept => ItemSettlement::Accepted(Receipt::Scheduled),
+                        Plan::Reject => ItemSettlement::Rejected {
+                            item,
+                            reason: Rejection::TimerClosed,
+                        },
+                        Plan::Block => ItemSettlement::Blocked {
+                            item,
+                            prerequisite: Prerequisite::ClockCommit,
+                        },
+                        Plan::Corrupt => ItemSettlement::Corrupt {
+                            item,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
@@ -154,7 +249,14 @@ async fn rejection_and_blocking_continue_through_both_wrapper_orders() {
         ((Kind::Timer, 2), Plan::Block),
     ]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(effects, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(effects));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact wrapper product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [(Kind::Watch, 1), (Kind::Timer, 2)]);
     assert_eq!(
         settlement,
@@ -175,7 +277,14 @@ async fn rejection_and_blocking_continue_through_both_wrapper_orders() {
         InterpreterRequests::one(Timer(3)),
     );
     let mut runtime = Runtime::with_plan([((Kind::Timer, 3), Plan::Reject)]);
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(reversed, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(reversed));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact wrapper product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [(Kind::Timer, 3), (Kind::Watch, 4)]);
     assert_eq!(
         settlement,
@@ -199,7 +308,14 @@ async fn corruption_retains_fault_item_and_every_exact_unattempted_suffix() {
     );
     let mut runtime = Runtime::with_plan([((Kind::Watch, 2), Plan::Corrupt)]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(effects, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(effects));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact wrapper product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [(Kind::Watch, 1), (Kind::Watch, 2)]);
     assert_eq!(
         settlement,

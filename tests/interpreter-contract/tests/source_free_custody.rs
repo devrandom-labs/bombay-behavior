@@ -1,14 +1,44 @@
 use core::convert::Infallible;
 
 use behavior::{
-    ActionItem, ActionItemResult, Delivery, InterpreterFault, ItemSettlement, MailAddr,
-    MessageProtocol, SettledItem, SourceCustody, SourceSettlementCustody,
+    ActionItem, ActionItemResult, Delivery, InterpretationProgress, InterpreterFault,
+    ItemSettlement, MailAddr, MessageProtocol, ReportToParent, SettledItem, SourceCustody,
+    SourceProgress, SourceSettlementCustody, finish_item, prepare_item,
 };
 use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
 
 struct OwnedRequest(Box<str>);
 
 impl ActionItem for OwnedRequest {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = u8;
     type Prerequisite = u16;
@@ -20,11 +50,26 @@ type OrdinaryDelivery = Delivery<MessageProtocol<MailAddr, u8>>;
 async fn offer<Item: ActionItem>(
     settlements: Vec<ActionItemResult<Item>>,
 ) -> SourceCustody<Vec<ActionItemResult<Item>>> {
-    <Vec<ActionItemResult<Item>> as SourceSettlementCustody<(), ()>>::offer_next_to_source(
-        settlements,
-        &mut (),
-    )
-    .await
+    {
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <Vec<ActionItemResult<Item>> as SourceSettlementCustody<(), ()>>::prepare_source(
+            &mut source_progress,
+        );
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <Vec<ActionItemResult<Item>> as SourceSettlementCustody<(), ()>>::offer_next_to_source(
+                custody,
+                &mut (),
+            )
+            .await;
+        }
+        <Vec<ActionItemResult<Item>> as SourceSettlementCustody<(), ()>>::finish_source(
+            &mut source_progress,
+        );
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }
 }
 
 #[tokio::test]
@@ -128,4 +173,26 @@ async fn source_free_failures_and_untouched_requests_remain_complete() {
     assert_eq!(&*blocked, "blocked");
     assert_eq!(&*corrupt, "corrupt");
     assert_eq!(&*unattempted, "unattempted");
+}
+
+#[tokio::test]
+async fn cold_nonstatic_parent_report_keeps_the_actual_borrowed_slice() {
+    let original = vec![17_u64, 31, 43];
+    let original_pointer = original.as_ptr();
+    let request = ReportToParent::new(original.as_slice());
+    let settlements: Vec<ActionItemResult<ReportToParent<&[u64]>>> =
+        vec![SettledItem::Unattempted(request)];
+    let SourceCustody::Retained(mut returned) = offer(settlements).await else {
+        panic!("the actual unattempted parent report stays in cold source custody");
+    };
+    let settled = returned
+        .pop()
+        .expect("the original parent report is retained");
+    let SettledItem::Unattempted(request) = settled else {
+        panic!("source custody attempted or reclassified the unattempted parent report");
+    };
+    let report = request.into_inner();
+    assert_eq!(report.as_ptr(), original_pointer);
+    assert_eq!(report, &[17, 31, 43]);
+    assert!(returned.is_empty());
 }

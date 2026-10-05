@@ -7,8 +7,9 @@ use std::time::Instant;
 
 use behavior::{
     ActionItem, Behavior, CreationId, EndpointAddress, EstablishedActor, EstablishedRecipient,
-    Ingress, InjectEvent, InterpretEstablished, InterpretInstalledActor, InterpreterRequest,
-    ItemSettlement, Never, Protocol, RecipientAddress, ReturnsToEmitter,
+    Ingress, InjectEvent, InterpretEstablished, InterpretInstalledActor, InterpretationProgress,
+    InterpreterRequest, ItemSettlement, Never, Protocol, RecipientAddress, ReturnsToEmitter,
+    finish_item, prepare_item,
 };
 
 use super::ShutdownRequested;
@@ -78,6 +79,37 @@ where
     behavior::BehaviorAddr<C>: EndpointAddress,
     <behavior::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = Never;
     type Prerequisite = behavior::CreationCorrelation<C::Protocol, Occurrence>;
@@ -456,6 +488,37 @@ where
     P::Addr: RecipientAddress,
     <P::Addr as RecipientAddress>::Established<P>: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = Never;
     type Prerequisite = Never;
@@ -540,6 +603,37 @@ impl<P: Protocol> ActionItem for CancelObservation<P>
 where
     P::Addr: RecipientAddress,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = Never;
     type Prerequisite = Never;
@@ -815,6 +909,37 @@ where
     B::Event: InjectEvent<ShutdownRequested, TargetPath>,
     EstablishedActor<B>: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ShutdownId;
     type Rejection = ShutdownRejection;
     type Prerequisite = Never;

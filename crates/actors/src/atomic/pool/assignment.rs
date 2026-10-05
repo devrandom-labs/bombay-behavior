@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use behavior::{
     ActionItem, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason, InterpretItem,
-    ItemSettlement, Never, Protocol, RecipientAddress, ReportToParent, SourceAction,
+    Interpretation, InterpretationProgress, ItemSettlement, Never, Protocol, RecipientAddress,
+    ReportToParent, SourceAction,
 };
 
 use super::super::WorkerAttempt;
@@ -333,51 +334,32 @@ where
         }
     }
 
-    /// Transfer only the exact worker delivery while keeping pool correlation
-    /// under this request's ownership until the lower capability settles it.
+    /// Attempt the lower worker delivery while the complete request or partial
+    /// assignment receipt remains in the caller's original interpretation slot.
     pub async fn settle<Host, RootEvent, Path>(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                <Self as ActionItem>::Custody,
+                ItemSettlement<Self, AssignmentReceipt, ExactDeliveryReason, Never>,
+            >,
+        >,
         host: &mut Host,
-    ) -> ItemSettlement<Self, AssignmentReceipt, ExactDeliveryReason, Never>
-    where
+    ) where
         Host: InterpretItem<EstablishedDelivery<P>, RootEvent, Path>,
         <P::Addr as RecipientAddress>::Established<P>: Send,
         Job: Send,
     {
-        let Self {
-            target,
-            assignment,
-            receipt,
-        } = self;
-        match host
-            .interpret_item(EstablishedDelivery::new(target, assignment))
-            .await
-        {
-            ItemSettlement::Accepted(()) => ItemSettlement::Accepted(receipt),
-            ItemSettlement::Rejected {
-                item: EstablishedDelivery { to, message },
-                reason,
-            } => ItemSettlement::Rejected {
-                item: Self {
-                    target: to,
-                    assignment: message,
-                    receipt,
-                },
-                reason,
-            },
-            ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
-            ItemSettlement::Corrupt {
-                item: EstablishedDelivery { to, message },
-                fault,
-            } => ItemSettlement::Corrupt {
-                item: Self {
-                    target: to,
-                    assignment: message,
-                    receipt,
-                },
-                fault,
-            },
+        <Self as ActionItem>::prepare_interpretation(progress);
+        if let Some(InterpretationProgress::Interpreting(custody)) = progress {
+            if let Some((input, received)) = <Self as ActionItem>::interpretation_input(custody) {
+                <Host as InterpretItem<EstablishedDelivery<P>, RootEvent, Path>>::interpret_item(
+                    host, input, received,
+                )
+                .await;
+            }
         }
+        <Self as ActionItem>::finish_interpretation(progress);
     }
 }
 
@@ -388,6 +370,108 @@ where
     <P::Addr as RecipientAddress>::Established<P>: Send,
     Job: Send,
 {
+    type Custody = (
+        AssignmentReceipt,
+        (Option<EstablishedDelivery<P>>, Option<Self::Reply>),
+    );
+    type Input<'a>
+        = &'a mut Option<EstablishedDelivery<P>>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<EstablishedDelivery<P>, (), ExactDeliveryReason, Never>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                Self::Custody,
+                ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>,
+            >,
+        >,
+    ) {
+        if !matches!(progress, Some(InterpretationProgress::Original(_))) {
+            return;
+        }
+        match progress.take() {
+            Some(InterpretationProgress::Original(Self {
+                target,
+                assignment,
+                receipt,
+            })) => {
+                *progress = Some(InterpretationProgress::Interpreting((
+                    receipt,
+                    (Some(EstablishedDelivery::new(target, assignment)), None),
+                )));
+            }
+            retained => *progress = retained,
+        }
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (_, (input, received)) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                Self::Custody,
+                ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>,
+            >,
+        >,
+    ) {
+        if !matches!(
+            progress,
+            Some(InterpretationProgress::Interpreting((_, (None, Some(_)))))
+        ) {
+            return;
+        }
+        match progress.take() {
+            Some(InterpretationProgress::Interpreting((receipt, (None, Some(reply))))) => {
+                let received = match reply {
+                    ItemSettlement::Accepted(()) => ItemSettlement::Accepted(receipt),
+                    ItemSettlement::Rejected {
+                        item: EstablishedDelivery { to, message },
+                        reason,
+                    } => ItemSettlement::Rejected {
+                        item: Self {
+                            target: to,
+                            assignment: message,
+                            receipt,
+                        },
+                        reason,
+                    },
+                    ItemSettlement::Corrupt {
+                        item: EstablishedDelivery { to, message },
+                        fault,
+                    } => ItemSettlement::Corrupt {
+                        item: Self {
+                            target: to,
+                            assignment: message,
+                            receipt,
+                        },
+                        fault,
+                    },
+                    ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+                };
+                let interpretation = match received {
+                    received @ ItemSettlement::Corrupt { .. } => Interpretation::Corrupt(received),
+                    received => Interpretation::Complete(received),
+                };
+                *progress = Some(InterpretationProgress::Completed(interpretation));
+            }
+            retained => *progress = retained,
+        }
+    }
+
     type Accepted = AssignmentReceipt;
     type Rejection = ExactDeliveryReason;
     type Prerequisite = Never;
@@ -811,14 +895,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    use core::future::Future;
     use std::collections::VecDeque;
     use std::sync::Arc;
     use std::time::Instant;
 
     use behavior::{
-        Address, CreationSequence, EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason,
-        Here, InterpretItem, ItemSettlement, MailAddr, MessageProtocol, Never, Protocol,
-        RecipientAddress,
+        ActionItem, Address, CreationSequence, EstablishedDelivery, EstablishedRecipient,
+        ExactDeliveryReason, Here, InterpretItem, InterpretationProgress, ItemSettlement, MailAddr,
+        MessageProtocol, Protocol, RecipientAddress,
     };
 
     use super::{
@@ -884,22 +969,36 @@ mod tests {
     }
 
     impl InterpretItem<ExactAssignment, (), Here> for AssignmentDeliveryHost {
-        async fn interpret_item(
-            &mut self,
-            delivery: ExactAssignment,
-        ) -> ItemSettlement<ExactAssignment, (), ExactDeliveryReason, Never> {
-            self.observed_payloads
-                .push(delivery.message.payload().0.as_ptr() as usize);
-            match self
-                .decisions
-                .pop_front()
-                .expect("one decision per delivery")
-            {
-                DeliveryAdmission::Accept => ItemSettlement::Accepted(()),
-                DeliveryAdmission::Reject => ItemSettlement::Rejected {
-                    item: delivery,
-                    reason: ExactDeliveryReason::ClosedRecipient,
-                },
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<ExactAssignment>,
+            received: &'a mut Option<<ExactAssignment as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            ExactAssignment: 'a,
+        {
+            async move {
+                if received.is_some() {
+                    return;
+                }
+                let Some(delivery) = input.take() else {
+                    return;
+                };
+                *received = Some({
+                    self.observed_payloads
+                        .push(delivery.message.payload().0.as_ptr() as usize);
+                    match self
+                        .decisions
+                        .pop_front()
+                        .expect("one decision per delivery")
+                    {
+                        DeliveryAdmission::Accept => ItemSettlement::Accepted(()),
+                        DeliveryAdmission::Reject => ItemSettlement::Rejected {
+                            item: delivery,
+                            reason: ExactDeliveryReason::ClosedRecipient,
+                        },
+                    }
+                });
             }
         }
     }
@@ -933,7 +1032,18 @@ mod tests {
             observed_payloads: Vec::new(),
         };
 
-        let ItemSettlement::Accepted(second_receipt) = second.settle(&mut host).await else {
+        let ItemSettlement::Accepted(second_receipt) = ({
+            let mut progress = Some(InterpretationProgress::Original(second));
+            AssignWorker::<AssignmentProtocol, MoveJob>::settle::<_, (), Here>(
+                &mut progress,
+                &mut host,
+            )
+            .await;
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        }) else {
             panic!("second assignment admission returns its held receipt");
         };
         assert!(matches!(
@@ -943,7 +1053,18 @@ mod tests {
         let ItemSettlement::Rejected {
             item: first_returned,
             reason: ExactDeliveryReason::ClosedRecipient,
-        } = first.settle(&mut host).await
+        } = ({
+            let mut progress = Some(InterpretationProgress::Original(first));
+            AssignWorker::<AssignmentProtocol, MoveJob>::settle::<_, (), Here>(
+                &mut progress,
+                &mut host,
+            )
+            .await;
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        })
         else {
             panic!("first assignment returns its actual rejected delivery");
         };

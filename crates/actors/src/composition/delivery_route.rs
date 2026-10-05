@@ -2,8 +2,9 @@
 
 use behavior::{
     ActionItem, ActionItemResult, Delivery, EndpointAddress, EstablishedDelivery,
-    EstablishedRecipient, InterpretItem, InterpretSends, Interpretation, Own, Protocol, Recipient,
-    SendEffects, SendInput, SendSettlements, SendsFor, SettledItem, settle_item,
+    EstablishedRecipient, InterpretItem, InterpretSends, Interpretation, InterpretationProgress,
+    ItemSettlement, Own, Protocol, Recipient, RecipientAddress, SendEffects, SendInput,
+    SendSettlements, SendsFor, SettledItem, SourceCustody, SourceProgress, SourceSettlementCustody,
 };
 use core::future::Future;
 
@@ -309,25 +310,177 @@ where
 {
     type Settlements =
         ReplyDeliveries<ActionItemResult<Delivery<P>>, ActionItemResult<EstablishedDelivery<P>>>;
+    type SourceCustody = Self::Settlements;
+    type InterpretationCustody = Vec<
+        ReplyDelivery<
+            (
+                Option<Delivery<P>>,
+                Option<
+                    ItemSettlement<
+                        Delivery<P>,
+                        <Delivery<P> as ActionItem>::Accepted,
+                        <Delivery<P> as ActionItem>::Rejection,
+                        <Delivery<P> as ActionItem>::Prerequisite,
+                    >,
+                >,
+            ),
+            (
+                Option<EstablishedDelivery<P>>,
+                Option<
+                    ItemSettlement<
+                        EstablishedDelivery<P>,
+                        <EstablishedDelivery<P> as ActionItem>::Accepted,
+                        <EstablishedDelivery<P> as ActionItem>::Rejection,
+                        <EstablishedDelivery<P> as ActionItem>::Prerequisite,
+                    >,
+                >,
+            ),
+        >,
+    >;
 
-    fn unattempted(self) -> Self::Settlements {
-        ReplyDeliveries::new(
-            self.deliveries
-                .into_iter()
-                .map(|delivery| match delivery {
-                    ReplyDelivery::Logical(delivery) => {
-                        ReplyDelivery::Logical(SettledItem::Unattempted(delivery))
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        *progress = match progress.take() {
+            Some(InterpretationProgress::Original(original)) => {
+                Some(InterpretationProgress::Interpreting(
+                    original
+                        .deliveries
+                        .into_iter()
+                        .map(|delivery| match delivery {
+                            ReplyDelivery::Logical(input) => {
+                                ReplyDelivery::Logical((Some(input), None))
+                            }
+                            ReplyDelivery::Established(input) => {
+                                ReplyDelivery::Established((Some(input), None))
+                            }
+                        })
+                        .collect(),
+                ))
+            }
+            retained => retained,
+        };
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        let Some(InterpretationProgress::Interpreting(rows)) = progress.as_ref() else {
+            return;
+        };
+        let corrupt = rows.iter().position(|row| match row {
+            ReplyDelivery::Logical((_, received)) => {
+                matches!(received, Some(ItemSettlement::Corrupt { .. }))
+            }
+            ReplyDelivery::Established((_, received)) => {
+                matches!(received, Some(ItemSettlement::Corrupt { .. }))
+            }
+        });
+        let complete = rows.iter().enumerate().all(|(index, row)| {
+            let after_corrupt = corrupt.is_some_and(|corrupt| index > corrupt);
+            match row {
+                ReplyDelivery::Logical((input, received)) => {
+                    if after_corrupt {
+                        input.is_some() && received.is_none()
+                    } else {
+                        input.is_none() && received.is_some()
                     }
-                    ReplyDelivery::Established(delivery) => {
-                        ReplyDelivery::Established(SettledItem::Unattempted(delivery))
+                }
+                ReplyDelivery::Established((input, received)) => {
+                    if after_corrupt {
+                        input.is_some() && received.is_none()
+                    } else {
+                        input.is_none() && received.is_some()
                     }
-                })
-                .collect(),
-        )
+                }
+            }
+        });
+        if !complete {
+            return;
+        }
+        let Some(InterpretationProgress::Interpreting(rows)) = progress.take() else {
+            return;
+        };
+        let mut remaining = rows.into_iter();
+        let mut settled = Vec::with_capacity(remaining.len());
+        while let Some(row) = remaining.next() {
+            match row {
+                ReplyDelivery::Logical((None, Some(received))) => {
+                    settled.push(ReplyDelivery::Logical(SettledItem::Attempted(received)))
+                }
+                ReplyDelivery::Logical((Some(input), None)) => {
+                    settled.push(ReplyDelivery::Logical(SettledItem::Unattempted(input)))
+                }
+                ReplyDelivery::Established((None, Some(received))) => {
+                    settled.push(ReplyDelivery::Established(SettledItem::Attempted(received)))
+                }
+                ReplyDelivery::Established((Some(input), None)) => {
+                    settled.push(ReplyDelivery::Established(SettledItem::Unattempted(input)))
+                }
+                row => {
+                    let restored = settled
+                        .into_iter()
+                        .map(|settled| match settled {
+                            ReplyDelivery::Logical(SettledItem::Attempted(received)) => {
+                                ReplyDelivery::Logical((None, Some(received)))
+                            }
+                            ReplyDelivery::Logical(SettledItem::Unattempted(input)) => {
+                                ReplyDelivery::Logical((Some(input), None))
+                            }
+                            ReplyDelivery::Established(SettledItem::Attempted(received)) => {
+                                ReplyDelivery::Established((None, Some(received)))
+                            }
+                            ReplyDelivery::Established(SettledItem::Unattempted(input)) => {
+                                ReplyDelivery::Established((Some(input), None))
+                            }
+                        })
+                        .chain(core::iter::once(row))
+                        .chain(remaining)
+                        .collect();
+                    *progress = Some(InterpretationProgress::Interpreting(restored));
+                    return;
+                }
+            }
+        }
+        let settled = ReplyDeliveries::new(settled);
+        *progress = Some(InterpretationProgress::Completed(match corrupt {
+            Some(_) => Interpretation::Corrupt(settled),
+            None => Interpretation::Complete(settled),
+        }));
+    }
+
+    fn unattempted(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        *progress = match progress.take() {
+            Some(InterpretationProgress::Original(original)) => Some(
+                InterpretationProgress::Completed(Interpretation::Complete(ReplyDeliveries::new(
+                    original
+                        .deliveries
+                        .into_iter()
+                        .map(|delivery| match delivery {
+                            ReplyDelivery::Logical(input) => {
+                                ReplyDelivery::Logical(SettledItem::Unattempted(input))
+                            }
+                            ReplyDelivery::Established(input) => {
+                                ReplyDelivery::Established(SettledItem::Unattempted(input))
+                            }
+                        })
+                        .collect(),
+                ))),
+            ),
+            retained => retained,
+        };
     }
 }
 
-impl<Host, RootEvent, P> behavior::SourceSettlementCustody<Host, RootEvent>
+impl<Host, RootEvent, P> SourceSettlementCustody<Host, RootEvent>
     for ReplyDeliveries<ActionItemResult<Delivery<P>>, ActionItemResult<EstablishedDelivery<P>>>
 where
     P: Protocol,
@@ -335,11 +488,31 @@ where
     Delivery<P>: ActionItem,
     EstablishedDelivery<P>: ActionItem,
 {
+    type Custody = Self;
+
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) => Some(SourceProgress::Completed(
+                SourceCustody::Exhausted(original),
+            )),
+            retained => retained,
+        };
+    }
+
     fn offer_next_to_source(
-        self,
+        _: &mut Self::Custody,
         _: &mut Host,
-    ) -> impl Future<Output = behavior::SourceCustody<Self>> + Send {
-        core::future::ready(behavior::SourceCustody::Exhausted(self))
+    ) -> impl core::future::Future<Output = ()> + Send {
+        core::future::ready(())
+    }
+
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => Some(
+                SourceProgress::Completed(SourceCustody::Exhausted(original)),
+            ),
+            retained => retained,
+        };
     }
 }
 
@@ -351,52 +524,54 @@ where
         + Send,
     P: Protocol,
     P::Addr: EndpointAddress,
-    Delivery<P>: ActionItem,
-    EstablishedDelivery<P>: ActionItem,
+    P::Addr: Send,
+    P::Msg: Send,
+    <P::Addr as RecipientAddress>::Established<P>: Send,
 {
     fn interpret(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
         interpreter: &mut Interpreter,
-    ) -> impl Future<Output = Interpretation<Self::Settlements>> + Send {
+    ) -> impl Future<Output = ()> + Send {
         async move {
-            let mut source = self.deliveries.into_iter();
-            let mut settlements = Vec::with_capacity(source.len());
-            while let Some(delivery) = source.next() {
-                let settlement = match delivery {
-                    ReplyDelivery::Logical(delivery) => {
-                        settle_item::<Delivery<P>, Interpreter, RootEvent, Path>(
-                            delivery,
-                            interpreter,
-                        )
-                        .await
-                        .map(ReplyDelivery::Logical)
+            Self::prepare_interpretation(progress);
+            let Some(InterpretationProgress::Interpreting(rows)) = progress else {
+                return;
+            };
+            for row in rows {
+                match row {
+                    ReplyDelivery::Logical((input, received)) => {
+                        match (input.as_ref(), received.as_ref()) {
+                            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+                            (None, Some(_)) => continue,
+                            (Some(_), None) => {}
+                            _ => return,
+                        }
+                        <Interpreter as InterpretItem<Delivery<P>, RootEvent, Path>>::interpret_item(interpreter,input,received).await;
+                        match (input.as_ref(), received.as_ref()) {
+                            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+                            (None, Some(_)) => {}
+                            _ => return,
+                        }
                     }
-                    ReplyDelivery::Established(delivery) => {
-                        settle_item::<EstablishedDelivery<P>, Interpreter, RootEvent, Path>(
-                            delivery,
-                            interpreter,
-                        )
-                        .await
-                        .map(ReplyDelivery::Established)
-                    }
-                };
-                match settlement {
-                    Interpretation::Complete(settlement) => settlements.push(settlement),
-                    Interpretation::Corrupt(settlement) => {
-                        settlements.push(settlement);
-                        settlements.extend(source.map(|delivery| match delivery {
-                            ReplyDelivery::Logical(delivery) => {
-                                ReplyDelivery::Logical(SettledItem::Unattempted(delivery))
-                            }
-                            ReplyDelivery::Established(delivery) => {
-                                ReplyDelivery::Established(SettledItem::Unattempted(delivery))
-                            }
-                        }));
-                        return Interpretation::Corrupt(ReplyDeliveries::new(settlements));
+                    ReplyDelivery::Established((input, received)) => {
+                        match (input.as_ref(), received.as_ref()) {
+                            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+                            (None, Some(_)) => continue,
+                            (Some(_), None) => {}
+                            _ => return,
+                        }
+                        <Interpreter as InterpretItem<EstablishedDelivery<P>, RootEvent, Path>>::interpret_item(interpreter,input,received).await;
+                        match (input.as_ref(), received.as_ref()) {
+                            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+                            (None, Some(_)) => {}
+                            _ => return,
+                        }
                     }
                 }
             }
-            Interpretation::Complete(ReplyDeliveries::new(settlements))
+            Self::finish_interpretation(progress);
         }
     }
 }

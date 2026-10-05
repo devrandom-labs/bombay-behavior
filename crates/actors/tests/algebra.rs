@@ -6,17 +6,17 @@
     reason = "fixture methods intentionally match the fallible behavior macro contract"
 )]
 
-use core::future::Future;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
 use std::time::Duration;
 
 use behavior::{
     Acted, ActionItem, Actions, Become, Behavior, BehaviorBase, Births, CreateChild, CreationKind,
     CreationSequence, Creations, Delivery, EventLayer, Here, InjectEvent, Inside, InterpretItem,
-    InterpretSends, Interpretation, InterpreterRequests, ItemSettlement, LogicalDeliveryProtocols,
-    MailAddr, Never, NoBirthProtocols, NoBirths, Recipient, RetirementBirths, SendEffects, Step,
-    User, UserEvent,
+    InterpretSends, Interpretation, InterpretationProgress, InterpreterRequests, ItemSettlement,
+    LogicalDeliveryProtocols, MailAddr, Never, NoBirthProtocols, NoBirths, Recipient,
+    RetirementBirths, SendEffects, Step, User, UserEvent,
 };
 use behavior_actors::{
     Activate, Crash, Exit, Machine, Move, ObserveChild, PeerStopped, ScheduleAt, ShutdownEvent,
@@ -334,45 +334,77 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     impl InterpretItem<Delivery<U8Sink>, InitializationEvent, Inside<Inside<Here>>>
         for InitializationInterpreter
     {
-        fn interpret_item(
-            &mut self,
-            request: Delivery<U8Sink>,
-        ) -> impl Future<
-            Output = ItemSettlement<
-                Delivery<U8Sink>,
-                <Delivery<U8Sink> as ActionItem>::Accepted,
-                <Delivery<U8Sink> as ActionItem>::Rejection,
-                <Delivery<U8Sink> as ActionItem>::Prerequisite,
-            >,
-        > + Send {
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<Delivery<U8Sink>>,
+            received: &'a mut Option<<Delivery<U8Sink> as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            Delivery<U8Sink>: 'a,
+        {
             async move {
-                self.accepted
-                    .push(AcceptedInitializationRequest::Message(request));
-                ItemSettlement::Accepted(())
+                if received.is_some() {
+                    return;
+                }
+                let Some(request) = input.take() else {
+                    return;
+                };
+                let producer = {
+                    async move {
+                        self.accepted
+                            .push(AcceptedInitializationRequest::Message(request));
+                        ItemSettlement::Accepted(())
+                    }
+                };
+                let mut producer = pin!(producer);
+                poll_fn(|context| match producer.as_mut().poll(context) {
+                    Poll::Ready(settlement) => {
+                        *received = Some(settlement);
+                        Poll::Ready(())
+                    }
+                    Poll::Pending => Poll::Pending,
+                })
+                .await;
             }
         }
     }
 
     impl InterpretItem<ScheduleAt, InitializationEvent, Inside<Here>> for InitializationInterpreter {
-        fn interpret_item(
-            &mut self,
-            request: ScheduleAt,
-        ) -> impl Future<
-            Output = ItemSettlement<
-                ScheduleAt,
-                <ScheduleAt as ActionItem>::Accepted,
-                <ScheduleAt as ActionItem>::Rejection,
-                <ScheduleAt as ActionItem>::Prerequisite,
-            >,
-        > + Send {
-            let scheduled = TimerScheduled {
-                id: request.id,
-                generation: request.generation,
-            };
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<ScheduleAt>,
+            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            ScheduleAt: 'a,
+        {
             async move {
-                self.accepted
-                    .push(AcceptedInitializationRequest::AbsoluteTimer(request));
-                ItemSettlement::Accepted(scheduled)
+                if received.is_some() {
+                    return;
+                }
+                let Some(request) = input.take() else {
+                    return;
+                };
+                let producer = {
+                    let scheduled = TimerScheduled {
+                        id: request.id,
+                        generation: request.generation,
+                    };
+                    async move {
+                        self.accepted
+                            .push(AcceptedInitializationRequest::AbsoluteTimer(request));
+                        ItemSettlement::Accepted(scheduled)
+                    }
+                };
+                let mut producer = pin!(producer);
+                poll_fn(|context| match producer.as_mut().poll(context) {
+                    Poll::Ready(settlement) => {
+                        *received = Some(settlement);
+                        Poll::Ready(())
+                    }
+                    Poll::Pending => Poll::Pending,
+                })
+                .await;
             }
         }
     }
@@ -391,9 +423,15 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let mut runtime = InitializationInterpreter {
         accepted: Vec::new(),
     };
-    let interpreted =
-        <_ as InterpretSends<_, InitializationEvent, Here>>::interpret(initial.sends, &mut runtime)
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(initial.sends));
+        <_ as InterpretSends<_, InitializationEvent, Here>>::interpret(&mut progress, &mut runtime)
             .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact template product must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(
         runtime.accepted
@@ -412,11 +450,15 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
 
     let received = behavior.receive(MailAddr(2), 4).unwrap();
     let accepted_after_initialization = runtime.accepted.len();
-    let interpreted = <_ as InterpretSends<_, InitializationEvent, Here>>::interpret(
-        received.sends,
-        &mut runtime,
-    )
-    .await;
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(received.sends));
+        <_ as InterpretSends<_, InitializationEvent, Here>>::interpret(&mut progress, &mut runtime)
+            .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact template product must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert_eq!(runtime.accepted.len(), accepted_after_initialization);
     assert!(received.creates.is_empty());
@@ -487,62 +529,94 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
     }
 
     impl InterpretItem<ScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
-        fn interpret_item(
-            &mut self,
-            request: ScheduleAt,
-        ) -> impl Future<
-            Output = ItemSettlement<
-                ScheduleAt,
-                <ScheduleAt as ActionItem>::Accepted,
-                <ScheduleAt as ActionItem>::Rejection,
-                <ScheduleAt as ActionItem>::Prerequisite,
-            >,
-        > + Send {
-            let scheduled = TimerScheduled {
-                id: request.id,
-                generation: request.generation,
-            };
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<ScheduleAt>,
+            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            ScheduleAt: 'a,
+        {
             async move {
-                self.schedules.push(request);
-                self.pending.push(
-                    <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(
-                        TimerElapsed {
-                            id: request.id,
-                            generation: request.generation,
-                        },
-                    ),
-                );
-                ItemSettlement::Accepted(scheduled)
+                if received.is_some() {
+                    return;
+                }
+                let Some(request) = input.take() else {
+                    return;
+                };
+                let producer = {
+                    let scheduled = TimerScheduled {
+                        id: request.id,
+                        generation: request.generation,
+                    };
+                    async move {
+                        self.schedules.push(request);
+                        self.pending.push(
+                            <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(
+                                TimerElapsed {
+                                    id: request.id,
+                                    generation: request.generation,
+                                },
+                            ),
+                        );
+                        ItemSettlement::Accepted(scheduled)
+                    }
+                };
+                let mut producer = pin!(producer);
+                poll_fn(|context| match producer.as_mut().poll(context) {
+                    Poll::Ready(settlement) => {
+                        *received = Some(settlement);
+                        Poll::Ready(())
+                    }
+                    Poll::Pending => Poll::Pending,
+                })
+                .await;
             }
         }
     }
 
     impl InterpretItem<ScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
-        fn interpret_item(
-            &mut self,
-            request: ScheduleAt,
-        ) -> impl Future<
-            Output = ItemSettlement<
-                ScheduleAt,
-                <ScheduleAt as ActionItem>::Accepted,
-                <ScheduleAt as ActionItem>::Rejection,
-                <ScheduleAt as ActionItem>::Prerequisite,
-            >,
-        > + Send {
-            let scheduled = TimerScheduled {
-                id: request.id,
-                generation: request.generation,
-            };
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<ScheduleAt>,
+            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            ScheduleAt: 'a,
+        {
             async move {
-                self.schedules.push(request);
-                self.pending.push(<RootEvent as InjectEvent<
-                    TimerElapsed,
-                    Inside<Inside<Here>>,
-                >>::inject_at(TimerElapsed {
-                    id: request.id,
-                    generation: request.generation,
-                }));
-                ItemSettlement::Accepted(scheduled)
+                if received.is_some() {
+                    return;
+                }
+                let Some(request) = input.take() else {
+                    return;
+                };
+                let producer = {
+                    let scheduled = TimerScheduled {
+                        id: request.id,
+                        generation: request.generation,
+                    };
+                    async move {
+                        self.schedules.push(request);
+                        self.pending.push(<RootEvent as InjectEvent<
+                            TimerElapsed,
+                            Inside<Inside<Here>>,
+                        >>::inject_at(TimerElapsed {
+                            id: request.id,
+                            generation: request.generation,
+                        }));
+                        ItemSettlement::Accepted(scheduled)
+                    }
+                };
+                let mut producer = pin!(producer);
+                poll_fn(|context| match producer.as_mut().poll(context) {
+                    Poll::Ready(settlement) => {
+                        *received = Some(settlement);
+                        Poll::Ready(())
+                    }
+                    Poll::Pending => Poll::Pending,
+                })
+                .await;
             }
         }
     }
@@ -564,11 +638,14 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
         schedules: Vec::new(),
         pending: Vec::new(),
     };
-    let interpreted = <_ as InterpretSends<_, RootEvent, Here>>::interpret(
-        initialized.actions.sends,
-        &mut timers,
-    )
-    .await;
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(initialized.actions.sends));
+        <_ as InterpretSends<_, RootEvent, Here>>::interpret(&mut progress, &mut timers).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact template product must retain its complete settlement");
+        };
+        settlement
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert_eq!(
         timers.schedules,
@@ -643,7 +720,7 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |message| match message {
+    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |_, message| match message {
         0 => StashRoute::Release,
         1 => StashRoute::Stash,
         _ => StashRoute::Deliver,
@@ -697,59 +774,117 @@ async fn fsm_is_receive_plus_become_policy() {
     assert_eq!(machine.state(), &[3]);
 }
 
-#[derive(Clone)]
-struct StashMessage {
-    id: u64,
-    release: Arc<AtomicBool>,
+#[derive(Debug, PartialEq, Eq)]
+enum StashAdmission {
+    Holding,
+    Accepting,
 }
 
-fn mutation_stash_route(message: &StashMessage) -> StashRoute {
-    if message.id == 2 {
-        message.release.store(true, Ordering::SeqCst);
-        StashRoute::Release
-    } else if message.release.load(Ordering::SeqCst) {
-        StashRoute::Deliver
-    } else {
-        StashRoute::Stash
+struct StashRecording {
+    admission: StashAdmission,
+    received: Vec<u64>,
+}
+
+fn recording_stash_route(behavior: &StashRecording, message: &u64) -> StashRoute {
+    match (message, &behavior.admission) {
+        (2, _) => StashRoute::Release,
+        (4, _) | (_, StashAdmission::Holding) => StashRoute::Stash,
+        (_, StashAdmission::Accepting) => StashRoute::Deliver,
     }
 }
 
-struct StashRecording(Vec<u64>);
-
-#[behavior::behavior(addr = MailAddr, message = StashMessage, sends = Vec<Never>, error = Never)]
+#[behavior::behavior(addr = MailAddr, message = u64, sends = Vec<Never>, error = Never)]
 impl StashRecording {
     fn receive(
         &mut self,
         _from: MailAddr,
-        message: StashMessage,
+        message: u64,
     ) -> Acted<MailAddr, Never, Vec<Never>, NoBirths, Never> {
-        self.0.push(message.id);
-        Ok(Actions::cont())
+        self.received.push(message);
+        if message == 2 {
+            self.admission = StashAdmission::Accepting;
+        }
+        if message == 0 {
+            Ok(Actions::stop())
+        } else {
+            Ok(Actions::cont())
+        }
     }
 }
 
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
-    let release = Arc::new(AtomicBool::new(false));
-    let behavior = behavior_actors::Stash::new(StashRecording(Vec::new()), mutation_stash_route);
+    let behavior = behavior_actors::Stash::new(
+        StashRecording {
+            admission: StashAdmission::Holding,
+            received: Vec::new(),
+        },
+        recording_stash_route,
+    );
     let initialized = behavior.initialize().unwrap();
+    assert_no_vec_effects!(initialized.actions, Step::Continue);
     let mut behavior = initialized.behavior;
-    let stashed = behavior
-        .transition(User::user(
-            MailAddr(0),
-            StashMessage {
-                id: 1,
-                release: Arc::clone(&release),
-            },
-        ))
-        .unwrap();
+    let stashed = behavior.transition(User::user(MailAddr(0), 1)).unwrap();
     assert_no_vec_effects!(stashed, Step::Continue);
-    let released = behavior
-        .transition(User::user(MailAddr(0), StashMessage { id: 2, release }))
-        .unwrap();
+    let released = behavior.transition(User::user(MailAddr(0), 2)).unwrap();
     assert_no_vec_effects!(released, Step::Continue);
-    assert_eq!(behavior.base().0, [2, 1]);
+    assert_eq!(behavior.base().received, [2, 1]);
+    assert_eq!(behavior.base().admission, StashAdmission::Accepting);
     assert_eq!(behavior.held(), 0);
+}
+
+#[tokio::test]
+async fn stash_replay_preserves_fifo_and_selectively_retains_ineligible_input() {
+    let behavior = behavior_actors::Stash::new(
+        StashRecording {
+            admission: StashAdmission::Holding,
+            received: Vec::new(),
+        },
+        recording_stash_route,
+    );
+    let initialized = behavior.initialize().unwrap();
+    assert_no_vec_effects!(initialized.actions, Step::Continue);
+    let mut behavior = initialized.behavior;
+    for message in [1, 4, 3] {
+        let stashed = behavior
+            .transition(User::user(MailAddr(0), message))
+            .unwrap();
+        assert_no_vec_effects!(stashed, Step::Continue);
+    }
+    let released = behavior.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_no_vec_effects!(released, Step::Continue);
+    assert_eq!(behavior.base().received, [2, 1, 3]);
+    assert_eq!(behavior.base().admission, StashAdmission::Accepting);
+    assert_eq!(behavior.held(), 1);
+    let replayed = behavior.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_no_vec_effects!(replayed, Step::Continue);
+    assert_eq!(behavior.base().received, [2, 1, 3, 2]);
+    assert_eq!(behavior.held(), 1);
+}
+
+#[tokio::test]
+async fn stash_replay_stop_preserves_the_unread_held_tail() {
+    let behavior = behavior_actors::Stash::new(
+        StashRecording {
+            admission: StashAdmission::Holding,
+            received: Vec::new(),
+        },
+        recording_stash_route,
+    );
+    let initialized = behavior.initialize().unwrap();
+    assert_no_vec_effects!(initialized.actions, Step::Continue);
+    let mut behavior = initialized.behavior;
+    for message in [1, 0, 3] {
+        let stashed = behavior
+            .transition(User::user(MailAddr(0), message))
+            .unwrap();
+        assert_no_vec_effects!(stashed, Step::Continue);
+    }
+    let stopped = behavior.transition(User::user(MailAddr(0), 2)).unwrap();
+    assert_no_vec_effects!(stopped, Step::Stop(_));
+    assert_eq!(behavior.base().received, [2, 1, 0]);
+    assert_eq!(behavior.base().admission, StashAdmission::Accepting);
+    assert_eq!(behavior.held(), 1);
 }
 
 fn continue_on_death(
@@ -964,7 +1099,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
                 None,
                 |_| Step::Continue,
             ),
-            |_| StashRoute::Deliver,
+            |_, _| StashRoute::Deliver,
         ),
         MailAddr(4),
         stop_on_abnormal_death,
