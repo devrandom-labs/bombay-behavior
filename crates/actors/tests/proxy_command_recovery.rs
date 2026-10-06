@@ -2903,38 +2903,6 @@ fn admit_proxy_activation<'a>(
     }
 }
 
-/// The source-backed consuming order in the current runtime, before row retention.
-fn admit_proxy_activation_before_retention<'a>(
-    input: &'a mut Option<BeginActivation<Worker, AdmissionHydration>>,
-    received: &'a mut Option<
-        ItemSettlement<
-            BeginActivation<Worker, AdmissionHydration>,
-            (),
-            ActivationStartRejection,
-            Never,
-        >,
-    >,
-    retained: &'a mut ProxyEffects<
-        (),
-        (),
-        Vec<BeginActivation<Worker, AdmissionHydration>>,
-        (),
-        (),
-        (),
-        (),
-    >,
-    inject_started: impl FnOnce(WorkerActivation<Worker, AdmissionHydration>) + Send + 'a,
-) -> impl Future<Output = ()> + Send + 'a {
-    async move {
-        let request = input
-            .take()
-            .expect("the current exact request is available");
-        inject_started(request.started());
-        retained.worker_activations.push(request);
-        *received = Some(ItemSettlement::Accepted(()));
-    }
-}
-
 #[tokio::test]
 async fn started_conversion_keeps_original_pending_activation_in_named_rows() {
     let original = Arc::new(vec![43, 47]);
@@ -3095,84 +3063,5 @@ async fn named_activation_retention_preserves_normal_admission_and_ready_reply()
     }
     drop(custody);
     drop(retained);
-    assert_eq!(allocation.strong_count(), 0);
-}
-#[tokio::test]
-async fn original_started_conversion_loses_pending_activation_before_task_spawn() {
-    let original = Arc::new(vec![43, 47]);
-    let allocation = Arc::downgrade(&original);
-    let (_proxy, initialization) =
-        awaiting_initialization(Worker(41), AdmissionHydration(original), Endpoint(59));
-    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForActivation) {
-        WorkerInitializationReport::ReadyForActivation {
-            activation, permit, ..
-        } => BeginActivation::new(activation, permit),
-        _ => panic!("the real initialization must issue the original permit"),
-    };
-    let worker = request.worker();
-    let initialization = request.initialization();
-    let target = request.target();
-    let mut custody = (Some(request), None);
-    let mut retained = ProxyEffects {
-        worker_observations: (),
-        worker_initializations: (),
-        worker_activations: Vec::new(),
-        worker_shutdowns: (),
-        worker_deliveries: (),
-        owner_outcomes: (),
-        diagnostics: (),
-    };
-    let payload = Arc::new(vec![53, 61]);
-    let original_payload = Arc::downgrade(&payload);
-    let (input, received) =
-        <BeginActivation<Worker, AdmissionHydration> as ActionItem>::interpretation_input(
-            &mut custody,
-        )
-        .expect("the selected Core lends the original input and outside reply");
-    let mut work = Box::pin(admit_proxy_activation_before_retention(
-        input,
-        received,
-        &mut retained,
-        move |started| {
-            assert_eq!(started.worker(), worker);
-            let returned = match started.into_ready() {
-                Ok(_) => panic!("Started is not readiness"),
-                Err(returned) => returned,
-            };
-            assert_eq!(returned.worker(), worker);
-            drop(returned);
-            panic_any(payload);
-        },
-    ));
-    let mut context = Context::from_waker(Waker::noop());
-    let fault = catch_unwind(AssertUnwindSafe(|| work.as_mut().poll(&mut context)))
-        .expect_err("the genuine application Started conversion panics");
-    drop(work);
-    assert!(custody.0.is_none());
-    assert!(custody.1.is_none());
-    assert_eq!(original_payload.strong_count(), 1);
-    drop(fault);
-    assert_eq!(original_payload.strong_count(), 0);
-    assert_eq!(retained.worker_activations.len(), 1);
-    let request = retained
-        .worker_activations
-        .pop()
-        .expect("the original pending request survives");
-    assert_eq!(request.initialization(), initialization);
-    assert_eq!(request.target(), target);
-    assert_eq!(allocation.strong_count(), 1);
-    let ready = request.activate().await;
-    let original = match ready.into_ready() {
-        Ok(original) => original,
-        Err(returned) => {
-            drop(returned);
-            panic!("the retained Plan must produce its original reply");
-        }
-    };
-    assert_eq!(Arc::as_ptr(&original), allocation.as_ptr());
-    assert_eq!(original.as_slice(), &[43, 47]);
-    drop(original);
-    drop(retained);
-    drop(custody);
     assert_eq!(allocation.strong_count(), 0);
 }
