@@ -9,7 +9,7 @@ use crate::{ChildStopped, ReplyRoute};
 
 use super::super::pool::worker::{CurrentWorker, WorkerPreparationError, WorkerReplacementError};
 use super::super::pool::{Assignment, JobId, SubmissionId};
-use super::super::worker::{ActivationAttempt, WorkerActivationOutcome};
+use super::super::worker::{WorkerActivationGrant, WorkerActivationOutcome};
 use super::super::{
     ActivationPermit, ActivationPlan, WorkerAttempt, WorkerCreationRejection, WorkerPreparation,
     WorkerSource, WorkerSubmission,
@@ -371,7 +371,7 @@ where
     WorkerActivationReturned {
         role: RoleName<Role>,
         worker: WorkerAttempt,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         outcome: WorkerActivationOutcome<W, P>,
     },
     WorkerShutdownRejected {

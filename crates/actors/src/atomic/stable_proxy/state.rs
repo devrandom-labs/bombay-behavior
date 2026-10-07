@@ -7,8 +7,8 @@ use crate::{ChildStopped, EstablishedShutdownResolved, ShutdownId, StopOnShutdow
 use super::WorkerStopping;
 use super::worker::PendingWorker;
 use super::{
-    ActivationAttempt, ActivationPermit, ActivationPlan, ActivationStartRejection, BeginActivation,
-    CurrentWorker, ProxyPhase, StoppedWorker, WorkerAttempt, WorkerInitializationFailure,
+    ActivationPermit, ActivationPlan, ActivationStartRejection, BeginActivation, CurrentWorker,
+    ProxyPhase, StoppedWorker, WorkerActivationGrant, WorkerAttempt, WorkerInitializationFailure,
     WorkerStartResult,
 };
 
@@ -83,9 +83,9 @@ where
     },
 }
 
-pub(super) enum ActivationProgress {
-    WaitingForStart(ActivationAttempt),
-    Running(ActivationAttempt),
+pub(super) enum ActivationProgress<W, P> {
+    WaitingForStart(WorkerActivationGrant<W, P>),
+    Running(WorkerActivationGrant<W, P>),
 }
 
 pub(super) enum ActivationDuringDeparture<W, P>
@@ -94,7 +94,7 @@ where
     P: ActivationPlan,
     BehaviorAddr<W>: EndpointAddress,
 {
-    Pending(ActivationProgress),
+    Pending(ActivationProgress<W, P>),
     Returned(WorkerActivationRetirement<W, P>),
 }
 
@@ -109,7 +109,7 @@ where
         departure: WorkerStopping<W>,
     },
     WaitingForActivation {
-        activation: ActivationProgress,
+        activation: ActivationProgress<W, P>,
         worker: CurrentWorker<W>,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
@@ -132,7 +132,7 @@ where
     },
     Activating {
         worker: CurrentWorker<W>,
-        progress: ActivationProgress,
+        progress: ActivationProgress<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     },
     ReturningWorker {

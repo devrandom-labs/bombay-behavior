@@ -15,8 +15,10 @@ mod initialization;
 mod preparation;
 mod roster;
 
-pub(in crate::atomic) use activation::{ActivationAttempt, WorkerActivationOutcome};
-pub use activation::{ActivationStartRejection, BeginActivation, WorkerActivation};
+pub(in crate::atomic) use activation::WorkerActivationOutcome;
+pub use activation::{
+    ActivationStartRejection, BeginActivation, WorkerActivation, WorkerActivationGrant,
+};
 pub use initialization::{
     ActivationPermit, InitializationAttempt, InitializeWorker, WorkerInitializationFailure,
     WorkerInitializationOutcome, WorkerInitializationReport,
