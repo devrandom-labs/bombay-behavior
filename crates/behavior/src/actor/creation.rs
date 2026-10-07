@@ -2373,7 +2373,7 @@ impl<C> BirthMode for RetirementBirths<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Actions, BehaviorActed, NoBirths, User};
+    use crate::{Actions, BehaviorActed, ChildInputIngress, Interpretation, NoBirths, User};
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct TestAddr(u64);
@@ -2751,5 +2751,138 @@ mod tests {
         impl<T> Same<T> for T {}
         fn exact<T: Same<Expected>>() {}
         exact::<Protocols>();
+    }
+    fn child_request_loan_is_affine<Item, Observation>(
+        request: Item,
+        duplicate: Item,
+        reason: Item::Rejection,
+        observe: impl Fn(&Item) -> Observation,
+    ) where
+        Item: ActionItem<
+                Custody = (Option<Item>, Option<<Item as ActionItem>::Reply>),
+                Reply = ItemSettlement<
+                    Item,
+                    <Item as ActionItem>::Accepted,
+                    <Item as ActionItem>::Rejection,
+                    <Item as ActionItem>::Prerequisite,
+                >,
+            > + 'static,
+        for<'a> Item: ActionItem<Input<'a> = &'a mut Option<Item>>,
+        Item::Rejection: Copy + PartialEq + core::fmt::Debug,
+        Observation: PartialEq + core::fmt::Debug,
+    {
+        let expected = observe(&request);
+        let mut progress = Some(InterpretationProgress::Original(request));
+        Item::prepare_interpretation(&mut progress);
+        Item::prepare_interpretation(&mut progress);
+        let Some(InterpretationProgress::Interpreting(custody)) = &mut progress else {
+            panic!("preparation must preserve the real request in outside custody");
+        };
+        let (input, reply) = Item::interpretation_input(custody)
+            .expect("one unreplied request must loan its complete input");
+        let request = input.take().expect("the loan owns the complete request");
+        let observed = observe(&request);
+        assert_eq!(
+            observed, expected,
+            "the host loan must preserve the complete request"
+        );
+        *reply = Some(ItemSettlement::Rejected {
+            item: request,
+            reason,
+        });
+        let replied = Item::interpretation_input(custody);
+        assert!(
+            replied.is_none(),
+            "a replied request must not be loaned again"
+        );
+        custody.0 = Some(duplicate);
+        let duplicate_loan = Item::interpretation_input(custody);
+        assert!(
+            duplicate_loan.is_none(),
+            "a reply denies reentry even if input is retained"
+        );
+        let duplicate = custody
+            .0
+            .take()
+            .expect("the duplicate remains outside-owned");
+        drop(duplicate);
+        Item::finish_interpretation(&mut progress);
+        Item::prepare_interpretation(&mut progress);
+        Item::finish_interpretation(&mut progress);
+        match progress {
+            Some(InterpretationProgress::Completed(Interpretation::Complete(
+                ItemSettlement::Rejected {
+                    item,
+                    reason: returned_reason,
+                },
+            ))) => {
+                let observed = observe(&item);
+                assert_eq!(
+                    (observed, returned_reason),
+                    (expected, reason),
+                    "replay must preserve the complete rejected request and reason"
+                );
+            }
+            _ => panic!("completed ownership must survive preparation and finalization replay"),
+        }
+        let mut empty = (None, None);
+        let missing = Item::interpretation_input(&mut empty);
+        assert!(
+            missing.is_none(),
+            "missing input must never expose a host loan"
+        );
+    }
+
+    impl ChildInputIngress<ChildHead, u8> for User<TestAddr, u8> {
+        fn child_input(input: u8) -> Self {
+            User::new(TestAddr(7), input)
+        }
+    }
+
+    #[test]
+    fn child_delivery_custody_allows_one_complete_request_and_denies_replay() {
+        let id = CreationSequence::new()
+            .issue()
+            .expect("the creation ID exists");
+        let request = ChildDelivery::<SharedProtocol, ChildHead>::after(id, 41);
+        child_request_loan_is_affine(
+            request,
+            ChildDelivery::<SharedProtocol, ChildHead>::after(id, 47),
+            ChildDeliveryReason::ClosedRecipient,
+            |request| (request.creation, request.message),
+        );
+    }
+
+    #[test]
+    fn private_child_input_custody_allows_one_complete_request_and_denies_replay() {
+        let id = CreationSequence::new()
+            .issue()
+            .expect("the creation ID exists");
+        let request = ChildInput::<Child, ChildHead, u8, ChildHead>::after(id, 43);
+        child_request_loan_is_affine(
+            request,
+            ChildInput::<Child, ChildHead, u8, ChildHead>::after(id, 47),
+            ChildInputReason::ClosedControlLane,
+            |request| (request.creation, request.input),
+        );
+    }
+
+    #[test]
+    fn creation_route_custody_allows_one_complete_batch_and_denies_replay() {
+        let id = CreationSequence::new()
+            .issue()
+            .expect("the creation ID exists");
+        let request = Creations::one(CreateChild::<TestAddr, Child>::birth(id, Child));
+        child_request_loan_is_affine(
+            request,
+            Creations::one(CreateChild::<TestAddr, Child>::birth(id, Child)),
+            ChildNamespaceExhausted,
+            |request| {
+                request
+                    .iter()
+                    .map(|creation| (creation.id(), creation.kind(), *creation.child()))
+                    .collect::<Vec<_>>()
+            },
+        );
     }
 }

@@ -4,7 +4,7 @@ use behavior::{
     CommittedChild, CreateChild, CreationId, CreationKind, CreationSequence, CreationSettlement,
     CreationSettlements, Creations, CreationsSettled, EndpointAddress, EstablishedActor,
     EventIngress, EventLayer, InterpretItem, InterpretSends, Interpretation,
-    InterpretationProgress, InterpreterFault, ItemSettlement, Never, Own, Protocol,
+    InterpretationProgress, InterpreterFault, ItemSettlement, Never, NoBirths, Own, Protocol,
     RetirementBirths, RetirementCreationSettlement, SendEffects, SendInput, SettledItem,
     SettlementStatus, SourceAction, SourceActions, SourceAdmission, SourceCustody, SourceProgress,
     SourceSettlementCustody, SourceSettlements, Step, Stopped, finish_item, prepare_item,
@@ -685,5 +685,103 @@ fn retirement_creation_total_finish_preserves_nonempty_settled_original_and_offe
         assert_eq!(child.id(), id);
         assert_eq!(child.kind(), CreationKind::Birth);
         assert!(remaining.is_none());
+    }
+}
+
+#[test]
+fn empty_creation_sources_complete_without_admission_and_survive_replay() {
+    type Returning =
+        <Births<ReturningCreatorChildren> as CreationSettlements<RuntimeAddr>>::Settlements;
+    let mut returning = Some(SourceProgress::Original(CreationSettlement::Settled(
+        Creations::empty(),
+    )));
+    <Returning as SourceSettlementCustody<ReturnHost, <ReturningCreator as Behavior>::Event>>::prepare_source(&mut returning);
+    <Returning as SourceSettlementCustody<ReturnHost, <ReturningCreator as Behavior>::Event>>::finish_source(&mut returning);
+    <Returning as SourceSettlementCustody<ReturnHost, <ReturningCreator as Behavior>::Event>>::prepare_source(&mut returning);
+    match returning {
+        Some(SourceProgress::Completed(SourceCustody::Exhausted(CreationSettlement::Settled(
+            settlements,
+        )))) => {
+            assert!(
+                settlements.is_empty(),
+                "the complete empty batch is exhausted without a source event"
+            );
+        }
+        _ => panic!("an empty creation source must complete without admission"),
+    }
+
+    type Retiring = <RetirementBirths<RetiringCreatorChildren> as CreationSettlements<
+        RuntimeAddr,
+    >>::Settlements;
+    let mut retiring = Some(SourceProgress::Original(RetirementCreationSettlement::new(
+        CreationSettlement::Settled(Creations::empty()),
+    )));
+    <Retiring as SourceSettlementCustody<
+        NoCreationIngress,
+        <RetiringCreator as Behavior>::Event,
+    >>::prepare_source(&mut retiring);
+    <Retiring as SourceSettlementCustody<
+        NoCreationIngress,
+        <RetiringCreator as Behavior>::Event,
+    >>::finish_source(&mut retiring);
+    <Retiring as SourceSettlementCustody<
+        NoCreationIngress,
+        <RetiringCreator as Behavior>::Event,
+    >>::prepare_source(&mut retiring);
+    match retiring {
+        Some(SourceProgress::Completed(SourceCustody::Exhausted(settlement))) => {
+            match settlement.into_settlement() {
+                CreationSettlement::Settled(settlements) => assert!(settlements.is_empty()),
+                _ => panic!("empty retirement custody must preserve its exact settlement"),
+            }
+        }
+        _ => panic!("an empty retirement source must exhaust rather than retain a phantom result"),
+    }
+}
+
+#[test]
+fn absent_creation_lane_finalization_returns_its_complete_empty_product() {
+    let mut progress = Some(InterpretationProgress::Original(Creations::empty()));
+    <NoBirths as CreationSettlements<RuntimeAddr>>::finish_interpretation(&mut progress);
+    assert!(
+        matches!(
+            &progress,
+            Some(InterpretationProgress::Completed(Interpretation::Complete(
+                _
+            )))
+        ),
+        "finalization itself must acquire the complete absent lane"
+    );
+    <NoBirths as CreationSettlements<RuntimeAddr>>::prepare_interpretation(&mut progress);
+    <NoBirths as CreationSettlements<RuntimeAddr>>::finish_interpretation(&mut progress);
+    match progress {
+        Some(InterpretationProgress::Completed(Interpretation::Complete(settlements))) => {
+            assert!(settlements.is_empty())
+        }
+        _ => panic!("an absent creation lane must finish without an interpreter call"),
+    }
+
+    let mut source = Some(SourceProgress::Original(Creations::<Never>::empty()));
+    <Creations<Never> as SourceSettlementCustody<NoCreationIngress, ()>>::finish_source(
+        &mut source,
+    );
+    assert!(
+        matches!(
+            &source,
+            Some(SourceProgress::Completed(SourceCustody::Exhausted(_)))
+        ),
+        "source finalization itself must exhaust the absent lane"
+    );
+    <Creations<Never> as SourceSettlementCustody<NoCreationIngress, ()>>::prepare_source(
+        &mut source,
+    );
+    <Creations<Never> as SourceSettlementCustody<NoCreationIngress, ()>>::finish_source(
+        &mut source,
+    );
+    match source {
+        Some(SourceProgress::Completed(SourceCustody::Exhausted(settlements))) => {
+            assert!(settlements.is_empty())
+        }
+        _ => panic!("an absent creation source must finish with its complete empty product"),
     }
 }

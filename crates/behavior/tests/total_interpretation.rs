@@ -676,3 +676,830 @@ mod normal_progress_receipts {
         normal_product_receipts(ReceiptDisposal::Panicked(Arc::new(vec![47, 53])));
     }
 }
+
+mod delivery_custody {
+    use core::future::Future;
+    use std::collections::VecDeque;
+
+    use behavior::{
+        ActionItem, ActionItemResult, Address, Delivery, EstablishedDelivery, EstablishedRecipient,
+        ExactDeliveryReason, Here, InterpretEstablished, InterpretItem, InterpretSends,
+        Interpretation, InterpretationProgress, InterpreterFault, ItemSettlement,
+        LogicalDeliveryReason, Never, NoSends, ParentReportReason, Protocol, Recipient,
+        RecipientAddress, ReportToParent, SendLayer, SendSettlements, SettledItem, SourceCustody,
+        SourceProgress, SourceSettlementCustody,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct DeliveryAddress(u8);
+
+    impl Address for DeliveryAddress {
+        type Nonce = u8;
+    }
+
+    impl RecipientAddress for DeliveryAddress {
+        type Established<P>
+            = u8
+        where
+            P: Protocol<Addr = Self>;
+    }
+
+    struct ParcelProtocol;
+
+    impl Protocol for ParcelProtocol {
+        type Addr = DeliveryAddress;
+        type Msg = Parcel;
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct Parcel {
+        name: &'static str,
+        bytes: Box<[u8]>,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct ParcelTrace {
+        name: &'static str,
+        bytes: Vec<u8>,
+        allocation: usize,
+    }
+
+    impl ParcelTrace {
+        fn observe(parcel: &Parcel) -> Self {
+            Self {
+                name: parcel.name,
+                bytes: parcel.bytes.to_vec(),
+                allocation: parcel.bytes.as_ptr() as usize,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum DeliveryDisposition {
+        Accepted,
+        Rejected,
+        Corrupt,
+    }
+
+    struct DeliveryInterpreter {
+        dispositions: VecDeque<DeliveryDisposition>,
+        attempts: Vec<(DeliveryAddress, ParcelTrace)>,
+    }
+
+    impl InterpretItem<Delivery<ParcelProtocol>, (), Here> for DeliveryInterpreter {
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<Delivery<ParcelProtocol>>,
+            received: &'a mut Option<<Delivery<ParcelProtocol> as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            Delivery<ParcelProtocol>: 'a,
+        {
+            async move {
+                if received.is_some() {
+                    return;
+                }
+                let Some(item) = input.take() else {
+                    return;
+                };
+                self.attempts
+                    .push((item.to.address(), ParcelTrace::observe(&item.message)));
+                let disposition = self
+                    .dispositions
+                    .pop_front()
+                    .expect("one authored disposition per attempt");
+                *received = Some(match disposition {
+                    DeliveryDisposition::Accepted => ItemSettlement::Accepted(()),
+                    DeliveryDisposition::Rejected => ItemSettlement::Rejected {
+                        item,
+                        reason: LogicalDeliveryReason::ClosedRecipient,
+                    },
+                    DeliveryDisposition::Corrupt => ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::CorruptTraversal,
+                    },
+                });
+            }
+        }
+    }
+
+    struct EndpointObservation;
+
+    impl InterpretEstablished<ParcelProtocol> for EndpointObservation {
+        type Output = u8;
+        fn interpret_established(&mut self, endpoint: u8) -> u8 {
+            endpoint
+        }
+    }
+
+    fn parcel(name: &'static str, bytes: &[u8]) -> Parcel {
+        Parcel {
+            name,
+            bytes: bytes.into(),
+        }
+    }
+
+    fn delivery(address: u8, message: Parcel) -> Delivery<ParcelProtocol> {
+        Delivery::new(Recipient::global(DeliveryAddress(address)), message)
+    }
+
+    // This is one public loan law exercised with three real owning ActionItems.
+    // It does not implement an ActionItem or reproduce an interpreter traversal.
+    fn unanswered_request_has_one_loan<Item>(
+        request: Item,
+        reply: Item::Reply,
+    ) -> (Item, Item::Reply)
+    where
+        Item: ActionItem<Custody = (Option<Item>, Option<<Item as ActionItem>::Reply>)>,
+    {
+        let mut custody = (Some(request), Some(reply));
+        let loan = Item::interpretation_input(&mut custody);
+        assert!(
+            loan.is_none(),
+            "an acquired reply forbids another request loan"
+        );
+        drop(loan);
+        let request = custody
+            .0
+            .take()
+            .expect("denial preserves the original request");
+        let loan = Item::interpretation_input(&mut custody);
+        assert!(
+            loan.is_none(),
+            "an acquired reply without original input cannot be offered"
+        );
+        drop(loan);
+        let reply = custody
+            .1
+            .take()
+            .expect("denial preserves the complete reply");
+        let loan = Item::interpretation_input(&mut custody);
+        assert!(loan.is_none(), "absent original input cannot be offered");
+        drop(loan);
+        custody.0 = Some(request);
+        let loan = Item::interpretation_input(&mut custody);
+        assert!(
+            loan.is_some(),
+            "an unanswered original must remain loanable"
+        );
+        drop(loan);
+        let request = custody
+            .0
+            .take()
+            .expect("constructing a loan transfers no request");
+        assert!(custody.1.is_none(), "constructing a loan invents no reply");
+        (request, reply)
+    }
+
+    fn rejected_request_finishes_once<Item, Reason>(request: Item, reason: Reason) -> Item::Reply
+    where
+        Item: ActionItem<
+                Accepted = (),
+                Rejection = Reason,
+                Prerequisite = Never,
+                Reply = ItemSettlement<Item, (), Reason, Never>,
+                Custody = (
+                    Option<Item>,
+                    Option<ItemSettlement<Item, (), Reason, Never>>,
+                ),
+            >,
+        Reason: Send,
+    {
+        let mut progress = Some(InterpretationProgress::Original(request));
+        Item::prepare_interpretation(&mut progress);
+        assert!(
+            matches!(&progress, Some(InterpretationProgress::Interpreting(_))),
+            "preparation must establish outside custody before replay"
+        );
+        Item::prepare_interpretation(&mut progress);
+        let Some(InterpretationProgress::Interpreting(custody)) = &mut progress else {
+            panic!("cold preparation must retain a request and its independent reply slot");
+        };
+        let loan = Item::interpretation_input(custody);
+        assert!(
+            loan.is_some(),
+            "cold preparation must permit the exact original request"
+        );
+        drop(loan);
+        let request = custody
+            .0
+            .take()
+            .expect("producer acquires the actual request");
+        custody.1 = Some(ItemSettlement::Rejected {
+            item: request,
+            reason,
+        });
+        let loan = Item::interpretation_input(custody);
+        assert!(
+            loan.is_none(),
+            "published reply forbids a second producer loan"
+        );
+        drop(loan);
+        Item::finish_interpretation(&mut progress);
+        assert!(
+            matches!(
+                &progress,
+                Some(InterpretationProgress::Completed(Interpretation::Complete(
+                    ItemSettlement::Rejected { .. }
+                )))
+            ),
+            "the acquired rejection must complete before any later operation"
+        );
+        Item::finish_interpretation(&mut progress);
+        Item::prepare_interpretation(&mut progress);
+        Item::finish_interpretation(&mut progress);
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(reply))) = progress
+        else {
+            panic!("finalization and replay must preserve one complete lawful rejection");
+        };
+        reply
+    }
+
+    #[test]
+    fn built_in_delivery_and_parent_report_loans_preserve_both_owned_values() {
+        let first = parcel("original", &[3, 5]);
+        let second = parcel("already replied", &[7, 11]);
+        let first_trace = ParcelTrace::observe(&first);
+        let second_trace = ParcelTrace::observe(&second);
+        let (original, reply) = unanswered_request_has_one_loan(
+            delivery(13, first),
+            ItemSettlement::Rejected {
+                item: delivery(17, second),
+                reason: LogicalDeliveryReason::UnknownAddress,
+            },
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain exact rejection");
+        };
+        assert_eq!(
+            (
+                original.to.address(),
+                ParcelTrace::observe(&original.message)
+            ),
+            (DeliveryAddress(13), first_trace)
+        );
+        assert_eq!(
+            (
+                item.to.address(),
+                ParcelTrace::observe(&item.message),
+                reason
+            ),
+            (
+                DeliveryAddress(17),
+                second_trace,
+                LogicalDeliveryReason::UnknownAddress
+            )
+        );
+
+        let first = parcel("exact original", &[19, 23]);
+        let second = parcel("exact replied", &[29, 31]);
+        let first_trace = ParcelTrace::observe(&first);
+        let second_trace = ParcelTrace::observe(&second);
+        let (original, reply) = unanswered_request_has_one_loan(
+            EstablishedDelivery::<ParcelProtocol>::new(EstablishedRecipient::issued(37), first),
+            ItemSettlement::Rejected {
+                item: EstablishedDelivery::<ParcelProtocol>::new(
+                    EstablishedRecipient::issued(41),
+                    second,
+                ),
+                reason: ExactDeliveryReason::ClosedRecipient,
+            },
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain exact rejection");
+        };
+        let original_endpoint = original.to.interpret(&mut EndpointObservation);
+        let replied_endpoint = item.to.interpret(&mut EndpointObservation);
+        assert_eq!(
+            (original_endpoint, ParcelTrace::observe(&original.message)),
+            (37, first_trace)
+        );
+        assert_eq!(
+            (
+                replied_endpoint,
+                ParcelTrace::observe(&item.message),
+                reason
+            ),
+            (41, second_trace, ExactDeliveryReason::ClosedRecipient)
+        );
+
+        let first = parcel("original report", &[43, 47]);
+        let second = parcel("replied report", &[53, 59]);
+        let first_trace = ParcelTrace::observe(&first);
+        let second_trace = ParcelTrace::observe(&second);
+        let (original, reply) = unanswered_request_has_one_loan(
+            ReportToParent::new(first),
+            ItemSettlement::Rejected {
+                item: ReportToParent::new(second),
+                reason: ParentReportReason::ClosedParentControlLane,
+            },
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain exact rejection");
+        };
+        let original_report = original.into_inner();
+        assert_eq!(ParcelTrace::observe(&original_report), first_trace);
+        let report = item.into_inner();
+        assert_eq!(
+            (ParcelTrace::observe(&report), reason),
+            (second_trace, ParentReportReason::ClosedParentControlLane)
+        );
+    }
+
+    #[test]
+    fn built_in_delivery_and_parent_report_rejections_finish_once() {
+        let message = parcel("logical rejection", &[61, 67]);
+        let expected = ParcelTrace::observe(&message);
+        let reply = rejected_request_finishes_once(
+            delivery(71, message),
+            LogicalDeliveryReason::ClosedRecipient,
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain complete logical rejection");
+        };
+        assert_eq!(
+            (
+                item.to.address(),
+                ParcelTrace::observe(&item.message),
+                reason
+            ),
+            (
+                DeliveryAddress(71),
+                expected,
+                LogicalDeliveryReason::ClosedRecipient
+            )
+        );
+
+        let message = parcel("exact rejection", &[73, 79]);
+        let expected = ParcelTrace::observe(&message);
+        let reply = rejected_request_finishes_once(
+            EstablishedDelivery::<ParcelProtocol>::new(EstablishedRecipient::issued(83), message),
+            ExactDeliveryReason::ClosedRecipient,
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain complete exact rejection");
+        };
+        let endpoint = item.to.interpret(&mut EndpointObservation);
+        assert_eq!(
+            (endpoint, ParcelTrace::observe(&item.message), reason),
+            (83, expected, ExactDeliveryReason::ClosedRecipient)
+        );
+
+        let report = parcel("parent rejection", &[89, 97]);
+        let expected = ParcelTrace::observe(&report);
+        let reply = rejected_request_finishes_once(
+            ReportToParent::new(report),
+            ParentReportReason::ClosedParentControlLane,
+        );
+        let ItemSettlement::Rejected { item, reason } = reply else {
+            panic!("retain complete parent rejection");
+        };
+        let report = item.into_inner();
+        assert_eq!(
+            (ParcelTrace::observe(&report), reason),
+            (expected, ParentReportReason::ClosedParentControlLane)
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_delivery_vector_continues_after_acceptance_and_rejection_then_replays_once() {
+        let messages = [
+            parcel("first", &[2, 3]),
+            parcel("rejected", &[5, 7]),
+            parcel("last", &[11, 13]),
+        ];
+        let observed = messages.each_ref().map(ParcelTrace::observe);
+        let [first, rejected, last] = messages;
+        let mut progress = Some(InterpretationProgress::Original(vec![
+            delivery(17, first),
+            delivery(19, rejected),
+            delivery(23, last),
+        ]));
+        let mut interpreter = DeliveryInterpreter {
+            dispositions: [
+                DeliveryDisposition::Accepted,
+                DeliveryDisposition::Rejected,
+                DeliveryDisposition::Accepted,
+            ]
+            .into(),
+            attempts: Vec::new(),
+        };
+        <Vec<Delivery<ParcelProtocol>> as InterpretSends<_, (), Here>>::interpret(
+            &mut progress,
+            &mut interpreter,
+        )
+        .await;
+        assert!(
+            matches!(
+                &progress,
+                Some(InterpretationProgress::Completed(Interpretation::Complete(
+                    _
+                )))
+            ),
+            "the first traversal must establish its full verdict before replay"
+        );
+        <Vec<Delivery<ParcelProtocol>> as InterpretSends<_, (), Here>>::interpret(
+            &mut progress,
+            &mut interpreter,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(settled))) = progress
+        else {
+            panic!("all independent actual deliveries must complete");
+        };
+        let [
+            SettledItem::Attempted(ItemSettlement::Accepted(())),
+            SettledItem::Attempted(ItemSettlement::Rejected { item, reason }),
+            SettledItem::Attempted(ItemSettlement::Accepted(())),
+        ] = settled.as_slice()
+        else {
+            panic!("retain the entire ordered typed settlement lane");
+        };
+        let rejected_trace = ParcelTrace::observe(&item.message);
+        assert_eq!(
+            (item.to.address(), rejected_trace, *reason),
+            (
+                DeliveryAddress(19),
+                ParcelTrace {
+                    name: observed[1].name,
+                    bytes: observed[1].bytes.clone(),
+                    allocation: observed[1].allocation
+                },
+                LogicalDeliveryReason::ClosedRecipient
+            )
+        );
+        let [first, rejected, last] = observed;
+        assert_eq!(
+            interpreter.attempts,
+            [
+                (DeliveryAddress(17), first),
+                (DeliveryAddress(19), rejected),
+                (DeliveryAddress(23), last)
+            ]
+        );
+        assert!(interpreter.dispositions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ordinary_delivery_vector_corruption_preserves_exact_unattempted_suffix_on_replay() {
+        let messages = [
+            parcel("prefix", &[29, 31]),
+            parcel("corrupt", &[37, 41]),
+            parcel("suffix", &[43, 47]),
+        ];
+        let [prefix_trace, corrupt_trace, suffix_trace] =
+            messages.each_ref().map(ParcelTrace::observe);
+        let [prefix, corrupt, suffix] = messages;
+        let mut progress = Some(InterpretationProgress::Original(vec![
+            delivery(53, prefix),
+            delivery(59, corrupt),
+            delivery(61, suffix),
+        ]));
+        let mut interpreter = DeliveryInterpreter {
+            dispositions: [DeliveryDisposition::Accepted, DeliveryDisposition::Corrupt].into(),
+            attempts: Vec::new(),
+        };
+        <Vec<Delivery<ParcelProtocol>> as InterpretSends<_, (), Here>>::interpret(
+            &mut progress,
+            &mut interpreter,
+        )
+        .await;
+        assert!(
+            matches!(
+                &progress,
+                Some(InterpretationProgress::Completed(Interpretation::Corrupt(
+                    _
+                )))
+            ),
+            "the first traversal must establish its full verdict before replay"
+        );
+        <Vec<Delivery<ParcelProtocol>> as InterpretSends<_, (), Here>>::interpret(
+            &mut progress,
+            &mut interpreter,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(Interpretation::Corrupt(settled))) = progress
+        else {
+            panic!("retain the exact corruption verdict");
+        };
+        let [
+            SettledItem::Attempted(ItemSettlement::Accepted(())),
+            SettledItem::Attempted(ItemSettlement::Corrupt { item, fault }),
+            SettledItem::Unattempted(suffix),
+        ] = settled.as_slice()
+        else {
+            panic!("retain complete prefix, fault and suffix");
+        };
+        assert_eq!(
+            (
+                item.to.address(),
+                ParcelTrace::observe(&item.message),
+                *fault
+            ),
+            (
+                DeliveryAddress(59),
+                ParcelTrace {
+                    name: corrupt_trace.name,
+                    bytes: corrupt_trace.bytes.clone(),
+                    allocation: corrupt_trace.allocation
+                },
+                InterpreterFault::CorruptTraversal
+            )
+        );
+        assert_eq!(
+            (suffix.to.address(), ParcelTrace::observe(&suffix.message)),
+            (DeliveryAddress(61), suffix_trace)
+        );
+        assert_eq!(
+            interpreter.attempts,
+            [
+                (DeliveryAddress(53), prefix_trace),
+                (DeliveryAddress(59), corrupt_trace)
+            ]
+        );
+        assert!(interpreter.dispositions.is_empty());
+    }
+
+    #[derive(Clone, Copy)]
+    enum EmptySendOperation {
+        Prepare,
+        Finish,
+        Unattempted,
+    }
+
+    #[test]
+    fn empty_send_lane_operations_complete_cold_inputs_and_preserve_completed_replay() {
+        for operation in [
+            EmptySendOperation::Prepare,
+            EmptySendOperation::Finish,
+            EmptySendOperation::Unattempted,
+        ] {
+            let mut no_sends = Some(InterpretationProgress::Original(NoSends));
+            let mut impossible_sends = Some(InterpretationProgress::Original(Vec::<Never>::new()));
+            match operation {
+                EmptySendOperation::Prepare => {
+                    NoSends::prepare_interpretation(&mut no_sends);
+                    Vec::<Never>::prepare_interpretation(&mut impossible_sends);
+                }
+                EmptySendOperation::Finish => {
+                    NoSends::finish_interpretation(&mut no_sends);
+                    Vec::<Never>::finish_interpretation(&mut impossible_sends);
+                }
+                EmptySendOperation::Unattempted => {
+                    NoSends::unattempted(&mut no_sends);
+                    Vec::<Never>::unattempted(&mut impossible_sends);
+                }
+            }
+            let Some(InterpretationProgress::Completed(Interpretation::Complete(NoSends))) =
+                &no_sends
+            else {
+                panic!("an empty send lane completes with its exact original product");
+            };
+            let Some(InterpretationProgress::Completed(Interpretation::Complete(empty))) =
+                &impossible_sends
+            else {
+                panic!("an impossible item lane completes with its exact empty product");
+            };
+            assert!(empty.is_empty());
+            NoSends::prepare_interpretation(&mut no_sends);
+            NoSends::finish_interpretation(&mut no_sends);
+            NoSends::unattempted(&mut no_sends);
+            Vec::<Never>::prepare_interpretation(&mut impossible_sends);
+            Vec::<Never>::finish_interpretation(&mut impossible_sends);
+            Vec::<Never>::unattempted(&mut impossible_sends);
+            let Some(InterpretationProgress::Completed(Interpretation::Complete(NoSends))) =
+                no_sends
+            else {
+                panic!("replay preserves empty send completion");
+            };
+            let Some(InterpretationProgress::Completed(Interpretation::Complete(empty))) =
+                impossible_sends
+            else {
+                panic!("replay preserves impossible send completion");
+            };
+            assert!(empty.is_empty());
+        }
+    }
+
+    #[test]
+    fn unattempted_send_layer_retains_both_exact_delivery_lanes_on_replay() {
+        let inner = parcel("inner untouched", &[67, 71]);
+        let owned = parcel("owned untouched", &[73, 79]);
+        let inner_trace = ParcelTrace::observe(&inner);
+        let owned_trace = ParcelTrace::observe(&owned);
+        let mut progress = Some(InterpretationProgress::Original(SendLayer::new(
+            vec![delivery(83, owned)],
+            vec![delivery(89, inner)],
+        )));
+        <SendLayer<Vec<Delivery<ParcelProtocol>>, Vec<Delivery<ParcelProtocol>>> as SendSettlements>::unattempted(&mut progress);
+        assert!(
+            matches!(
+                &progress,
+                Some(InterpretationProgress::Completed(Interpretation::Complete(
+                    _
+                )))
+            ),
+            "the first unattempted projection must complete both original send lanes"
+        );
+        <SendLayer<Vec<Delivery<ParcelProtocol>>, Vec<Delivery<ParcelProtocol>>> as SendSettlements>::unattempted(&mut progress);
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(layer))) = progress
+        else {
+            panic!("retain complete untouched send product");
+        };
+        let [SettledItem::Unattempted(inner)] = layer.inner.as_slice() else {
+            panic!("retain exact inner item");
+        };
+        let [SettledItem::Unattempted(owned)] = layer.owned.as_slice() else {
+            panic!("retain exact owned item");
+        };
+        assert_eq!(
+            (inner.to.address(), ParcelTrace::observe(&inner.message)),
+            (DeliveryAddress(89), inner_trace)
+        );
+        assert_eq!(
+            (owned.to.address(), ParcelTrace::observe(&owned.message)),
+            (DeliveryAddress(83), owned_trace)
+        );
+    }
+
+    #[test]
+    fn empty_source_lanes_finish_original_and_offering_custody_then_preserve_replay() {
+        let mut no_sends = Some(SourceProgress::Original(NoSends));
+        <NoSends as SourceSettlementCustody<(), ()>>::finish_source(&mut no_sends);
+        assert!(
+            matches!(
+                &no_sends,
+                Some(SourceProgress::Completed(SourceCustody::Exhausted(NoSends)))
+            ),
+            "the first finish must exhaust the original empty source lane"
+        );
+        <NoSends as SourceSettlementCustody<(), ()>>::finish_source(&mut no_sends);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(NoSends))) = no_sends else {
+            panic!("finish conserves and exhausts the original empty lane");
+        };
+        let mut no_sends = Some(SourceProgress::Offering(NoSends));
+        <NoSends as SourceSettlementCustody<(), ()>>::finish_source(&mut no_sends);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(NoSends))) = no_sends else {
+            panic!("finish conserves and exhausts the offering empty lane");
+        };
+        let mut impossible = Some(SourceProgress::Original(Vec::<Never>::new()));
+        <Vec<Never> as SourceSettlementCustody<(), ()>>::prepare_source(&mut impossible);
+        assert!(
+            matches!(&impossible, Some(SourceProgress::Completed(SourceCustody::Exhausted(empty))) if empty.is_empty()),
+            "the first preparation must exhaust the original impossible source lane"
+        );
+        <Vec<Never> as SourceSettlementCustody<(), ()>>::finish_source(&mut impossible);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(empty))) = impossible else {
+            panic!("prepare exhausts the impossible source lane");
+        };
+        assert!(empty.is_empty());
+        let mut impossible = Some(SourceProgress::Offering(Vec::<Never>::new()));
+        <Vec<Never> as SourceSettlementCustody<(), ()>>::finish_source(&mut impossible);
+        assert!(
+            matches!(&impossible, Some(SourceProgress::Completed(SourceCustody::Exhausted(empty))) if empty.is_empty()),
+            "the first finish must exhaust the offering impossible source lane"
+        );
+        <Vec<Never> as SourceSettlementCustody<(), ()>>::finish_source(&mut impossible);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(empty))) = impossible else {
+            panic!("finish exhausts the offering impossible source lane");
+        };
+        assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn source_delivery_results_cannot_finish_before_all_owned_residuals_are_visited() {
+        let first = parcel("rejected source", &[97, 101]);
+        let second = parcel("untouched source", &[103, 107]);
+        let first_trace = ParcelTrace::observe(&first);
+        let second_trace = ParcelTrace::observe(&second);
+        let results: Vec<ActionItemResult<Delivery<ParcelProtocol>>> = vec![
+            SettledItem::Attempted(ItemSettlement::Rejected {
+                item: delivery(109, first),
+                reason: LogicalDeliveryReason::UnknownAddress,
+            }),
+            SettledItem::Unattempted(delivery(113, second)),
+        ];
+        let mut progress = Some(SourceProgress::Original(results));
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::prepare_source(&mut progress);
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::finish_source(&mut progress);
+        let Some(SourceProgress::Offering(custody)) = &mut progress else {
+            panic!("premature finish cannot erase unvisited authoritative results");
+        };
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::offer_next_to_source(custody, &mut ()).await;
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::finish_source(&mut progress);
+        assert!(
+            matches!(
+                &progress,
+                Some(SourceProgress::Completed(SourceCustody::Retained(_)))
+            ),
+            "the first finish after complete traversal must retain every authoritative residual before replay"
+        );
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::finish_source(&mut progress);
+        let Some(SourceProgress::Completed(SourceCustody::Retained(results))) = progress else {
+            panic!("full residual custody remains retained on replay");
+        };
+        let [
+            SettledItem::Attempted(ItemSettlement::Rejected { item, reason }),
+            SettledItem::Unattempted(second),
+        ] = results.as_slice()
+        else {
+            panic!("retain every complete typed source result");
+        };
+        assert_eq!(
+            (
+                item.to.address(),
+                ParcelTrace::observe(&item.message),
+                *reason
+            ),
+            (
+                DeliveryAddress(109),
+                first_trace,
+                LogicalDeliveryReason::UnknownAddress
+            )
+        );
+        assert_eq!(
+            (second.to.address(), ParcelTrace::observe(&second.message)),
+            (DeliveryAddress(113), second_trace)
+        );
+
+        let mut empty = Some(SourceProgress::Original(Vec::<
+            ActionItemResult<Delivery<ParcelProtocol>>,
+        >::new()));
+        <Vec<ActionItemResult<Delivery<ParcelProtocol>>> as SourceSettlementCustody<(), ()>>::prepare_source(&mut empty);
+        let Some(SourceProgress::Completed(SourceCustody::Exhausted(empty))) = empty else {
+            panic!("empty result preparation establishes exhaustion without an offer");
+        };
+        assert!(empty.is_empty());
+    }
+    #[tokio::test]
+    async fn delivery_vector_preparation_preserves_every_original_before_any_interpretation() {
+        let messages = [
+            parcel("prepared first", &[127, 131]),
+            parcel("prepared second", &[137, 139]),
+        ];
+        let [first_trace, second_trace] = messages.each_ref().map(ParcelTrace::observe);
+        let [first, second] = messages;
+        let mut progress = Some(InterpretationProgress::Original(vec![
+            delivery(149, first),
+            delivery(151, second),
+        ]));
+        Vec::<Delivery<ParcelProtocol>>::prepare_interpretation(&mut progress);
+        assert!(
+            matches!(&progress, Some(InterpretationProgress::Interpreting(_))),
+            "the first vector preparation must establish outside custody before replay"
+        );
+        Vec::<Delivery<ParcelProtocol>>::prepare_interpretation(&mut progress);
+        let Some(InterpretationProgress::Interpreting(rows)) = &mut progress else {
+            panic!("vector preparation must expose every original in outside custody");
+        };
+        let mut prepared = Vec::new();
+        for row in rows {
+            Delivery::<ParcelProtocol>::prepare_interpretation(row);
+            let Some(InterpretationProgress::Interpreting(custody)) = row else {
+                panic!("each prepared original remains loanable without interpretation");
+            };
+            let Some((input, received)) = Delivery::<ParcelProtocol>::interpretation_input(custody)
+            else {
+                panic!("every unanswered original has its own available loan");
+            };
+            let original = input.as_ref().expect("the caller retains the original");
+            prepared.push((
+                original.to.address(),
+                ParcelTrace::observe(&original.message),
+            ));
+            assert!(
+                received.is_none(),
+                "preparation cannot publish an invented reply"
+            );
+        }
+        assert_eq!(
+            prepared,
+            [
+                (DeliveryAddress(149), first_trace),
+                (DeliveryAddress(151), second_trace)
+            ]
+        );
+        let mut interpreter = DeliveryInterpreter {
+            dispositions: [DeliveryDisposition::Accepted, DeliveryDisposition::Accepted].into(),
+            attempts: Vec::new(),
+        };
+        <Vec<Delivery<ParcelProtocol>> as InterpretSends<_, (), Here>>::interpret(
+            &mut progress,
+            &mut interpreter,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(settled))) = progress
+        else {
+            panic!("all prepared delivery originals must complete");
+        };
+        let [
+            SettledItem::Attempted(ItemSettlement::Accepted(())),
+            SettledItem::Attempted(ItemSettlement::Accepted(())),
+        ] = settled.as_slice()
+        else {
+            panic!("preserve the entire exact delivery settlement lane");
+        };
+        assert_eq!(interpreter.attempts, prepared);
+        assert!(interpreter.dispositions.is_empty());
+    }
+}
