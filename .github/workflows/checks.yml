@@ -183,6 +183,12 @@ jobs:
           fi
           mkdir -p "shard-report-${{ matrix.shard }}"
           cp "$report_dir/outcomes.json" "$report_dir/mutants.json" "shard-report-${{ matrix.shard }}/"
+          cp -R "$report_dir/log" "shard-report-${{ matrix.shard }}/"
+          if [ -d "$report_dir/diff" ]; then
+            cp -R "$report_dir/diff" "shard-report-${{ matrix.shard }}/"
+          else
+            jq -e 'all(.outcomes[]; .diff_path == null)' "$report_dir/outcomes.json"
+          fi
 
       - name: Upload shard report
         uses: actions/upload-artifact@v4
@@ -260,12 +266,41 @@ jobs:
         run: nix build .#default -L
 
       - name: Merge shard reports into one campaign
+        shell: bash
         run: |
           mkdir -p merged
-          jq -s '{outcomes: (map(.outcomes) | add)}' shards/mutation-shard-*/outcomes.json > merged/outcomes.json
-          jq -s 'add | unique' shards/mutation-shard-*/mutants.json > merged/mutants.json
+          for shard in 0 1 2 3 4 5 6 7; do
+            shard_report="shards/mutation-shard-$shard"
+            jq -e '[.outcomes[] | select(.scenario == "Baseline")] |
+              length == 1 and .[0].summary == "Success"' "$shard_report/outcomes.json"
+            cp -R "$shard_report" "merged/mutation-shard-$shard"
+            jq --arg shard "mutation-shard-$shard" '
+              .outcomes |= map(
+                reduce ["log_path", "diff_path"][] as $artifact (.;
+                  if .[$artifact] == null then .
+                  elif (.[$artifact] | type) != "string" or
+                       (.[$artifact] | startswith("/") or startswith("./") or
+                        . == "." or (split("/") | index("..") != null)) then
+                    error("invalid original shard artifact path")
+                  else .[$artifact] = ($shard + "/" + .[$artifact])
+                  end
+                )
+              )' "$shard_report/outcomes.json" > "merged/mutation-shard-$shard/rebased-outcomes.json"
+          done
+          jq -e -s 'map(.outcomes[] | select(.scenario == "Baseline") |
+            {scenario, summary, phase_results:
+              [.phase_results[] | {phase, process_status, argv}]}) |
+            unique | length == 1' shards/mutation-shard-*/outcomes.json
+          # All eight baseline facts remain in the original shard reports.
+          # Select one campaign baseline only after every shard baseline passed.
+          jq -s '{outcomes:
+            ([.[0].outcomes[] | select(.scenario == "Baseline")] +
+             [.[].outcomes[] | select(.scenario != "Baseline")])
+          }' merged/mutation-shard-*/rebased-outcomes.json > merged/outcomes.json
+          jq -s 'add' shards/mutation-shard-*/mutants.json > merged/mutants.json
 
       - name: Strict mutation verdict over the merged campaign
+        shell: bash
         run: |
           ./result/bin/behavior-mutants-gate check merged mutants-baseline.json \
             | tee merged-mutation-gate-report.txt
