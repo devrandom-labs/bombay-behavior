@@ -17,7 +17,9 @@ use behavior_actors::atomic::{
 use behavior_actors::{
     ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
-use behavior_core::{ItemSettlement, Never, NoSends, SendSettlements, SettledItem, Step};
+use behavior_core::{
+    ActionItemResult, ItemSettlement, Never, NoSends, SendSettlements, SettledItem, Step,
+};
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};
 use libfuzzer_sys::fuzz_target;
@@ -97,8 +99,7 @@ fn exercise(inputs: &[u8]) {
         ))
         .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
     assert!(started.creates.is_empty());
-    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(1)))
-    {
+    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(1))) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => panic!("one role needs one worker submission"),
     };
@@ -111,16 +112,26 @@ fn exercise(inputs: &[u8]) {
     let preparations = scheduled
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert!(preparations.is_empty());
-    let operations = scheduled.sends.proxy_operations.unattempted().into_inputs();
+    let operations = scheduled
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert!(operations.is_empty());
     let schedule = match scheduled
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one delayed recovery schedule is emitted")
     {
@@ -188,14 +199,32 @@ fn exercise(inputs: &[u8]) {
 
         assert!(action.creates.is_empty());
         assert!(action.sends.proxy_observations.is_empty());
-        let preparations = action.sends.worker_preparations.unattempted().into_inputs();
+        let preparations = action
+            .sends
+            .worker_preparations
+            .into_items()
+            .into_iter()
+            .map(ActionItemResult::<_>::Unattempted)
+            .collect::<Vec<_>>();
         assert!(preparations.is_empty());
-        let schedules = action.sends.restart_schedules.unattempted().into_inputs();
+        let schedules = action
+            .sends
+            .restart_schedules
+            .into_items()
+            .into_iter()
+            .map(ActionItemResult::<_>::Unattempted)
+            .collect::<Vec<_>>();
         assert!(schedules.is_empty());
         let NoSends = action.sends.lifecycle;
         assert!(action.sends.status_replies.as_slice().is_empty());
         assert!(action.sends.capability_replies.as_slice().is_empty());
-        let mut replacements = action.sends.proxy_operations.unattempted().into_inputs();
+        let mut replacements = action
+            .sends
+            .proxy_operations
+            .into_items()
+            .into_iter()
+            .map(ActionItemResult::<_>::Unattempted)
+            .collect::<Vec<_>>();
         let mut diagnostics = action.sends.diagnostics.into_requests();
 
         match expected_service {

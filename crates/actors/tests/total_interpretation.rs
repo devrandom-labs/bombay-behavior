@@ -1,13 +1,23 @@
 mod installed_control;
 
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use behavior::{
-    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ClassifySettlement,
-    EndpointAddress, Here, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
-    InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol, SettledItem, SettlementStatus,
-    User,
+    ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, ChildHead,
+    ClassifySettlement, EndpointAddress, EstablishedDelivery, Here, InterpretItem, InterpretSends,
+    Interpretation, InterpretationProgress, InterpreterFault, InterpreterRequests, ItemSettlement,
+    Never, NoBirths, Protocol, ReportToParent, SettledItem, SettlementStatus, User, finish_item,
+    prepare_item,
 };
-use behavior_actors::atomic::{ImmediateActivation, ProxyEffects, StableProxy};
-use behavior_actors::{DeliveryOutcomes, LeaseSends, PresenceSends};
+use behavior_actors::atomic::{
+    BeginActivation, ImmediateActivation, InitializeWorker, ProxyDiagnostic, ProxyEffects,
+    ProxyOutcome, StableProxy,
+};
+use behavior_actors::{
+    DeliveryOutcomes, LeaseSends, ObserveChild, PresenceSends, ShutdownEstablished, StopOnShutdown,
+};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy)]
@@ -26,6 +36,35 @@ struct Runtime {
 struct Work(u8);
 
 impl ActionItem for Work {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = Work;
     type Rejection = WorkRejection;
     type Prerequisite = Never;
@@ -90,20 +129,185 @@ impl Behavior for ProxyWorker {
 
 struct ProxyRuntimeWitness;
 
-impl<Item, RootEvent, Path> InterpretItem<Item, RootEvent, Path> for ProxyRuntimeWitness
-where
-    Item: ActionItem,
+impl<RootEvent, Path> InterpretItem<ObserveChild<ProxyWorker, ChildHead>, RootEvent, Path>
+    for ProxyRuntimeWitness
 {
-    fn interpret_item(
-        &mut self,
-        item: Item,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<Item, Item::Accepted, Item::Rejection, Item::Prerequisite>,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObserveChild<ProxyWorker, ChildHead>>,
+        received: &'a mut Option<<ObserveChild<ProxyWorker, ChildHead> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObserveChild<ProxyWorker, ChildHead>: 'a,
+    {
         async move {
-            ItemSettlement::Corrupt {
-                item,
-                fault: InterpreterFault::MissingCapability,
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path>
+    InterpretItem<InitializeWorker<ProxyWorker, ImmediateActivation>, RootEvent, Path>
+    for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<InitializeWorker<ProxyWorker, ImmediateActivation>>,
+        received: &'a mut Option<
+            <InitializeWorker<ProxyWorker, ImmediateActivation> as ActionItem>::Reply,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        InitializeWorker<ProxyWorker, ImmediateActivation>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path>
+    InterpretItem<BeginActivation<ProxyWorker, ImmediateActivation>, RootEvent, Path>
+    for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<BeginActivation<ProxyWorker, ImmediateActivation>>,
+        received: &'a mut Option<
+            <BeginActivation<ProxyWorker, ImmediateActivation> as ActionItem>::Reply,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        BeginActivation<ProxyWorker, ImmediateActivation>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path>
+    InterpretItem<ShutdownEstablished<StopOnShutdown<ProxyWorker>, Here>, RootEvent, Path>
+    for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ShutdownEstablished<StopOnShutdown<ProxyWorker>, Here>>,
+        received: &'a mut Option<
+            <ShutdownEstablished<StopOnShutdown<ProxyWorker>, Here> as ActionItem>::Reply,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ShutdownEstablished<StopOnShutdown<ProxyWorker>, Here>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path> InterpretItem<EstablishedDelivery<ProxyWorker>, RootEvent, Path>
+    for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<EstablishedDelivery<ProxyWorker>>,
+        received: &'a mut Option<<EstablishedDelivery<ProxyWorker> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        EstablishedDelivery<ProxyWorker>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path>
+    InterpretItem<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>, RootEvent, Path>
+    for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>>,
+        received: &'a mut Option<
+            <ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>> as ActionItem>::Reply,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
+            }
+        }
+    }
+}
+
+impl<RootEvent, Path>
+    InterpretItem<
+        ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>,
+        RootEvent,
+        Path,
+    > for ProxyRuntimeWitness
+{
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>>,
+        received: &'a mut Option<<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    *received = Some(ItemSettlement::Corrupt {
+                        item,
+                        fault: InterpreterFault::MissingCapability,
+                    });
+                }
             }
         }
     }
@@ -119,25 +323,47 @@ impl Runtime {
 }
 
 impl InterpretItem<Work, (), Here> for Runtime {
-    fn interpret_item(
-        &mut self,
-        item: Work,
-    ) -> impl core::future::Future<Output = ItemSettlement<Work, Work, WorkRejection, Never>> + Send
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Work>,
+        received: &'a mut Option<<Work as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Work: 'a,
     {
-        self.attempts.push(item.0);
-        let plan = self.plans.get(&item.0).copied().unwrap_or(Plan::Accept);
         async move {
-            match plan {
-                Plan::Accept => ItemSettlement::Accepted(item),
-                Plan::Reject => ItemSettlement::Rejected {
-                    item,
-                    reason: WorkRejection::Closed,
-                },
-                Plan::Corrupt => ItemSettlement::Corrupt {
-                    item,
-                    fault: InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.attempts.push(item.0);
+                let plan = self.plans.get(&item.0).copied().unwrap_or(Plan::Accept);
+                async move {
+                    match plan {
+                        Plan::Accept => ItemSettlement::Accepted(item),
+                        Plan::Reject => ItemSettlement::Rejected {
+                            item,
+                            reason: WorkRejection::Closed,
+                        },
+                        Plan::Corrupt => ItemSettlement::Corrupt {
+                            item,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
@@ -150,7 +376,14 @@ async fn delivery_outcomes_continue_after_rejection_at_the_same_event_path() {
     };
     let mut runtime = Runtime::new([(1, Plan::Reject)]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact named product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [1, 2]);
     let Interpretation::Complete(settlement) = settlement else {
         panic!("lawful rejection cannot corrupt a named product");
@@ -177,7 +410,14 @@ async fn retained_lease_preserves_the_exact_second_lane_after_corruption() {
     };
     let mut runtime = Runtime::new([(3, Plan::Corrupt)]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact named product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [3]);
     let Interpretation::Corrupt(settlement) = settlement else {
         panic!("corrupt first lane must mark the named product corrupt");
@@ -204,7 +444,14 @@ async fn presence_reports_settle_before_schedules_after_rejection() {
     };
     let mut runtime = Runtime::new([(12, Plan::Reject)]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact named product must return its actual settlement");
+        };
+        settlement
+    };
     assert_eq!(runtime.attempts, [12, 13]);
     let Interpretation::Complete(settlement) = settlement else {
         panic!("lawful rejection cannot skip the independent schedule lane");
@@ -236,7 +483,14 @@ async fn proxy_observations_settle_before_owner_outcomes_and_diagnostics() {
     };
     let mut runtime = Runtime::new([]);
 
-    let settlement = <_ as InterpretSends<_, (), Here>>::interpret(sends, &mut runtime).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, (), Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact named product must return its actual settlement");
+        };
+        settlement
+    };
 
     assert_eq!(runtime.attempts, [5, 6, 7, 8, 9, 10, 11]);
     let Interpretation::Complete(settlement) = settlement else {

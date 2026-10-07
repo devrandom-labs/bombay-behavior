@@ -1,3 +1,4 @@
+use behavior_core::{ActionItem, InterpretationProgress};
 use core::future::{Future, ready};
 use core::task::{Context, Poll, Waker};
 
@@ -28,21 +29,36 @@ where
     <P::Addr as EndpointAddress>::Established<P>: Send,
     Job: Send,
 {
-    fn interpret_item(
-        &mut self,
-        delivery: EstablishedDelivery<P>,
-    ) -> impl Future<Output = ItemSettlement<EstablishedDelivery<P>, (), ExactDeliveryReason, Never>>
-    + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<EstablishedDelivery<P>>,
+        received: &'a mut Option<<EstablishedDelivery<P> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        EstablishedDelivery<P>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(delivery) = input.take() else {
+            return ready(());
+        };
         match self.admission {
             Admission::Accept => {
                 let previous = self.accepted.replace(delivery);
                 assert!(previous.is_none());
-                ready(ItemSettlement::Accepted(()))
+                {
+                    *received = Some(ItemSettlement::Accepted(()));
+                    ready(())
+                }
             }
-            Admission::Reject => ready(ItemSettlement::Rejected {
-                item: delivery,
-                reason: ExactDeliveryReason::ClosedRecipient,
-            }),
+            Admission::Reject => {
+                *received = Some(ItemSettlement::Rejected {
+                    item: delivery,
+                    reason: ExactDeliveryReason::ClosedRecipient,
+                });
+                ready(())
+            }
         }
     }
 }
@@ -69,7 +85,17 @@ where
         admission: Admission::Accept,
         accepted: None,
     };
-    let ItemSettlement::Accepted(receipt) = settle_now(request.settle(&mut host)) else {
+    let ItemSettlement::Accepted(receipt) = ({
+        let mut progress = Some(InterpretationProgress::Original(request));
+        let () = settle_now(AssignWorker::<P, Job>::settle::<_, (), Here>(
+            &mut progress,
+            &mut host,
+        ));
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual assignment host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    }) else {
         panic!("accepting exact-delivery interpreter returns one owner receipt");
     };
     let delivery = host
@@ -91,7 +117,17 @@ where
         admission: Admission::Reject,
         accepted: None,
     };
-    let settlement = settle_now(request.settle(&mut host));
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(request));
+        let () = settle_now(AssignWorker::<P, Job>::settle::<_, (), Here>(
+            &mut progress,
+            &mut host,
+        ));
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual assignment host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert!(host.accepted.is_none());
     assert!(matches!(&settlement, ItemSettlement::Rejected { .. }));
     settlement

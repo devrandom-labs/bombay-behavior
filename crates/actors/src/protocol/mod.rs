@@ -21,7 +21,10 @@ use std::time::Instant;
 use crate::{Crash, Exit};
 
 pub use behavior::CreationRejection;
-use behavior::{ActionItem, Address, Protocol, SourceAction};
+use behavior::{
+    ActionItem, Address, InterpretationProgress, ItemSettlement, Protocol, SourceAction,
+    finish_item, prepare_item,
+};
 use behavior::{CreationId, CreationKind};
 
 /// Exact timer correlation accepted by the local scheduler.
@@ -114,6 +117,37 @@ impl behavior::InterpreterRequest for ScheduleAt {
 }
 
 impl ActionItem for ScheduleAt {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = TimerScheduled;
     type Rejection = ScheduleAtRejection;
     type Prerequisite = behavior::Never;
@@ -158,6 +192,37 @@ impl behavior::InterpreterRequest for ScheduleAfter {
 }
 
 impl ActionItem for ScheduleAfter {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = TimerScheduled;
     type Rejection = ScheduleAfterRejection;
     type Prerequisite = behavior::Never;
@@ -236,6 +301,37 @@ impl<A> ActionItem for ObservePeer<A>
 where
     A: Address + Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = PeerObservationRejection;
     type Prerequisite = behavior::Never;
@@ -386,6 +482,37 @@ where
     P: Protocol,
     <P::Addr as Address>::Nonce: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = behavior::Never;
     type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
@@ -531,6 +658,37 @@ where
     P: Protocol,
     <P::Addr as Address>::Nonce: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = behavior::Never;
     type Prerequisite = behavior::CreationCorrelation<P, Occurrence>;
@@ -644,6 +802,37 @@ where
     C: behavior::Behavior,
     <behavior::BehaviorAddr<C> as behavior::Address>::Nonce: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = ChildShutdownRejection;
     type Prerequisite = behavior::CreationCorrelation<C::Protocol, Occurrence>;

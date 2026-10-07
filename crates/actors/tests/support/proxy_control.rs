@@ -1,3 +1,4 @@
+use behavior::InterpretationProgress;
 use behavior::{
     Behavior, BehaviorAddr, ChildInputReason, CreationId, EndpointAddress, EstablishedActor,
     ItemSettlement, Never,
@@ -69,7 +70,14 @@ where
         proxy: Some(proxy),
         admitted: None,
     };
-    let ItemSettlement::Accepted(receipt) = operation.settle(&mut host) else {
+    let ItemSettlement::Accepted(receipt) = ({
+        let mut progress = Some(InterpretationProgress::Original(operation));
+        ProxyOperation::settle(&mut progress, &mut host);
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual proxy host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    }) else {
         panic!("the exact proxy control is admitted");
     };
     let (actual_creation, control) = host

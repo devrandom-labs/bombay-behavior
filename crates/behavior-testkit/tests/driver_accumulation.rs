@@ -4,7 +4,9 @@
 //! preservation are lossless under composition" (contract #3) is enforced at
 //! the trace level. It also checks the `SendEffects` monoid law itself.
 
-use core::future::Future;
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
 use std::time::{Duration, Instant};
 
 use behavior_actors::{
@@ -14,8 +16,8 @@ use behavior_actors::{
 
 use behavior_core::{
     Acted, ActionItem, Actions, Creations, Delivery, EventLayer, Here, Inside, InterpretItem,
-    InterpretSends, Interpretation, ItemSettlement, MailAddr, Never, Recipient, SendEffects,
-    SettledItem, Step, User,
+    InterpretSends, Interpretation, InterpretationProgress, ItemSettlement, MailAddr, Never,
+    Recipient, SendEffects, SettledItem, Step, User,
 };
 use behavior_testkit::{DriveDisposition, Mailbox, drive};
 use proptest::collection::vec;
@@ -103,68 +105,118 @@ impl
         Inside<Inside<Here>>,
     > for FullStackRuntime
 {
-    fn interpret_item(
-        &mut self,
-        delivery: Delivery<behavior_testkit::TestRecipient<u64>>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            Delivery<behavior_testkit::TestRecipient<u64>>,
-            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Accepted,
-            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Rejection,
-            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Prerequisite,
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<behavior_testkit::TestRecipient<u64>>>,
+        received: &'a mut Option<
+            <Delivery<behavior_testkit::TestRecipient<u64>> as ActionItem>::Reply,
         >,
-    > + Send {
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<behavior_testkit::TestRecipient<u64>>: 'a,
+    {
         async move {
-            self.effects
-                .push(FullStackRuntimeEffect::EchoDeliveryAccepted(
-                    delivery.message,
-                ));
-            ItemSettlement::Accepted(())
+            if received.is_some() {
+                return;
+            }
+            let Some(delivery) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.effects
+                        .push(FullStackRuntimeEffect::EchoDeliveryAccepted(
+                            delivery.message,
+                        ));
+                    ItemSettlement::Accepted(())
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for FullStackRuntime {
-    fn interpret_item(
-        &mut self,
-        observation: ObservePeer<MailAddr>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ObservePeer<MailAddr>,
-            <ObservePeer<MailAddr> as ActionItem>::Accepted,
-            <ObservePeer<MailAddr> as ActionItem>::Rejection,
-            <ObservePeer<MailAddr> as ActionItem>::Prerequisite,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObservePeer<MailAddr>>,
+        received: &'a mut Option<<ObservePeer<MailAddr> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObservePeer<MailAddr>: 'a,
+    {
         async move {
-            self.effects
-                .push(FullStackRuntimeEffect::PeerObservationAccepted(
-                    observation.peer,
-                ));
-            ItemSettlement::Accepted(())
+            if received.is_some() {
+                return;
+            }
+            let Some(observation) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.effects
+                        .push(FullStackRuntimeEffect::PeerObservationAccepted(
+                            observation.peer,
+                        ));
+                    ItemSettlement::Accepted(())
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl InterpretItem<ScheduleAt, FullStackEvent, Here> for FullStackRuntime {
-    fn interpret_item(
-        &mut self,
-        schedule: ScheduleAt,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ScheduleAt,
-            <ScheduleAt as ActionItem>::Accepted,
-            <ScheduleAt as ActionItem>::Rejection,
-            <ScheduleAt as ActionItem>::Prerequisite,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ScheduleAt>,
+        received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ScheduleAt: 'a,
+    {
         async move {
-            self.effects
-                .push(FullStackRuntimeEffect::TimerScheduleAccepted(schedule.id));
-            ItemSettlement::Accepted(TimerScheduled {
-                id: schedule.id,
-                generation: schedule.generation,
+            if received.is_some() {
+                return;
+            }
+            let Some(schedule) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.effects
+                        .push(FullStackRuntimeEffect::TimerScheduleAccepted(schedule.id));
+                    ItemSettlement::Accepted(TimerScheduled {
+                        id: schedule.id,
+                        generation: schedule.generation,
+                    })
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
             })
+            .await;
         }
     }
 }
@@ -172,22 +224,38 @@ impl InterpretItem<ScheduleAt, FullStackEvent, Here> for FullStackRuntime {
 struct UnknownPeerRuntime;
 
 impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for UnknownPeerRuntime {
-    fn interpret_item(
-        &mut self,
-        observation: ObservePeer<MailAddr>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ObservePeer<MailAddr>,
-            <ObservePeer<MailAddr> as ActionItem>::Accepted,
-            <ObservePeer<MailAddr> as ActionItem>::Rejection,
-            <ObservePeer<MailAddr> as ActionItem>::Prerequisite,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObservePeer<MailAddr>>,
+        received: &'a mut Option<<ObservePeer<MailAddr> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObservePeer<MailAddr>: 'a,
+    {
         async move {
-            ItemSettlement::Rejected {
-                item: observation,
-                reason: PeerObservationRejection::UnknownAddress,
+            if received.is_some() {
+                return;
             }
+            let Some(observation) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    ItemSettlement::Rejected {
+                        item: observation,
+                        reason: PeerObservationRejection::UnknownAddress,
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
@@ -202,7 +270,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     let peer = MailAddr(44);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(EchoingApplication { seen: Vec::new() }, |message| {
+            behavior_actors::Stash::new(EchoingApplication { seen: Vec::new() }, |_, message| {
                 match message % 3 {
                     2 => StashRoute::Stash,
                     _ => StashRoute::Deliver,
@@ -241,8 +309,15 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     let mut runtime = FullStackRuntime {
         effects: Vec::new(),
     };
-    let interpreted =
-        <_ as InterpretSends<_, FullStackEvent, Here>>::interpret(trace.sends, &mut runtime).await;
+    let interpreted = ({
+        let mut progress = Some(InterpretationProgress::Original(trace.sends));
+        <_ as InterpretSends<_, FullStackEvent, Here>>::interpret(&mut progress, &mut runtime)
+            .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the recorded effect product must return its exact complete settlement");
+        };
+        settlement
+    });
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert_eq!(
         runtime.effects,
@@ -260,11 +335,18 @@ async fn unknown_peer_observation_returns_the_complete_request() {
     let observations = behavior_core::InterpreterRequests::one(ObservePeer::new(peer));
     let mut runtime = UnknownPeerRuntime;
 
-    let interpreted = <_ as InterpretSends<_, FullStackEvent, Inside<Here>>>::interpret(
-        observations,
-        &mut runtime,
-    )
-    .await;
+    let interpreted = ({
+        let mut progress = Some(InterpretationProgress::Original(observations));
+        <_ as InterpretSends<_, FullStackEvent, Inside<Here>>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the recorded effect product must return its exact complete settlement");
+        };
+        settlement
+    });
     let Interpretation::Complete(settlements) = interpreted else {
         panic!("expected a complete logical-peer observation rejection");
     };
@@ -369,13 +451,12 @@ async fn driver_stash_stop_preserves_held_and_stops() {
     }
 
     let behavior =
-        behavior_actors::Stash::new(
-            StopOnZero { seen: Vec::new() },
-            |message: &u64| match message {
+        behavior_actors::Stash::new(StopOnZero { seen: Vec::new() }, |_, message: &u64| {
+            match message {
                 0 => StashRoute::Release,
                 _ => StashRoute::Stash,
-            },
-        );
+            }
+        });
     let mut mailbox = Mailbox::new([User::new(MailAddr(1), 5), User::new(MailAddr(9), 0)]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 

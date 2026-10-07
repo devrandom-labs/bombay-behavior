@@ -1,3 +1,7 @@
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use behavior::ActionItem;
 use behavior::Actions;
 use behavior::Behavior;
@@ -31,6 +35,7 @@ use behavior::RoutedCreation;
 use behavior::SettledItem;
 use behavior::Step;
 use behavior::User;
+use behavior::{InterpretationProgress, finish_item, prepare_item};
 use std::collections::VecDeque;
 
 mod installed_control;
@@ -219,6 +224,35 @@ fn distinct_child_occurrences_may_use_their_first_local_id() {
 struct Ping(u8);
 
 impl ActionItem for Ping {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = u8;
     type Rejection = Never;
     type Prerequisite = Never;
@@ -261,47 +295,93 @@ impl Runtime {
 }
 
 impl InterpretItem<Creations<CreateChild<OpaqueAddress, Worker>>, (), Here> for Runtime {
-    async fn interpret_item(
-        &mut self,
-        creations: Creations<CreateChild<OpaqueAddress, Worker>>,
-    ) -> ItemSettlement<
-        Creations<CreateChild<OpaqueAddress, Worker>>,
-        Creations<RoutedCreation<OpaqueAddress, Worker>>,
-        ChildNamespaceExhausted,
-        Never,
-    > {
-        match self.route_plan {
-            RoutePlan::Exhausted => ItemSettlement::Rejected {
-                item: creations,
-                reason: ChildNamespaceExhausted,
-            },
-            RoutePlan::Corrupt => ItemSettlement::Corrupt {
-                item: creations,
-                fault: InterpreterFault::CorruptTraversal,
-            },
-            RoutePlan::Available => {
-                let Some(_) = self.routes.len().checked_sub(creations.len()) else {
-                    return ItemSettlement::Rejected {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Creations<CreateChild<OpaqueAddress, Worker>>>,
+        received: &'a mut Option<
+            <Creations<CreateChild<OpaqueAddress, Worker>> as ActionItem>::Reply,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Creations<CreateChild<OpaqueAddress, Worker>>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(creations) = input.take() else {
+                return;
+            };
+            let producer = async move {
+                match self.route_plan {
+                    RoutePlan::Exhausted => ItemSettlement::Rejected {
                         item: creations,
                         reason: ChildNamespaceExhausted,
-                    };
-                };
-                ItemSettlement::Accepted(creations.map(|creation| {
-                    let route = self
-                        .routes
-                        .pop_front()
-                        .expect("preflight proved one route per creation");
-                    RoutedCreation::new(creation, route)
-                }))
-            }
+                    },
+                    RoutePlan::Corrupt => ItemSettlement::Corrupt {
+                        item: creations,
+                        fault: InterpreterFault::CorruptTraversal,
+                    },
+                    RoutePlan::Available => {
+                        let Some(_) = self.routes.len().checked_sub(creations.len()) else {
+                            return ItemSettlement::Rejected {
+                                item: creations,
+                                reason: ChildNamespaceExhausted,
+                            };
+                        };
+                        ItemSettlement::Accepted(creations.map(|creation| {
+                            let route = self
+                                .routes
+                                .pop_front()
+                                .expect("preflight proved one route per creation");
+                            RoutedCreation::new(creation, route)
+                        }))
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl InterpretItem<Ping, (), Here> for Runtime {
-    async fn interpret_item(&mut self, ping: Ping) -> ItemSettlement<Ping, u8, Never, Never> {
-        self.pings.push(ping.0);
-        ItemSettlement::Accepted(ping.0)
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Ping>,
+        received: &'a mut Option<<Ping as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Ping: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(ping) = input.take() else {
+                return;
+            };
+            let producer = async move {
+                self.pings.push(ping.0);
+                ItemSettlement::Accepted(ping.0)
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
@@ -357,8 +437,14 @@ async fn route_rejection_returns_the_batch_and_continues_independent_sends() {
         [OpaqueNonce(41), OpaqueNonce(43)],
     );
 
-    let Interpretation::Complete(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Complete(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        CreatingActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual creation/actions product must retain its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("namespace exhaustion is an expected rejection");
     };
 
@@ -385,8 +471,14 @@ async fn route_corruption_returns_the_unrouted_batch_and_skips_sends() {
         [OpaqueNonce(41), OpaqueNonce(43)],
     );
 
-    let Interpretation::Corrupt(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Corrupt(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        CreatingActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual creation/actions product must retain its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("route corruption must stop interpretation");
     };
     let behavior::CreationSettlement::Corrupt { creations, fault } = settlement.creations else {
@@ -410,8 +502,14 @@ async fn route_preflight_consumes_nothing_when_the_whole_batch_cannot_route() {
     );
     let mut runtime = Runtime::new(RoutePlan::Available, WorkerPlan::Accept, [OpaqueNonce(41)]);
 
-    let Interpretation::Complete(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Complete(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        CreatingActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual creation/actions product must retain its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("namespace exhaustion is an expected rejection");
     };
     let behavior::CreationSettlement::Rejected { creations, .. } = settlement.creations else {
@@ -436,8 +534,14 @@ async fn routed_rejection_returns_the_id_child_kind_and_route() {
         [OpaqueNonce(41), OpaqueNonce(43)],
     );
 
-    let Interpretation::Complete(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Complete(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        CreatingActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual creation/actions product must retain its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("child rejection is an expected settlement");
     };
     let behavior::CreationSettlement::Settled(creations) = settlement.creations else {
@@ -479,8 +583,14 @@ async fn corrupt_child_retains_the_exact_routed_suffix_and_skips_sends() {
         [OpaqueNonce(41), OpaqueNonce(43)],
     );
 
-    let Interpretation::Corrupt(settlement) = actions.interpret::<_, (), Here>(&mut runtime).await
-    else {
+    let Interpretation::Corrupt(settlement) = ({
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        CreatingActions::interpret::<_, (), Here>(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual creation/actions product must retain its complete settlement");
+        };
+        settlement
+    }) else {
         panic!("child-host corruption must stop interpretation");
     };
     let behavior::CreationSettlement::Settled(creations) = settlement.creations else {

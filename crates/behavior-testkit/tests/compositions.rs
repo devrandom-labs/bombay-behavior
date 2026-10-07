@@ -156,7 +156,7 @@ fn generated_products_compose_through_every_sound_three_wrapper_order() {
 
     let first = at(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
+            behavior_actors::Stash::new(GeneratedBase::new(), |_, _| StashRoute::Deliver),
             PEER,
             stop_on_abnormal_death,
         ),
@@ -169,7 +169,7 @@ fn generated_products_compose_through_every_sound_three_wrapper_order() {
 
     let second = behavior_actors::Watch::new(
         at(
-            behavior_actors::Stash::new(GeneratedBase::new(), |_| StashRoute::Deliver),
+            behavior_actors::Stash::new(GeneratedBase::new(), |_, _| StashRoute::Deliver),
             due,
         ),
         PEER,
@@ -181,7 +181,7 @@ fn generated_products_compose_through_every_sound_three_wrapper_order() {
     assert_generated_base_effects(&second.sends.inner.inner, second.creates.len());
 
     let third = behavior_actors::Watch::new(
-        behavior_actors::Stash::new(at(GeneratedBase::new(), due), |_| StashRoute::Deliver),
+        behavior_actors::Stash::new(at(GeneratedBase::new(), due), |_, _| StashRoute::Deliver),
         PEER,
         stop_on_abnormal_death,
     )
@@ -367,7 +367,7 @@ fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let due = Instant::now() + Duration::from_secs(1);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(Recorder::default(), |_| StashRoute::Stash),
+            behavior_actors::Stash::new(Recorder::default(), |_, _| StashRoute::Stash),
             PEER,
             stop_on_abnormal_death,
         ),

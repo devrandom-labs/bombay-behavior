@@ -1,10 +1,12 @@
 mod installed_control;
 
+use core::future::Future;
+
 use behavior::{
     ActionItem, Actions, ActiveTurn, Address, Behavior, BehaviorActed, CreationCorrelation,
     CreationId, CreationSequence, EndpointAddress, Here, InterpretItem, InterpretSends,
-    Interpretation, InterpreterRequests, ItemSettlement, Never, NoBirths, NoSends, Protocol,
-    SendSettlements, SettledItem, User,
+    Interpretation, InterpretationProgress, InterpreterRequests, ItemSettlement, Never, NoBirths,
+    NoSends, Protocol, SendSettlements, SettledItem, User,
 };
 use behavior_actors::{
     CancelObservation, Exit, InterpretEstablishedObservation, ObservationAuthority, ObservationId,
@@ -81,15 +83,109 @@ where
 
 struct AcceptanceRuntime;
 
-impl<Item> InterpretItem<Item, (), Here> for AcceptanceRuntime
-where
-    Item: ActionItem<Accepted = ()>,
+impl InterpretItem<ReportTerminalOutcome<ProbeAddr>, (), Here> for AcceptanceRuntime {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ReportTerminalOutcome<ProbeAddr>>,
+        received: &'a mut Option<
+            ItemSettlement<
+                ReportTerminalOutcome<ProbeAddr>,
+                (),
+                Never,
+                <ReportTerminalOutcome<ProbeAddr> as ActionItem>::Prerequisite,
+            >,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ReportTerminalOutcome<ProbeAddr>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(_request) = input.take() {
+                    *received = Some(ItemSettlement::Accepted(()));
+                }
+            }
+        }
+    }
+}
+
+impl InterpretItem<ObserveEstablished<ProbeProtocol>, (), Here> for AcceptanceRuntime {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObserveEstablished<ProbeProtocol>>,
+        received: &'a mut Option<
+            ItemSettlement<
+                ObserveEstablished<ProbeProtocol>,
+                (),
+                Never,
+                <ObserveEstablished<ProbeProtocol> as ActionItem>::Prerequisite,
+            >,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObserveEstablished<ProbeProtocol>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(_request) = input.take() {
+                    *received = Some(ItemSettlement::Accepted(()));
+                }
+            }
+        }
+    }
+}
+
+impl InterpretItem<CancelObservation<ProbeProtocol>, (), Here> for AcceptanceRuntime {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<CancelObservation<ProbeProtocol>>,
+        received: &'a mut Option<
+            ItemSettlement<
+                CancelObservation<ProbeProtocol>,
+                (),
+                Never,
+                <CancelObservation<ProbeProtocol> as ActionItem>::Prerequisite,
+            >,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        CancelObservation<ProbeProtocol>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(_request) = input.take() {
+                    *received = Some(ItemSettlement::Accepted(()));
+                }
+            }
+        }
+    }
+}
+
+impl InterpretItem<ObserveEstablishedCreation<ProbeChild, ProbeRole>, (), Here>
+    for AcceptanceRuntime
 {
-    async fn interpret_item(
-        &mut self,
-        _item: Item,
-    ) -> ItemSettlement<Item, (), Item::Rejection, Item::Prerequisite> {
-        ItemSettlement::Accepted(())
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObserveEstablishedCreation<ProbeChild, ProbeRole>>,
+        received: &'a mut Option<
+            ItemSettlement<
+                ObserveEstablishedCreation<ProbeChild, ProbeRole>,
+                (),
+                Never,
+                <ObserveEstablishedCreation<ProbeChild, ProbeRole> as ActionItem>::Prerequisite,
+            >,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObserveEstablishedCreation<ProbeChild, ProbeRole>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(_request) = input.take() {
+                    *received = Some(ItemSettlement::Accepted(()));
+                }
+            }
+        }
     }
 }
 
@@ -98,17 +194,29 @@ struct CreationBlockedRuntime;
 impl InterpretItem<ObserveEstablishedCreation<ProbeChild, ProbeRole>, (), Here>
     for CreationBlockedRuntime
 {
-    async fn interpret_item(
-        &mut self,
-        item: ObserveEstablishedCreation<ProbeChild, ProbeRole>,
-    ) -> ItemSettlement<
-        ObserveEstablishedCreation<ProbeChild, ProbeRole>,
-        (),
-        Never,
-        CreationCorrelation<ProbeProtocol, ProbeRole>,
-    > {
-        let prerequisite = CreationCorrelation::new(item.creation);
-        ItemSettlement::Blocked { item, prerequisite }
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObserveEstablishedCreation<ProbeChild, ProbeRole>>,
+        received: &'a mut Option<
+            ItemSettlement<
+                ObserveEstablishedCreation<ProbeChild, ProbeRole>,
+                (),
+                Never,
+                CreationCorrelation<ProbeProtocol, ProbeRole>,
+            >,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObserveEstablishedCreation<ProbeChild, ProbeRole>: 'a,
+    {
+        async move {
+            if received.is_none() {
+                if let Some(item) = input.take() {
+                    let prerequisite = CreationCorrelation::new(item.creation);
+                    *received = Some(ItemSettlement::Blocked { item, prerequisite });
+                }
+            }
+        }
     }
 }
 
@@ -170,13 +278,20 @@ fn creation_id() -> CreationId {
 async fn require_accepted_settlement<Item>(item: Item)
 where
     Item: ActionItem<Accepted = ()>,
+    Item::Custody: Send,
+    AcceptanceRuntime: InterpretItem<Item, (), Here>,
 {
-    let settlement =
-        <InterpreterRequests<Item> as InterpretSends<AcceptanceRuntime, (), Here>>::interpret(
-            InterpreterRequests::one(item),
-            &mut AcceptanceRuntime,
-        )
-        .await;
+    let mut progress = Some(InterpretationProgress::Original(InterpreterRequests::one(
+        item,
+    )));
+    <InterpreterRequests<Item> as InterpretSends<AcceptanceRuntime, (), Here>>::interpret(
+        &mut progress,
+        &mut AcceptanceRuntime,
+    )
+    .await;
+    let Some(InterpretationProgress::Completed(settlement)) = progress else {
+        panic!("the accepting interpreter must return its actual complete settlement");
+    };
 
     assert!(matches!(
         settlement,
@@ -192,9 +307,14 @@ fn recover_unattempted<Item>(item: Item) -> Item
 where
     Item: ActionItem,
 {
-    let settlements =
-        <InterpreterRequests<Item> as SendSettlements>::unattempted(InterpreterRequests::one(item));
-    let mut settlements = settlements.into_iter();
+    let mut progress = Some(InterpretationProgress::Original(InterpreterRequests::one(
+        item,
+    )));
+    <InterpreterRequests<Item> as SendSettlements>::unattempted(&mut progress);
+    let Some(InterpretationProgress::Completed(settlements)) = progress else {
+        panic!("the cold product must return all original unattempted requests");
+    };
+    let mut settlements = settlements.into_settlement().into_iter();
     let recovered = match settlements.next() {
         Some(SettledItem::Unattempted(item)) => item,
         Some(SettledItem::Attempted(_)) => panic!("an unattempted product attempted its item"),
@@ -271,13 +391,18 @@ fn unattempted_settlements_return_each_exact_source_request() {
 #[tokio::test]
 async fn established_creation_observation_retains_its_blocking_correlation() {
     let creation = creation_id();
-    let settlement = <InterpreterRequests<
-        ObserveEstablishedCreation<ProbeChild, ProbeRole>,
-    > as InterpretSends<CreationBlockedRuntime, (), Here>>::interpret(
-        InterpreterRequests::one(ObserveEstablishedCreation::new(creation)),
-        &mut CreationBlockedRuntime,
-    )
+    let mut progress = Some(InterpretationProgress::Original(InterpreterRequests::one(
+        ObserveEstablishedCreation::<ProbeChild, ProbeRole>::new(creation),
+    )));
+    <InterpreterRequests<ObserveEstablishedCreation<ProbeChild, ProbeRole>> as InterpretSends<
+        CreationBlockedRuntime,
+        (),
+        Here,
+    >>::interpret(&mut progress, &mut CreationBlockedRuntime)
     .await;
+    let Some(InterpretationProgress::Completed(settlement)) = progress else {
+        panic!("the blocked interpreter must retain its complete actual correlation");
+    };
 
     assert!(matches!(
         settlement,

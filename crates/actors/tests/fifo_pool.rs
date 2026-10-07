@@ -1,3 +1,4 @@
+use behavior::{Here, InterpretationProgress};
 mod installed_control;
 
 macro_rules! start_worker_preparation {
@@ -3066,8 +3067,15 @@ async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
         .pop()
         .unwrap_or_else(|| panic!("ready worker receives the accepted job"));
     let mut delivery_host = AssignmentDeliveryHost::<SearchWorker>::rejecting();
-    let rejected: ActionItemResult<AssignWorker<SearchWorker, u8>> =
-        SettledItem::Attempted(assignment.settle(&mut delivery_host).await);
+    let rejected: ActionItemResult<AssignWorker<SearchWorker, u8>> = SettledItem::Attempted({
+        let mut progress = Some(InterpretationProgress::Original(assignment));
+        AssignWorker::<SearchWorker, u8>::settle::<_, (), Here>(&mut progress, &mut delivery_host)
+            .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual assignment host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    });
     assert_eq!(delivery_host.rejections(), 1);
     let requeued = pool
         .transition(FifoEvent::AssignmentSettled(rejected))

@@ -38,11 +38,12 @@ fuzz_target!(|bytes: &[u8]| {
                 })
             },
         );
-        let behavior = behavior_actors::Stash::new(behavior, |message: &u64| match message % 3 {
-            0 => StashRoute::Release,
-            1 => StashRoute::Deliver,
-            _ => StashRoute::Stash,
-        });
+        let behavior =
+            behavior_actors::Stash::new(behavior, |_, message: &u64| match message % 3 {
+                0 => StashRoute::Release,
+                1 => StashRoute::Deliver,
+                _ => StashRoute::Stash,
+            });
         let initialized = behavior.initialize().unwrap();
         assert!(initialized.actions.sends.is_empty());
         assert!(initialized.actions.creates.is_empty());

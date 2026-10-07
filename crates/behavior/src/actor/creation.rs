@@ -7,8 +7,8 @@ use core::num::NonZeroU64;
 use super::addressing::{Address, EndpointAddress, EstablishedActor, EstablishedRecipient};
 use crate::next::Never;
 use crate::{
-    ActionItem, Actions, Behavior, BehaviorAddr, BehaviorBase, ItemSettlement, Protocol,
-    SettledItem,
+    ActionItem, Actions, Behavior, BehaviorAddr, BehaviorBase, InterpretationProgress,
+    ItemSettlement, Protocol, SettledItem, finish_item, prepare_item,
 };
 
 /// Correlation for one staged creation within a static child occurrence.
@@ -492,6 +492,37 @@ where
     A::Nonce: Send,
     New: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = Creations<RoutedCreation<A, New>>;
     type Rejection = ChildNamespaceExhausted;
     type Prerequisite = Never;
@@ -1048,6 +1079,37 @@ where
     P: Protocol,
     P::Msg: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = ChildDeliveryReason;
     type Prerequisite = CreationCorrelation<P, Occurrence>;
@@ -1058,6 +1120,37 @@ where
     Child: Behavior,
     Input: Send,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        if input.is_some() && received.is_none() {
+            Some((input, received))
+        } else {
+            None
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = ChildInputReason;
     type Prerequisite = CreationCorrelation<Child::Protocol, Occurrence>;

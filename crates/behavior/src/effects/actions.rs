@@ -1,9 +1,14 @@
 //! The explicit result of one actor behavior transition.
 
+use core::future::{self, Future};
+use core::pin::pin;
+use core::task::Poll;
+
 use super::sending::{
-    ClassifySettlement, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
-    ItemSettlement, SendEffects, SendInput, SendSettlements, SettledItem, SettlementStatus,
-    SourceAdmission, SourceCustody, SourceSettlementCustody, offer_source_in_order,
+    ClassifySettlement, InterpretItem, InterpretSends, Interpretation, InterpretationProgress,
+    InterpreterFault, ItemSettlement, SendEffects, SendInput, SendSettlements, SettledItem,
+    SettlementStatus, SourceAdmission, SourceCustody, SourceProgress, SourceSettlementCustody,
+    offer_source_in_order,
 };
 use crate::actor::{
     Address, BirthMode, Births, ChildCreationProduct, ChildHead, ChildNamespaceExhausted,
@@ -74,8 +79,20 @@ impl<Settlement> RetirementCreationSettlement<Settlement> {
 /// This projection performs no interpretation and names no runtime. It lets a
 /// lifecycle host retain the exact result type of an action without rebuilding
 /// its creation or send products.
-pub trait ActionSettlements {
+pub trait ActionSettlements: Sized {
     type Settlements;
+    type SourceCustody;
+    type InterpretationCustody;
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    );
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    );
 }
 
 impl<A, Ph, Sends, Birth> ActionSettlements for Actions<A, Ph, Sends, Birth>
@@ -85,6 +102,104 @@ where
     Birth: CreationSettlements<A>,
 {
     type Settlements = ActionSettlement<Birth::Settlements, Sends::Settlements, Ph>;
+    type SourceCustody = (
+        (
+            Option<SourceProgress<Birth::Settlements, Birth::SourceCustody>>,
+            Option<SourceProgress<Sends::Settlements, Sends::SourceCustody>>,
+        ),
+        Become<Ph>,
+    );
+    type InterpretationCustody = (
+        (
+            Option<
+                InterpretationProgress<
+                    Creations<CreateChild<A, Birth::Child>>,
+                    Birth::InterpretationCustody,
+                    Birth::Settlements,
+                >,
+            >,
+            Option<InterpretationProgress<Sends, Sends::InterpretationCustody, Sends::Settlements>>,
+        ),
+        Become<Ph>,
+    );
+
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        if matches!(progress, Some(InterpretationProgress::Original(_))) {
+            match progress.take() {
+                Some(InterpretationProgress::Original(Actions {
+                    creates,
+                    sends,
+                    become_,
+                })) => {
+                    *progress = Some(InterpretationProgress::Interpreting((
+                        (
+                            Some(InterpretationProgress::Original(creates)),
+                            Some(InterpretationProgress::Original(sends)),
+                        ),
+                        become_,
+                    )));
+                }
+                retained => *progress = retained,
+            }
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        if !matches!(
+            progress,
+            Some(InterpretationProgress::Interpreting((
+                (
+                    Some(InterpretationProgress::Completed(_)),
+                    Some(InterpretationProgress::Completed(_))
+                ),
+                _
+            )))
+        ) {
+            return;
+        }
+        // Only structural extraction after every producer was disposed and
+        // every child finalizer borrowed its actual outside slot separately.
+        match progress.take() {
+            Some(InterpretationProgress::Interpreting((
+                (
+                    Some(InterpretationProgress::Completed(creations)),
+                    Some(InterpretationProgress::Completed(sends)),
+                ),
+                become_,
+            ))) => {
+                let completed = match (creations, sends) {
+                    (Interpretation::Complete(creations), Interpretation::Complete(sends)) => {
+                        Interpretation::Complete(ActionSettlement {
+                            creations,
+                            sends,
+                            become_,
+                        })
+                    }
+                    (
+                        Interpretation::Complete(creations) | Interpretation::Corrupt(creations),
+                        Interpretation::Corrupt(sends),
+                    )
+                    | (Interpretation::Corrupt(creations), Interpretation::Complete(sends)) => {
+                        Interpretation::Corrupt(ActionSettlement {
+                            creations,
+                            sends,
+                            become_,
+                        })
+                    }
+                };
+                *progress = Some(InterpretationProgress::Completed(completed));
+            }
+            retained => *progress = retained,
+        }
+    }
 }
 
 /// One exact action-settlement product selected by a concrete behavior.
@@ -95,6 +210,8 @@ where
 /// never erased or reclassified.
 pub trait BehaviorSettlements: Behavior {
     type Settlements;
+    type SourceCustody;
+    type InterpretationCustody;
 }
 
 impl<B> BehaviorSettlements for B
@@ -105,6 +222,9 @@ where
 {
     type Settlements =
         <Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth> as ActionSettlements>::Settlements;
+    type SourceCustody =
+        <Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth> as ActionSettlements>::SourceCustody;
+    type InterpretationCustody = <Actions<BehaviorAddr<B>, B::Ph, B::Sends, B::Birth> as ActionSettlements>::InterpretationCustody;
 }
 
 impl<Requests, Settlements> ClassifySettlement for CreationSettlement<Requests, Settlements>
@@ -145,10 +265,68 @@ where
 /// Static creation-settlement product selected by one birth mode.
 pub trait CreationSettlements<A: Address>: BirthMode {
     type Settlements: ClassifySettlement;
+    type SourceCustody;
+    type InterpretationCustody;
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Self::Child>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    );
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Self::Child>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    );
 }
 
 impl<A: Address> CreationSettlements<A> for NoBirths {
     type Settlements = Creations<Never>;
+    type SourceCustody = Self::Settlements;
+    type InterpretationCustody = ();
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Never>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        match progress.take() {
+            Some(InterpretationProgress::Original(original)) => {
+                let settlements = original
+                    .into_iter()
+                    .map(|creation| {
+                        let (_, never, _) = creation.into_parts();
+                        match never {}
+                    })
+                    .collect();
+                *progress = Some(InterpretationProgress::Completed(Interpretation::Complete(
+                    Creations::from_items(settlements),
+                )));
+            }
+            retained => *progress = retained,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Never>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        Self::prepare_interpretation(progress);
+    }
 }
 
 impl<A, C> CreationSettlements<A> for Births<C>
@@ -170,6 +348,33 @@ where
             >,
         >,
     >;
+    type SourceCustody = (
+        Option<CreationsSettled<A, C>>,
+        Option<Result<(), CreationsSettled<A, C>>>,
+    );
+    type InterpretationCustody = CreationInterpretationCustody<A, C>;
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        prepare_creations(progress);
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        finish_creations(progress);
+    }
 }
 
 impl<A, C> CreationSettlements<A> for RetirementBirths<C>
@@ -179,6 +384,54 @@ where
 {
     type Settlements =
         RetirementCreationSettlement<<Births<C> as CreationSettlements<A>>::Settlements>;
+    type SourceCustody = Self::Settlements;
+    type InterpretationCustody = Option<
+        InterpretationProgress<
+            Creations<CreateChild<A, C>>,
+            <Births<C> as CreationSettlements<A>>::InterpretationCustody,
+            <Births<C> as CreationSettlements<A>>::Settlements,
+        >,
+    >;
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        match progress.take() {
+            Some(InterpretationProgress::Original(original)) => {
+                *progress = Some(InterpretationProgress::Interpreting(Some(
+                    InterpretationProgress::Original(original),
+                )))
+            }
+            retained => *progress = retained,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
+    ) {
+        // Base finalization has already loaned the outside base progress.
+        // This extraction calls no generic/custom method.
+        match progress.take() {
+            Some(InterpretationProgress::Interpreting(Some(
+                InterpretationProgress::Completed(received),
+            ))) => {
+                *progress = Some(InterpretationProgress::Completed(
+                    received.map(RetirementCreationSettlement::new),
+                ));
+            }
+            retained => *progress = retained,
+        }
+    }
 }
 
 /// One complete creation batch returned to its live creator.
@@ -257,11 +510,28 @@ where
 }
 
 impl<Host, RootEvent> SourceSettlementCustody<Host, RootEvent> for Creations<Never> {
+    type Custody = Self;
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) => Some(SourceProgress::Completed(
+                SourceCustody::Exhausted(original),
+            )),
+            progress => progress,
+        };
+    }
     fn offer_next_to_source(
-        self,
+        _: &mut Self::Custody,
         _: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
-        core::future::ready(SourceCustody::Exhausted(self))
+    ) -> impl Future<Output = ()> + Send {
+        future::ready(())
+    }
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => Some(
+                SourceProgress::Completed(SourceCustody::Exhausted(original)),
+            ),
+            retained => retained,
+        };
     }
 }
 
@@ -288,19 +558,46 @@ where
     Host: SourceAdmission<RootEvent, Births<C>, CreationsSettled<A, C>>,
     RootEvent: crate::EventIngress<Births<C>, CreationsSettled<A, C>>,
 {
-    fn offer_next_to_source(
-        self,
-        host: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
-        async move {
-            if matches!(&self, CreationSettlement::Settled(settlements) if settlements.is_empty()) {
-                return SourceCustody::Exhausted(self);
+    type Custody = (
+        Option<CreationsSettled<A, C>>,
+        Option<Result<(), CreationsSettled<A, C>>>,
+    );
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) if matches!(&original, CreationSettlement::Settled(settlements) if settlements.is_empty()) => {
+                Some(SourceProgress::Completed(SourceCustody::Exhausted(
+                    original,
+                )))
             }
-            match host.admit_source(CreationsSettled::new(self)).await {
-                Ok(()) => SourceCustody::Admitted(CreationSettlement::Settled(Creations::empty())),
-                Err(returned) => SourceCustody::Closed(returned.into_settlement()),
+            Some(SourceProgress::Original(original)) => Some(SourceProgress::Offering((
+                Some(CreationsSettled::new(original)),
+                None,
+            ))),
+            progress => progress,
+        };
+    }
+    fn offer_next_to_source(
+        custody: &mut Self::Custody,
+        host: &mut Host,
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            if custody.1.is_none() {
+                host.admit_source(&mut custody.0, &mut custody.1).await;
             }
         }
+    }
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Offering((None, Some(Ok(()))))) => {
+                Some(SourceProgress::Completed(SourceCustody::Admitted(
+                    CreationSettlement::Settled(Creations::empty()),
+                )))
+            }
+            Some(SourceProgress::Offering((None, Some(Err(returned))))) => Some(
+                SourceProgress::Completed(SourceCustody::Closed(returned.into_settlement())),
+            ),
+            progress => progress,
+        };
     }
 }
 
@@ -327,21 +624,317 @@ where
     C: ChildCreationProduct<A, ChildHead> + Send,
     <C as ChildCreationProduct<A, ChildHead>>::Result: Send,
 {
+    type Custody = Self;
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) if matches!(&original.settlement, CreationSettlement::Settled(settlements) if settlements.is_empty()) => {
+                Some(SourceProgress::Completed(SourceCustody::Exhausted(
+                    original,
+                )))
+            }
+            Some(SourceProgress::Original(original)) => {
+                Some(SourceProgress::Completed(SourceCustody::Retained(original)))
+            }
+            progress => progress,
+        };
+    }
     fn offer_next_to_source(
-        self,
+        _: &mut Self::Custody,
         _: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
-        async move {
-            if matches!(
-                &self.settlement,
-                CreationSettlement::Settled(settlements) if settlements.is_empty()
-            ) {
-                SourceCustody::Exhausted(self)
-            } else {
-                SourceCustody::Retained(self)
+    ) -> impl Future<Output = ()> + Send {
+        future::ready(())
+    }
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) if matches!(&original.settlement, CreationSettlement::Settled(settlements) if settlements.is_empty()) => {
+                Some(SourceProgress::Completed(SourceCustody::Exhausted(
+                    original,
+                )))
+            }
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => {
+                Some(SourceProgress::Completed(SourceCustody::Retained(original)))
+            }
+            retained => retained,
+        };
+    }
+}
+
+/// Outside custody of the actual routing reply or ordered child attempts.
+/// Native causes remain runtime retirement facts, not this normal typed product.
+pub enum CreationInterpretationCustody<A, C>
+where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    Routing {
+        input: Option<Creations<CreateChild<A, C>>>,
+        received: Option<
+            ItemSettlement<
+                Creations<CreateChild<A, C>>,
+                Creations<RoutedCreation<A, C>>,
+                ChildNamespaceExhausted,
+                Never,
+            >,
+        >,
+    },
+    Children(
+        Vec<(
+            Option<RoutedCreation<A, C>>,
+            Option<
+                ItemSettlement<
+                    RoutedCreation<A, C>,
+                    <C as ChildCreationProduct<A, ChildHead>>::Result,
+                    CreationRejection,
+                    Never,
+                >,
+            >,
+        )>,
+    ),
+}
+
+fn prepare_creations<A, C>(
+    progress: &mut Option<
+        InterpretationProgress<
+            Creations<CreateChild<A, C>>,
+            CreationInterpretationCustody<A, C>,
+            CreationSettlement<
+                Creations<CreateChild<A, C>>,
+                Creations<
+                    SettledItem<
+                        RoutedCreation<A, C>,
+                        ItemSettlement<
+                            RoutedCreation<A, C>,
+                            <C as ChildCreationProduct<A, ChildHead>>::Result,
+                            CreationRejection,
+                            Never,
+                        >,
+                    >,
+                >,
+            >,
+        >,
+    >,
+) where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    if matches!(progress, Some(InterpretationProgress::Original(_))) {
+        match progress.take() {
+            Some(InterpretationProgress::Original(input)) => {
+                *progress = Some(InterpretationProgress::Interpreting(
+                    CreationInterpretationCustody::Routing {
+                        input: Some(input),
+                        received: None,
+                    },
+                ));
+            }
+            retained => *progress = retained,
+        }
+    }
+}
+
+fn finish_routing<A, C>(
+    progress: &mut Option<
+        InterpretationProgress<
+            Creations<CreateChild<A, C>>,
+            CreationInterpretationCustody<A, C>,
+            <Births<C> as CreationSettlements<A>>::Settlements,
+        >,
+    >,
+) where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    if !matches!(
+        progress,
+        Some(InterpretationProgress::Interpreting(
+            CreationInterpretationCustody::Routing {
+                input: None,
+                received: Some(_)
+            }
+        ))
+    ) {
+        return;
+    }
+    match progress.take() {
+        Some(InterpretationProgress::Interpreting(CreationInterpretationCustody::Routing {
+            input: None,
+            received: Some(received),
+        })) => {
+            *progress = Some(match received {
+                ItemSettlement::Accepted(routed) => {
+                    InterpretationProgress::Interpreting(CreationInterpretationCustody::Children(
+                        routed
+                            .into_iter()
+                            .map(|input| (Some(input), None))
+                            .collect(),
+                    ))
+                }
+                ItemSettlement::Rejected { item, reason } => InterpretationProgress::Completed(
+                    Interpretation::Complete(CreationSettlement::Rejected {
+                        creations: item,
+                        reason,
+                    }),
+                ),
+                ItemSettlement::Corrupt { item, fault } => InterpretationProgress::Completed(
+                    Interpretation::Corrupt(CreationSettlement::Corrupt {
+                        creations: item,
+                        fault,
+                    }),
+                ),
+                ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+            });
+        }
+        retained => *progress = retained,
+    }
+}
+
+async fn settle_child<A, C, Interpreter>(
+    input: &mut Option<RoutedCreation<A, C>>,
+    received: &mut Option<
+        ItemSettlement<
+            RoutedCreation<A, C>,
+            <C as ChildCreationProduct<A, ChildHead>>::Result,
+            CreationRejection,
+            Never,
+        >,
+    >,
+    interpreter: &mut Interpreter,
+) where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead> + DispatchBirth<A, Interpreter>,
+{
+    if received.is_some() {
+        return;
+    }
+    let Some(original) = input.take() else {
+        return;
+    };
+    let (creation, route) = original.into_parts();
+    let (id, child, kind) = creation.into_parts();
+    let mut attempt = pin!(child.dispatch_birth(id, route, kind, interpreter));
+    future::poll_fn(|context| match attempt.as_mut().poll(context) {
+        Poll::Pending => Poll::Pending,
+        Poll::Ready(reply) => {
+            *received = Some(reply);
+            Poll::Ready(())
+        }
+    })
+    .await;
+}
+
+async fn interpret_creations<A, C, Interpreter, RootEvent, Path>(
+    progress: &mut Option<
+        InterpretationProgress<
+            Creations<CreateChild<A, C>>,
+            CreationInterpretationCustody<A, C>,
+            <Births<C> as CreationSettlements<A>>::Settlements,
+        >,
+    >,
+    interpreter: &mut Interpreter,
+) where
+    A: Address,
+    A::Nonce: Send,
+    C: ChildCreationProduct<A, ChildHead> + DispatchBirth<A, Interpreter> + Send,
+    <C as ChildCreationProduct<A, ChildHead>>::Result: Send,
+    Interpreter: InterpretItem<Creations<CreateChild<A, C>>, RootEvent, Path> + Send,
+{
+    prepare_creations(progress);
+    if let Some(InterpretationProgress::Interpreting(CreationInterpretationCustody::Routing {
+        input,
+        received,
+    })) = progress
+    {
+        <Interpreter as InterpretItem<Creations<CreateChild<A,C>>, RootEvent, Path>>::interpret_item(
+            interpreter, input, received,
+        ).await;
+    }
+    finish_routing(progress);
+    let Some(InterpretationProgress::Interpreting(CreationInterpretationCustody::Children(rows))) =
+        progress
+    else {
+        return;
+    };
+    for (input, received) in rows {
+        match (input.as_ref(), received.as_ref()) {
+            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+            (None, Some(_)) => continue,
+            (Some(_), None) => {}
+            _ => return,
+        }
+        settle_child(input, received, interpreter).await;
+        match (input.as_ref(), received.as_ref()) {
+            (None, Some(ItemSettlement::Corrupt { .. })) => break,
+            (None, Some(_)) => {}
+            _ => return,
+        }
+    }
+    finish_creations(progress);
+}
+
+fn finish_creations<A, C>(
+    progress: &mut Option<
+        InterpretationProgress<
+            Creations<CreateChild<A, C>>,
+            CreationInterpretationCustody<A, C>,
+            <Births<C> as CreationSettlements<A>>::Settlements,
+        >,
+    >,
+) where
+    A: Address,
+    C: ChildCreationProduct<A, ChildHead>,
+{
+    finish_routing(progress);
+    let Some(InterpretationProgress::Interpreting(CreationInterpretationCustody::Children(rows))) =
+        progress.as_ref()
+    else {
+        return;
+    };
+    let corrupt = rows
+        .iter()
+        .position(|(_, received)| matches!(received, Some(ItemSettlement::Corrupt { .. })));
+    let complete = rows.iter().enumerate().all(|(index, (input, received))| {
+        if corrupt.is_some_and(|corrupt| index > corrupt) {
+            input.is_some() && received.is_none()
+        } else {
+            input.is_none() && received.is_some()
+        }
+    });
+    if !complete {
+        return;
+    }
+    let Some(InterpretationProgress::Interpreting(CreationInterpretationCustody::Children(rows))) =
+        progress.take()
+    else {
+        return;
+    };
+    let mut remaining = rows.into_iter();
+    let mut settled = Vec::with_capacity(remaining.len());
+    while let Some((input, received)) = remaining.next() {
+        match (input, received) {
+            (None, Some(received)) => settled.push(SettledItem::Attempted(received)),
+            (Some(input), None) => settled.push(SettledItem::Unattempted(input)),
+            (input, received) => {
+                let rows = settled
+                    .into_iter()
+                    .map(|settled| match settled {
+                        SettledItem::Attempted(received) => (None, Some(received)),
+                        SettledItem::Unattempted(input) => (Some(input), None),
+                    })
+                    .chain(core::iter::once((input, received)))
+                    .chain(remaining)
+                    .collect();
+                *progress = Some(InterpretationProgress::Interpreting(
+                    CreationInterpretationCustody::Children(rows),
+                ));
+                return;
             }
         }
     }
+    let settlement = CreationSettlement::Settled(Creations::from_items(settled));
+    *progress = Some(InterpretationProgress::Completed(match corrupt {
+        Some(_) => Interpretation::Corrupt(settlement),
+        None => Interpretation::Complete(settlement),
+    }));
 }
 
 /// Generic interpretation of the one creation leg selected by a birth mode.
@@ -353,21 +946,36 @@ where
     A: Address,
 {
     fn interpret_creations(
-        creations: Creations<CreateChild<A, Self::Child>>,
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Self::Child>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
         interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send;
+    ) -> impl Future<Output = ()> + Send;
 }
 
 impl<A, Interpreter, RootEvent, Path> InterpretCreations<A, Interpreter, RootEvent, Path>
     for NoBirths
 where
     A: Address,
+    Creations<CreateChild<A, Never>>: Send,
 {
     fn interpret_creations(
-        _: Creations<CreateChild<A, Never>>,
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, Never>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
         _: &mut Interpreter,
-    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
-        core::future::ready(Interpretation::Complete(Creations::empty()))
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            <Self as CreationSettlements<A>>::prepare_interpretation(progress);
+        }
     }
 }
 
@@ -381,46 +989,16 @@ where
     Interpreter: InterpretItem<Creations<CreateChild<A, C>>, RootEvent, Path> + Send,
 {
     fn interpret_creations(
-        creations: Creations<CreateChild<A, C>>,
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
         interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
-        async move {
-            let routed = match interpreter.interpret_item(creations).await {
-                ItemSettlement::Accepted(routed) => routed,
-                ItemSettlement::Rejected { item, reason } => {
-                    return Interpretation::Complete(CreationSettlement::Rejected {
-                        creations: item,
-                        reason,
-                    });
-                }
-                ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
-                ItemSettlement::Corrupt { item, fault } => {
-                    return Interpretation::Corrupt(CreationSettlement::Corrupt {
-                        creations: item,
-                        fault,
-                    });
-                }
-            };
-
-            let mut remaining = routed.into_iter();
-            let mut settled = Vec::with_capacity(remaining.len());
-            while let Some(creation) = remaining.next() {
-                let (creation, route) = creation.into_parts();
-                let (id, child, kind) = creation.into_parts();
-                let settlement = child.dispatch_birth(id, route, kind, interpreter).await;
-                match settlement {
-                    corrupt @ ItemSettlement::Corrupt { .. } => {
-                        settled.push(SettledItem::Attempted(corrupt));
-                        settled.extend(remaining.map(SettledItem::Unattempted));
-                        return Interpretation::Corrupt(CreationSettlement::Settled(
-                            Creations::from_items(settled),
-                        ));
-                    }
-                    creation => settled.push(SettledItem::Attempted(creation)),
-                }
-            }
-            Interpretation::Complete(CreationSettlement::Settled(Creations::from_items(settled)))
-        }
+    ) -> impl Future<Output = ()> + Send {
+        interpret_creations::<A, C, Interpreter, RootEvent, Path>(progress, interpreter)
     }
 }
 
@@ -430,17 +1008,30 @@ where
     A: Address,
     C: ChildCreationProduct<A, ChildHead>,
     Births<C>: BirthMode<Child = C> + InterpretCreations<A, Interpreter, RootEvent, Path>,
+    Creations<CreateChild<A, C>>: Send,
+    <Births<C> as CreationSettlements<A>>::InterpretationCustody: Send,
+    <Births<C> as CreationSettlements<A>>::Settlements: Send,
+    Interpreter: Send,
 {
     fn interpret_creations(
-        creations: Creations<CreateChild<A, C>>,
+        progress: &mut Option<
+            InterpretationProgress<
+                Creations<CreateChild<A, C>>,
+                Self::InterpretationCustody,
+                Self::Settlements,
+            >,
+        >,
         interpreter: &mut Interpreter,
-    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
-        let interpretation =
-            <Births<C> as InterpretCreations<A, Interpreter, RootEvent, Path>>::interpret_creations(
-                creations,
-                interpreter,
-            );
-        async move { interpretation.await.map(RetirementCreationSettlement::new) }
+    ) -> impl Future<Output = ()> + Send {
+        async move {
+            <Self as CreationSettlements<A>>::prepare_interpretation(progress);
+            let Some(InterpretationProgress::Interpreting(base)) = progress else {
+                return;
+            };
+            <Births<C> as InterpretCreations<A,Interpreter,RootEvent,Path>>::interpret_creations(base,interpreter).await;
+            <Births<C> as CreationSettlements<A>>::finish_interpretation(base);
+            <Self as CreationSettlements<A>>::finish_interpretation(progress);
+        }
     }
 }
 
@@ -464,24 +1055,60 @@ where
     Sends: SourceSettlementCustody<Host, RootEvent> + Send,
     Ph: Send,
 {
+    type Custody = (
+        <(Creations, Sends) as SourceSettlementCustody<Host, RootEvent>>::Custody,
+        Become<Ph>,
+    );
+    fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        *progress = match progress.take() {
+            Some(SourceProgress::Original(original)) => Some(SourceProgress::Offering((
+                (
+                    Some(SourceProgress::Original(original.creations)),
+                    Some(SourceProgress::Original(original.sends)),
+                ),
+                original.become_,
+            ))),
+            progress => progress,
+        };
+    }
     fn offer_next_to_source(
-        self,
+        custody: &mut Self::Custody,
         host: &mut Host,
-    ) -> impl core::future::Future<Output = SourceCustody<Self>> + Send {
-        async move {
-            let Self {
-                creations,
-                sends,
-                become_,
-            } = self;
-            offer_source_in_order(creations, sends, host)
-                .await
-                .map(|(creations, sends)| Self {
+    ) -> impl Future<Output = ()> + Send {
+        offer_source_in_order::<Host, RootEvent, Creations, Sends>(&mut custody.0, host)
+    }
+    fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
+        let (custody, become_) = match progress.take() {
+            Some(SourceProgress::Offering(custody)) => custody,
+            retained => {
+                *progress = retained;
+                return;
+            }
+        };
+        let mut product = Some(SourceProgress::Offering(custody));
+        <(Creations, Sends) as SourceSettlementCustody<Host, RootEvent>>::finish_source(
+            &mut product,
+        );
+        *progress = match product {
+            Some(SourceProgress::Original((creations, sends))) => {
+                Some(SourceProgress::Original(Self {
                     creations,
                     sends,
                     become_,
-                })
-        }
+                }))
+            }
+            Some(SourceProgress::Offering(custody)) => {
+                Some(SourceProgress::Offering((custody, become_)))
+            }
+            Some(SourceProgress::Completed(reply)) => Some(SourceProgress::Completed(reply.map(
+                |(creations, sends)| Self {
+                    creations,
+                    sends,
+                    become_,
+                },
+            ))),
+            None => None,
+        };
     }
 }
 
@@ -601,7 +1228,7 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
         self
     }
 
-    /// Interpret this complete action value using one statically typed runtime.
+    /// Borrow caller-owned action progress through one statically typed runtime.
     ///
     /// Creation items are attempted in vector order before the named send
     /// product. Lawful creation rejection or blocking is retained and does not
@@ -610,45 +1237,42 @@ impl<A: Address, Ph, Sends, Birth: BirthMode> Actions<A, Ph, Sends, Birth> {
     /// traversal and retains every later creation and the complete send product
     /// as unattempted. The next-behavior verdict is never reconstructed.
     pub async fn interpret<Interpreter, RootEvent, Path>(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                <Self as ActionSettlements>::InterpretationCustody,
+                <Self as ActionSettlements>::Settlements,
+            >,
+        >,
         interpreter: &mut Interpreter,
-    ) -> Interpretation<
-        ActionSettlement<Birth::Settlements, <Sends as SendSettlements>::Settlements, Ph>,
-    >
-    where
+    ) where
         Ph: Send,
         Sends: InterpretSends<Interpreter, RootEvent, Path>,
         Birth: InterpretCreations<A, Interpreter, RootEvent, Path>,
+        Self: Send,
+        <Self as ActionSettlements>::Settlements: Send,
+        <Self as ActionSettlements>::InterpretationCustody: Send,
         Interpreter: Send,
     {
-        let Actions {
-            sends,
-            creates,
-            become_,
-        } = self;
-        let creations = match Birth::interpret_creations(creates, interpreter).await {
-            Interpretation::Complete(creations) => creations,
-            Interpretation::Corrupt(creations) => {
-                return Interpretation::Corrupt(ActionSettlement {
-                    creations,
-                    sends: Sends::unattempted(sends),
-                    become_,
-                });
-            }
+        Self::prepare_interpretation(progress);
+        let Some(InterpretationProgress::Interpreting(((creates, sends), _))) = progress else {
+            return;
         };
-
-        match Sends::interpret(sends, interpreter).await {
-            Interpretation::Complete(sends) => Interpretation::Complete(ActionSettlement {
-                creations,
-                sends,
-                become_,
-            }),
-            Interpretation::Corrupt(sends) => Interpretation::Corrupt(ActionSettlement {
-                creations,
-                sends,
-                become_,
-            }),
+        Birth::interpret_creations(creates, interpreter).await;
+        Birth::finish_interpretation(creates);
+        match creates {
+            Some(InterpretationProgress::Completed(Interpretation::Complete(_))) => {
+                Sends::interpret(sends, interpreter).await;
+                Sends::finish_interpretation(sends);
+            }
+            Some(InterpretationProgress::Completed(Interpretation::Corrupt(_))) => {
+                Sends::unattempted(sends);
+            }
+            // Neither source closure, normal exhaustion, interpreter fault,
+            // nor a completed settlement can be inferred from a partial slot.
+            _ => return,
         }
+        Self::finish_interpretation(progress);
     }
 }
 

@@ -1,4 +1,6 @@
-use core::future::Future;
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
 use std::time::Duration;
 
 use behavior_actors::{
@@ -8,7 +10,8 @@ use behavior_core::EventLayer;
 use behavior_core::{
     Acted, ActionItem, Actions, Behavior, Births, CreateChild, CreationKind, CreationSequence,
     Creations, Delivery, Here, Inside, InterpretItem, InterpretSends, Interpretation,
-    ItemSettlement, MailAddr, Never, NoBirths, Recipient, RetirementBirths, Step, User, UserEvent,
+    InterpretationProgress, ItemSettlement, MailAddr, Never, NoBirths, Recipient, RetirementBirths,
+    Step, User, UserEvent,
 };
 use behavior_testkit::model::InactivityModel;
 
@@ -267,66 +270,116 @@ impl
         Inside<Inside<Here>>,
     > for TimerCompositionRuntime
 {
-    fn interpret_item(
-        &mut self,
-        delivery: Delivery<behavior_testkit::TestRecipient<u8>>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            Delivery<behavior_testkit::TestRecipient<u8>>,
-            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Accepted,
-            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Rejection,
-            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Prerequisite,
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<behavior_testkit::TestRecipient<u8>>>,
+        received: &'a mut Option<
+            <Delivery<behavior_testkit::TestRecipient<u8>> as ActionItem>::Reply,
         >,
-    > + Send {
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<behavior_testkit::TestRecipient<u8>>: 'a,
+    {
         async move {
-            self.accepted_deliveries.push(delivery);
-            ItemSettlement::Accepted(())
+            if received.is_some() {
+                return;
+            }
+            let Some(delivery) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.accepted_deliveries.push(delivery);
+                    ItemSettlement::Accepted(())
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl InterpretItem<ScheduleAt, TimerCompositionEvent, Inside<Here>> for TimerCompositionRuntime {
-    fn interpret_item(
-        &mut self,
-        schedule: ScheduleAt,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ScheduleAt,
-            <ScheduleAt as ActionItem>::Accepted,
-            <ScheduleAt as ActionItem>::Rejection,
-            <ScheduleAt as ActionItem>::Prerequisite,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ScheduleAt>,
+        received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ScheduleAt: 'a,
+    {
         async move {
-            self.accepted_schedules
-                .push(TimerScheduleAcceptance::Absolute(schedule));
-            ItemSettlement::Accepted(TimerScheduled {
-                id: schedule.id,
-                generation: schedule.generation,
+            if received.is_some() {
+                return;
+            }
+            let Some(schedule) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.accepted_schedules
+                        .push(TimerScheduleAcceptance::Absolute(schedule));
+                    ItemSettlement::Accepted(TimerScheduled {
+                        id: schedule.id,
+                        generation: schedule.generation,
+                    })
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
             })
+            .await;
         }
     }
 }
 
 impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerCompositionRuntime {
-    fn interpret_item(
-        &mut self,
-        schedule: ScheduleAfter,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ScheduleAfter,
-            <ScheduleAfter as ActionItem>::Accepted,
-            <ScheduleAfter as ActionItem>::Rejection,
-            <ScheduleAfter as ActionItem>::Prerequisite,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ScheduleAfter>,
+        received: &'a mut Option<<ScheduleAfter as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ScheduleAfter: 'a,
+    {
         async move {
-            self.accepted_schedules
-                .push(TimerScheduleAcceptance::Relative(schedule));
-            ItemSettlement::Accepted(TimerScheduled {
-                id: schedule.id,
-                generation: schedule.generation,
+            if received.is_some() {
+                return;
+            }
+            let Some(schedule) = input.take() else {
+                return;
+            };
+            let producer = {
+                async move {
+                    self.accepted_schedules
+                        .push(TimerScheduleAcceptance::Relative(schedule));
+                    ItemSettlement::Accepted(TimerScheduled {
+                        id: schedule.id,
+                        generation: schedule.generation,
+                    })
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
             })
+            .await;
         }
     }
 }
@@ -352,11 +405,18 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
         accepted_deliveries: Vec::new(),
         accepted_schedules: Vec::new(),
     };
-    let interpreted = <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
-        initial.sends,
-        &mut runtime,
-    )
-    .await;
+    let interpreted = ({
+        let mut progress = Some(InterpretationProgress::Original(initial.sends));
+        <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the recorded effect product must return its exact complete settlement");
+        };
+        settlement
+    });
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(
@@ -381,11 +441,18 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    let interpreted = <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
-        accepted.sends,
-        &mut runtime,
-    )
-    .await;
+    let interpreted = ({
+        let mut progress = Some(InterpretationProgress::Original(accepted.sends));
+        <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the recorded effect product must return its exact complete settlement");
+        };
+        settlement
+    });
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(runtime.accepted_schedules.len(), 2);
@@ -396,9 +463,18 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    let interpreted =
-        <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(stale.sends, &mut runtime)
-            .await;
+    let interpreted = ({
+        let mut progress = Some(InterpretationProgress::Original(stale.sends));
+        <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the recorded effect product must return its exact complete settlement");
+        };
+        settlement
+    });
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(runtime.accepted_schedules.len(), 2);

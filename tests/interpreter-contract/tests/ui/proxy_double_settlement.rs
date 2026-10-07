@@ -1,17 +1,21 @@
-fn settle_twice<Source, Worker, Plan, Host>(
-    operation: behavior_actors::atomic::ProxyOperation<Source, Worker, Plan>,
+use behavior::{Behavior, BehaviorAddr, EndpointAddress, InterpretationProgress};
+use behavior_actors::atomic::{ActivationPlan, ProxyControlAdmission, ProxyOperation, StableProxy};
+
+// Borrowed polling can repeat; the same original private authority cannot enter two owners.
+fn reuse_original_proxy_operation<Source, Worker, Plan, Host>(
+    operation: ProxyOperation<Source, Worker, Plan>,
     host: &mut Host,
-)
-where
-    Worker: behavior::Behavior,
-    Plan: behavior_actors::atomic::ActivationPlan,
-    behavior::BehaviorAddr<Worker>: behavior::EndpointAddress,
-    behavior_actors::atomic::StableProxy<Worker, Plan>:
-        behavior::Behavior<Protocol = Worker::Protocol>,
-    Host: behavior_actors::atomic::ProxyControlAdmission<Worker, Plan>,
+) where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+    Host: ProxyControlAdmission<Worker, Plan>,
 {
-    let _accepted = operation.settle(host);
-    let _duplicate = operation.settle(host);
+    let mut progress = Some(InterpretationProgress::Original(operation));
+    ProxyOperation::settle(&mut progress, host);
+    let mut duplicate = Some(InterpretationProgress::Original(operation));
+    ProxyOperation::settle(&mut duplicate, host);
 }
 
 fn main() {}

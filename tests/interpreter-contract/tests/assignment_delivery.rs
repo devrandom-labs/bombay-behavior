@@ -1,13 +1,14 @@
 use core::convert::Infallible;
+use core::future::Future;
 use std::time::Instant;
 
 use behavior::{
-    ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase,
-    ChildCreationOutcome, ChildHead, ChildReport, CommittedChild, CreateChild, CreationId,
-    CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, EstablishedDelivery,
-    ExactDeliveryReason, Here, InterpretEstablished, InterpretItem, InterpreterRequests,
-    ItemSettlement, MessageProtocol, Never, NoBirths, Protocol, Recipient, ReportToParent,
-    SettledItem, User,
+    ActionItem, ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed,
+    BehaviorBase, ChildCreationOutcome, ChildHead, ChildReport, CommittedChild, CreateChild,
+    CreationId, CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor,
+    EstablishedDelivery, ExactDeliveryReason, Here, InterpretEstablished, InterpretItem,
+    InterpretationProgress, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
+    Protocol, Recipient, ReportToParent, SettledItem, User,
 };
 use behavior_actors::atomic::{
     ActivationPolicy, ActorDrainPolicy, AssignWorker, Assignment, BacklogCapacity, Completion,
@@ -216,26 +217,40 @@ impl DeliveryHost {
 }
 
 impl InterpretItem<EstablishedDelivery<Worker>, (), Here> for DeliveryHost {
-    async fn interpret_item(
-        &mut self,
-        delivery: EstablishedDelivery<Worker>,
-    ) -> ItemSettlement<EstablishedDelivery<Worker>, (), ExactDeliveryReason, Never> {
-        self.endpoints
-            .push(delivery.to.clone().interpret(&mut EndpointReader));
-        self.payloads
-            .push(delivery.message.payload().as_ref().as_ptr() as usize);
-        self.payload_texts
-            .push(delivery.message.payload().as_ref().to_owned());
-        match self.admission {
-            DeliveryAdmission::Accept => {
-                self.completions
-                    .push(delivery.message.complete(23).into_inner());
-                ItemSettlement::Accepted(())
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<EstablishedDelivery<Worker>>,
+        received: &'a mut Option<<EstablishedDelivery<Worker> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        EstablishedDelivery<Worker>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
             }
-            DeliveryAdmission::Reject => ItemSettlement::Rejected {
-                item: delivery,
-                reason: ExactDeliveryReason::ClosedRecipient,
-            },
+            let Some(delivery) = input.take() else {
+                return;
+            };
+            *received = Some({
+                self.endpoints
+                    .push(delivery.to.clone().interpret(&mut EndpointReader));
+                self.payloads
+                    .push(delivery.message.payload().as_ref().as_ptr() as usize);
+                self.payload_texts
+                    .push(delivery.message.payload().as_ref().to_owned());
+                match self.admission {
+                    DeliveryAdmission::Accept => {
+                        self.completions
+                            .push(delivery.message.complete(23).into_inner());
+                        ItemSettlement::Accepted(())
+                    }
+                    DeliveryAdmission::Reject => ItemSettlement::Rejected {
+                        item: delivery,
+                        reason: ExactDeliveryReason::ClosedRecipient,
+                    },
+                }
+            });
         }
     }
 }
@@ -248,7 +263,14 @@ async fn accepted_assignment_returns_its_receipt_before_completion() {
     let request = submitted_assignment(&mut pool, payload);
     let mut host = DeliveryHost::new(DeliveryAdmission::Accept);
 
-    let settlement = request.settle(&mut host).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(request));
+        AssignWorker::<Worker, Box<str>>::settle::<_, (), Here>(&mut progress, &mut host).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact delivery host must return its actual complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert_eq!(host.endpoints, [Endpoint(40 + worker.get())]);
     assert_eq!(host.payloads.len(), 1);
     assert_ne!(host.payloads[0], identity);
@@ -298,8 +320,22 @@ async fn concurrent_same_typed_assignments_return_receipts_to_their_own_pools() 
     let second_request = submitted_assignment(&mut second, second_payload);
     let mut host = DeliveryHost::new(DeliveryAdmission::Accept);
 
-    let second_receipt = second_request.settle(&mut host).await;
-    let first_receipt = first_request.settle(&mut host).await;
+    let second_receipt = {
+        let mut progress = Some(InterpretationProgress::Original(second_request));
+        AssignWorker::<Worker, Box<str>>::settle::<_, (), Here>(&mut progress, &mut host).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact delivery host must return its actual complete settlement");
+        };
+        settlement.into_settlement()
+    };
+    let first_receipt = {
+        let mut progress = Some(InterpretationProgress::Original(first_request));
+        AssignWorker::<Worker, Box<str>>::settle::<_, (), Here>(&mut progress, &mut host).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact delivery host must return its actual complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert_eq!(host.endpoints.len(), 2);
     assert_ne!(host.payloads[0], second_identity);
     assert_ne!(host.payloads[1], first_identity);
@@ -355,7 +391,14 @@ async fn rejected_assignment_returns_original_customer_job_after_quarantine() {
     let request = submitted_assignment(&mut pool, payload);
     let mut host = DeliveryHost::new(DeliveryAdmission::Reject);
 
-    let settlement = request.settle(&mut host).await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(request));
+        AssignWorker::<Worker, Box<str>>::settle::<_, (), Here>(&mut progress, &mut host).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the exact delivery host must return its actual complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert_eq!(host.endpoints, [Endpoint(40 + worker.get())]);
     assert_eq!(host.payloads.len(), 1);
     assert_ne!(host.payloads[0], identity);

@@ -15,8 +15,8 @@ use behavior_actors::atomic::{
     WorkerSubmission,
 };
 use behavior_core::{
-    ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never, NoSends,
-    SendSettlements, SettledItem, Step,
+    ActionItemResult, ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never,
+    NoSends, SendSettlements, SettledItem, Step,
 };
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};
@@ -114,8 +114,7 @@ fn exercise(inputs: &[u8]) {
         ))
         .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
     assert!(started.creates.is_empty());
-    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(1)))
-    {
+    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(1))) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => panic!("one role needs one worker submission"),
     };
@@ -125,8 +124,10 @@ fn exercise(inputs: &[u8]) {
     let replacement = match prepared
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("immediate release emits one replacement")
     {

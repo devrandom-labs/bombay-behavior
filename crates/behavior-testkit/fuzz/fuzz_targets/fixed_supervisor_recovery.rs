@@ -8,7 +8,8 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
-    ChildReport, MessageProtocol, NoSends, Recipient, SendSettlements, SettledItem, Step,
+    ActionItemResult, ChildReport, MessageProtocol, NoSends, Recipient, SendSettlements,
+    SettledItem, Step,
 };
 
 use crate::fixed_supervisor::{Role, ready_supervisor};
@@ -52,8 +53,10 @@ where
     let preparation = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one-role recovery emits one preparation")
     {
@@ -94,12 +97,26 @@ where
     let preparations = queried
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert!(preparations.is_empty());
-    let operations = queried.sends.proxy_operations.unattempted().into_inputs();
+    let operations = queried
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert!(operations.is_empty());
-    let schedules = queried.sends.restart_schedules.unattempted().into_inputs();
+    let schedules = queried
+        .sends
+        .restart_schedules
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert!(schedules.is_empty());
     let NoSends = queried.sends.lifecycle;
     assert!(queried.sends.status_replies.as_slice().is_empty());
