@@ -24,7 +24,7 @@ use behavior_actors::atomic::{
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
     ActionItemResult, ChildReport, CreationId, EstablishedActor, EstablishedRecipient,
-    ItemSettlement, MessageProtocol, Never, Recipient, SendSettlements, SettledItem, Step,
+    ItemSettlement, MessageProtocol, Never, Recipient, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 use proxy_control::admit_proxy_operation;

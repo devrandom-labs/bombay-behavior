@@ -8,8 +8,7 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
-    ActionItemResult, ChildReport, MessageProtocol, NoSends, Recipient, SendSettlements,
-    SettledItem, Step,
+    ActionItemResult, ChildReport, MessageProtocol, NoSends, Recipient, SettledItem, Step,
 };
 
 use crate::fixed_supervisor::{Role, ready_supervisor};

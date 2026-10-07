@@ -7,8 +7,8 @@ mod stable_proxy;
 
 use behavior_actors::atomic::{FixedCommand, ImmediateActivation, Recovery, StableProxy};
 use behavior_core::{
-    ActionItemResult, CreationSequence, EstablishedActor, ItemSettlement, NoSends, SendSettlements,
-    SettledItem, Step,
+    ActionItemResult, CreationSequence, EstablishedActor, ItemSettlement, NoSends, SettledItem,
+    Step,
 };
 use fixed_supervisor::ready_supervisor;
 use libfuzzer_sys::fuzz_target;

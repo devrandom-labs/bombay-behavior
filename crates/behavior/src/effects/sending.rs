@@ -295,15 +295,18 @@ pub enum InterpretationProgress<Input, Custody, Settlement> {
 ///
 /// A runtime cannot select another settlement product for the same sends value:
 ///
-/// ```compile_fail,E0271
+/// ```compile_fail,E0308
 /// struct RuntimeSettlement;
 ///
 /// fn runtime_selected<Runtime>(
-///     requests: behavior::InterpreterRequests<behavior::ReportToParent<u8>>,
+///     progress: &mut Option<behavior::InterpretationProgress<
+///         behavior::InterpreterRequests<behavior::ReportToParent<u8>>,
+///         <behavior::InterpreterRequests<behavior::ReportToParent<u8>> as
+///             behavior::SendSettlements>::InterpretationCustody,
+///         RuntimeSettlement,
+///     >>,
 ///     runtime: &mut Runtime,
-/// ) -> impl core::future::Future<
-///     Output = behavior::Interpretation<RuntimeSettlement>,
-/// > + Send
+/// ) -> impl core::future::Future<Output = ()> + Send
 /// where
 ///     Runtime: behavior::InterpretItem<
 ///         behavior::ReportToParent<u8>,
@@ -313,7 +316,7 @@ pub enum InterpretationProgress<Input, Custody, Settlement> {
 /// {
 ///     <behavior::InterpreterRequests<behavior::ReportToParent<u8>> as
 ///         behavior::InterpretSends<Runtime, (), behavior::Here>>::interpret(
-///             requests,
+///             progress,
 ///             runtime,
 ///         )
 /// }

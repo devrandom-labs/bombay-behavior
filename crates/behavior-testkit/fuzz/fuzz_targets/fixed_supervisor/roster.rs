@@ -11,7 +11,7 @@ use behavior_actors::{Activate as _, Active};
 use behavior_core::{
     ActionItemResult, ChildCreationOutcome, ChildReport, CreateChild, CreationId,
     CreationSettlement, Creations, CreationsSettled, EstablishedActor, EstablishedRecipient,
-    ItemSettlement, MessageProtocol, Never, SendSettlements, SettledItem, Step,
+    ItemSettlement, MessageProtocol, Never, SettledItem, Step,
 };
 
 use crate::proxy_control::admit_proxy_operation;

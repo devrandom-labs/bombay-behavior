@@ -405,7 +405,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
         accepted_deliveries: Vec::new(),
         accepted_schedules: Vec::new(),
     };
-    let interpreted = ({
+    let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(initial.sends));
         <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
             &mut progress,
@@ -416,7 +416,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             panic!("the recorded effect product must return its exact complete settlement");
         };
         settlement
-    });
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(
@@ -441,7 +441,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    let interpreted = ({
+    let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(accepted.sends));
         <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
             &mut progress,
@@ -452,7 +452,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             panic!("the recorded effect product must return its exact complete settlement");
         };
         settlement
-    });
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(runtime.accepted_schedules.len(), 2);
@@ -463,7 +463,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             generation: TimerGeneration(0),
         }))
         .unwrap();
-    let interpreted = ({
+    let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(stale.sends));
         <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
             &mut progress,
@@ -474,7 +474,7 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
             panic!("the recorded effect product must return its exact complete settlement");
         };
         settlement
-    });
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert!(runtime.accepted_deliveries.is_empty());
     assert_eq!(runtime.accepted_schedules.len(), 2);

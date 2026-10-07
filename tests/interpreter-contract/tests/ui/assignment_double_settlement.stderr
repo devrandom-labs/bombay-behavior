@@ -1,16 +1,11 @@
 error[E0382]: use of moved value: `request`
-  --> tests/ui/assignment_double_settlement.rs:13:10
+  --> tests/ui/assignment_double_settlement.rs:17:63
    |
- 2 |     request: behavior_actors::atomic::AssignWorker<P, Job>,
-   |     ------- move occurs because `request` has type `AssignWorker<P, Job>`, which does not implement the `Copy` trait
+ 7 | async fn reuse_original_assignment<P, Job, Host>(request: AssignWorker<P, Job>, host: &mut Host)
+   |                                                  ------- move occurs because `request` has type `AssignWorker<P, Job>`, which does not implement the `Copy` trait
 ...
-12 |     drop(request.settle(host).await);
-   |                  ------------ `request` moved due to this method call
-13 |     drop(request.settle(host).await);
-   |          ^^^^^^^ value used here after move
-   |
-note: `AssignWorker::<P, Job>::settle` takes ownership of the receiver `self`, which moves `request`
-  --> $BEHAVIOR_ACTORS/src/atomic/pool/assignment.rs
-   |
-   |         self,
-   |         ^^^^
+15 |     let mut progress = Some(InterpretationProgress::Original(request));
+   |                                                              ------- value moved here
+16 |     AssignWorker::<P, Job>::settle::<_, (), Here>(&mut progress, host).await;
+17 |     let mut duplicate = Some(InterpretationProgress::Original(request));
+   |                                                               ^^^^^^^ value used here after move

@@ -16,7 +16,7 @@ use behavior_actors::atomic::{
 };
 use behavior_core::{
     ActionItemResult, ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never,
-    NoSends, SendSettlements, SettledItem, Step,
+    NoSends, SettledItem, Step,
 };
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};

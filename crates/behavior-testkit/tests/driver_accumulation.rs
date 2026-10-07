@@ -309,7 +309,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     let mut runtime = FullStackRuntime {
         effects: Vec::new(),
     };
-    let interpreted = ({
+    let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(trace.sends));
         <_ as InterpretSends<_, FullStackEvent, Here>>::interpret(&mut progress, &mut runtime)
             .await;
@@ -317,7 +317,7 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             panic!("the recorded effect product must return its exact complete settlement");
         };
         settlement
-    });
+    };
     assert!(matches!(interpreted, Interpretation::Complete(_)));
     assert_eq!(
         runtime.effects,
@@ -335,7 +335,7 @@ async fn unknown_peer_observation_returns_the_complete_request() {
     let observations = behavior_core::InterpreterRequests::one(ObservePeer::new(peer));
     let mut runtime = UnknownPeerRuntime;
 
-    let interpreted = ({
+    let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(observations));
         <_ as InterpretSends<_, FullStackEvent, Inside<Here>>>::interpret(
             &mut progress,
@@ -346,7 +346,7 @@ async fn unknown_peer_observation_returns_the_complete_request() {
             panic!("the recorded effect product must return its exact complete settlement");
         };
         settlement
-    });
+    };
     let Interpretation::Complete(settlements) = interpreted else {
         panic!("expected a complete logical-peer observation rejection");
     };

@@ -17,9 +17,7 @@ use behavior_actors::atomic::{
 use behavior_actors::{
     ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
-use behavior_core::{
-    ActionItemResult, ItemSettlement, Never, NoSends, SendSettlements, SettledItem, Step,
-};
+use behavior_core::{ActionItemResult, ItemSettlement, Never, NoSends, SettledItem, Step};
 use fixed_supervisor::Role;
 use fixed_supervisor_recovery::{search_capability, search_recovery};
 use libfuzzer_sys::fuzz_target;

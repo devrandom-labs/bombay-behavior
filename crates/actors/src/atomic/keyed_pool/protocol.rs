@@ -512,7 +512,7 @@ where
     <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
     Job: Send,
 {
-    #[expect(
+    #[allow(
         dead_code,
         reason = "Bombay's diagnostic custodian receives the complete opaque cause"
     )]
