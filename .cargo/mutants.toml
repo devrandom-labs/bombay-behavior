@@ -12,4 +12,10 @@ exclude_re = [
     # EQUIVALENT: Never is uninhabited, so every Vec<Never> is empty and
     # returning the input is observationally identical to Vec::default().
     'replace <impl SendSettlements for Vec<crate::Never>>::unattempted -> Self::Settlements with Default::default\(\)',
+    # Exact semantic equivalents at the reviewed actions.rs source: the preliminary
+    # presence guard broadens, but exhaustive row extraction returns unchanged
+    # typed custody for both-present/both-absent rows. No source effect changes.
+    # Independent proof4825764b; these two spans only. Re-review after source moves.
+    '^crates/behavior/src/effects/actions\.rs:897:29: replace && with \|\| in finish_creations$',
+    '^crates/behavior/src/effects/actions\.rs:899:29: replace && with \|\| in finish_creations$',
 ]
