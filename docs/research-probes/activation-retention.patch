@@ -1,0 +1,12 @@
+--- a/crates/actors/tests/proxy_command_recovery.rs
++++ b/crates/actors/tests/proxy_command_recovery.rs
+@@ -2897,8 +2897,8 @@
+             .take()
+             .expect("the current exact request is available");
+         let started = request.started();
++        inject_started(started);
+         retained.worker_activations.push(request);
+-        inject_started(started);
+         *received = Some(ItemSettlement::Accepted(()));
+     }
+ }

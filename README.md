@@ -1,5 +1,11 @@
 # Bombay Behavior
 
+> Unreleased breaking change: this source uses independently owned receiving
+> values for action interpretation and worker startup. It requires a matching
+> new Core, Actors and Macros release. Published `0.22` remains a separate
+> registry contract; this feature branch is not proof of publication or full
+> Bombay EXEC acceptance.
+
 Bombay Behavior is the statically typed functional core of the Bombay actor
 stack. `bombay-behavior` defines the pure `Behavior` fold and its explicit
 `Actions`; `bombay-behavior-actors` provides reusable behaviors and typed
