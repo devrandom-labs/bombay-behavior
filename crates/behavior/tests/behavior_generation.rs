@@ -1,7 +1,12 @@
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use behavior::{
     Actions, BehaviorActed, BirthProtocol, ChildChoice, Children, ClassifySettlement,
-    CreationSequence, Delivery, Interpretation, ItemSettlement, MailAddr, Never, NoBirthProtocols,
-    Recipient, SendEffects, SettledItem, SettlementStatus, Step,
+    CreationSequence, Delivery, Interpretation, InterpretationProgress, ItemSettlement, MailAddr,
+    Never, NoBirthProtocols, Recipient, SendEffects, SettledItem, SettlementStatus, Step,
+    finish_item, prepare_item,
 };
 
 pub struct FirstDestination;
@@ -27,6 +32,35 @@ impl behavior::InterpreterRequest for LocalRequest {
 }
 
 impl behavior::ActionItem for LocalRequest {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = Never;
     type Prerequisite = Never;
@@ -233,57 +267,105 @@ struct CompleteInterpreter(Vec<&'static str>);
 impl<RootEvent, Path> behavior::InterpretItem<Delivery<FirstDestination>, RootEvent, Path>
     for CompleteInterpreter
 {
-    fn interpret_item(
-        &mut self,
-        _: Delivery<FirstDestination>,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Delivery<FirstDestination>,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Accepted,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Rejection,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        self.0.push("first");
-        async { ItemSettlement::Accepted(()) }
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<FirstDestination>>,
+        received: &'a mut Option<<Delivery<FirstDestination> as behavior::ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<FirstDestination>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(_item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.0.push("first");
+                async { ItemSettlement::Accepted(()) }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
 impl<RootEvent, Path> behavior::InterpretItem<Delivery<SecondDestination>, RootEvent, Path>
     for CompleteInterpreter
 {
-    fn interpret_item(
-        &mut self,
-        _: Delivery<SecondDestination>,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Delivery<SecondDestination>,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Accepted,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Rejection,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        self.0.push("second");
-        async { ItemSettlement::Accepted(()) }
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<SecondDestination>>,
+        received: &'a mut Option<<Delivery<SecondDestination> as behavior::ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<SecondDestination>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(_item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.0.push("second");
+                async { ItemSettlement::Accepted(()) }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
 impl<RootEvent, Path> behavior::InterpretItem<LocalRequest, RootEvent, Path>
     for CompleteInterpreter
 {
-    fn interpret_item(
-        &mut self,
-        _: LocalRequest,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            LocalRequest,
-            <LocalRequest as behavior::ActionItem>::Accepted,
-            <LocalRequest as behavior::ActionItem>::Rejection,
-            <LocalRequest as behavior::ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        self.0.push("request");
-        async { ItemSettlement::Accepted(()) }
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<LocalRequest>,
+        received: &'a mut Option<<LocalRequest as behavior::ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        LocalRequest: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(_item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.0.push("request");
+                async { ItemSettlement::Accepted(()) }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
@@ -301,30 +383,46 @@ struct PlannedInterpreter {
 impl<RootEvent, Path> behavior::InterpretItem<Delivery<FirstDestination>, RootEvent, Path>
     for PlannedInterpreter
 {
-    fn interpret_item(
-        &mut self,
-        item: Delivery<FirstDestination>,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Delivery<FirstDestination>,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Accepted,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Rejection,
-            <Delivery<FirstDestination> as behavior::ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        self.attempts.push("first");
-        let plan = self.first;
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<FirstDestination>>,
+        received: &'a mut Option<<Delivery<FirstDestination> as behavior::ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<FirstDestination>: 'a,
+    {
         async move {
-            match plan {
-                FirstPlan::Reject => ItemSettlement::Rejected {
-                    item,
-                    reason: behavior::LogicalDeliveryReason::ClosedRecipient,
-                },
-                FirstPlan::Corrupt => ItemSettlement::Corrupt {
-                    item,
-                    fault: behavior::InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.attempts.push("first");
+                let plan = self.first;
+                async move {
+                    match plan {
+                        FirstPlan::Reject => ItemSettlement::Rejected {
+                            item,
+                            reason: behavior::LogicalDeliveryReason::ClosedRecipient,
+                        },
+                        FirstPlan::Corrupt => ItemSettlement::Corrupt {
+                            item,
+                            fault: behavior::InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
@@ -332,19 +430,35 @@ impl<RootEvent, Path> behavior::InterpretItem<Delivery<FirstDestination>, RootEv
 impl<RootEvent, Path> behavior::InterpretItem<Delivery<SecondDestination>, RootEvent, Path>
     for PlannedInterpreter
 {
-    fn interpret_item(
-        &mut self,
-        _: Delivery<SecondDestination>,
-    ) -> impl core::future::Future<
-        Output = ItemSettlement<
-            Delivery<SecondDestination>,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Accepted,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Rejection,
-            <Delivery<SecondDestination> as behavior::ActionItem>::Prerequisite,
-        >,
-    > + Send {
-        self.attempts.push("second");
-        async { ItemSettlement::Accepted(()) }
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<Delivery<SecondDestination>>,
+        received: &'a mut Option<<Delivery<SecondDestination> as behavior::ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        Delivery<SecondDestination>: 'a,
+    {
+        async move {
+            if received.is_some() {
+                return;
+            }
+            let Some(_item) = input.take() else {
+                return;
+            };
+            let producer = {
+                self.attempts.push("second");
+                async { ItemSettlement::Accepted(()) }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
+        }
     }
 }
 
@@ -603,12 +717,19 @@ async fn generated_interpreter_visits_every_lane_in_declaration_order() {
     };
     let mut interpreter = CompleteInterpreter::default();
 
-    let settlement = <BootstrapSends as behavior::InterpretSends<
-        CompleteInterpreter,
-        behavior::User<MailAddr, ()>,
-        behavior::Here,
-    >>::interpret(sends, &mut interpreter)
-    .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <BootstrapSends as behavior::InterpretSends<
+            CompleteInterpreter,
+            behavior::User<MailAddr, ()>,
+            behavior::Here,
+        >>::interpret(&mut progress, &mut interpreter)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
 
     assert_eq!(interpreter.0, ["first", "second"]);
     let Interpretation::Complete(settlement) = settlement else {
@@ -637,12 +758,19 @@ async fn generated_product_continues_rejection_and_retains_corrupt_suffix() {
         first: FirstPlan::Reject,
         attempts: Vec::new(),
     };
-    let settlement = <BootstrapSends as behavior::InterpretSends<
-        PlannedInterpreter,
-        behavior::User<MailAddr, ()>,
-        behavior::Here,
-    >>::interpret(sends(), &mut rejecting)
-    .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends()));
+        <BootstrapSends as behavior::InterpretSends<
+            PlannedInterpreter,
+            behavior::User<MailAddr, ()>,
+            behavior::Here,
+        >>::interpret(&mut progress, &mut rejecting)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     assert_eq!(rejecting.attempts, ["first", "second"]);
     let Interpretation::Complete(settlement) = settlement else {
         panic!("lawful rejection cannot corrupt the product");
@@ -660,12 +788,19 @@ async fn generated_product_continues_rejection_and_retains_corrupt_suffix() {
         first: FirstPlan::Corrupt,
         attempts: Vec::new(),
     };
-    let settlement = <BootstrapSends as behavior::InterpretSends<
-        PlannedInterpreter,
-        behavior::User<MailAddr, ()>,
-        behavior::Here,
-    >>::interpret(sends(), &mut corrupting)
-    .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(sends()));
+        <BootstrapSends as behavior::InterpretSends<
+            PlannedInterpreter,
+            behavior::User<MailAddr, ()>,
+            behavior::Here,
+        >>::interpret(&mut progress, &mut corrupting)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     assert_eq!(corrupting.attempts, ["first"]);
     let Interpretation::Corrupt(settlement) = settlement else {
         panic!("interpreter corruption must mark the complete product");
@@ -690,12 +825,19 @@ async fn generated_product_composes_delivery_and_interpreter_request_lanes() {
     let actions = behavior::initialize(&mut actor).expect("lane initialization succeeds");
     let mut interpreter = CompleteInterpreter::default();
 
-    let settlement = <LaneFamiliesSends as behavior::InterpretSends<
-        CompleteInterpreter,
-        behavior::User<MailAddr, ()>,
-        behavior::Here,
-    >>::interpret(actions.sends, &mut interpreter)
-    .await;
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(actions.sends));
+        <LaneFamiliesSends as behavior::InterpretSends<
+            CompleteInterpreter,
+            behavior::User<MailAddr, ()>,
+            behavior::Here,
+        >>::interpret(&mut progress, &mut interpreter)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
 
     assert_eq!(interpreter.0, ["request", "first", "first"]);
     let Interpretation::Complete(settlement) = settlement else {

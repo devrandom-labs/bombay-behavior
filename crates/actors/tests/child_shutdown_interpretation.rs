@@ -2,7 +2,7 @@
 
 use behavior::*;
 use behavior_actors::*;
-use core::future::Future;
+use core::future::{Future, ready};
 use std::fmt::Debug;
 use std::time::Instant;
 
@@ -146,13 +146,23 @@ where
     Event: EventIngress<Here, InstallShutdownPlan<Plan>> + Send,
     Plan: Send,
 {
-    fn interpret_item(
-        &mut self,
-        request: ReportShutdownPlan<Plan>,
-    ) -> impl Future<Output = ItemSettlement<ReportShutdownPlan<Plan>, (), Never, Never>> + Send
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ReportShutdownPlan<Plan>>,
+        received: &'a mut Option<<ReportShutdownPlan<Plan> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ReportShutdownPlan<Plan>: 'a,
     {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(request) = input.take() else {
+            return ready(());
+        };
         self.events.push(request.into_event());
-        async { ItemSettlement::Accepted(()) }
+        *received = Some(ItemSettlement::Accepted(()));
+        ready(())
     }
 }
 
@@ -162,17 +172,20 @@ where
     Event: InjectEvent<CreationResolved<MailAddr>, Path> + Send,
     P: Protocol<Addr = MailAddr>,
 {
-    fn interpret_item(
-        &mut self,
-        request: ObserveCreation<P, Occurrence>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ObserveCreation<P, Occurrence>,
-            (),
-            Never,
-            CreationCorrelation<P, Occurrence>,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ObserveCreation<P, Occurrence>>,
+        received: &'a mut Option<<ObserveCreation<P, Occurrence> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ObserveCreation<P, Occurrence>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(request) = input.take() else {
+            return ready(());
+        };
         let address = MailAddr(self.next_address);
         self.next_address = self
             .next_address
@@ -181,7 +194,8 @@ where
         self.events.push(
             Ingress::<_, Path>::new().event(CreationResolved::birth(request.creation, address)),
         );
-        async { ItemSettlement::Accepted(()) }
+        *received = Some(ItemSettlement::Accepted(()));
+        ready(())
     }
 }
 
@@ -191,17 +205,20 @@ where
     Event: InjectEvent<ChildStopped<MailAddr>, Path> + Send,
     Child: Behavior<Protocol: Protocol<Addr = MailAddr>>,
 {
-    fn interpret_item(
-        &mut self,
-        request: ShutdownChild<Child, Occurrence>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ShutdownChild<Child, Occurrence>,
-            (),
-            ChildShutdownRejection,
-            CreationCorrelation<Child::Protocol, Occurrence>,
-        >,
-    > + Send {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ShutdownChild<Child, Occurrence>>,
+        received: &'a mut Option<<ShutdownChild<Child, Occurrence> as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ShutdownChild<Child, Occurrence>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(request) = input.take() else {
+            return ready(());
+        };
         self.shutdowns.push(request.child);
         self.events
             .push(Ingress::<_, Path>::new().event(ChildStopped::new(
@@ -209,7 +226,8 @@ where
                 Ok(Exit::Normal),
                 Instant::now(),
             )));
-        async { ItemSettlement::Accepted(()) }
+        *received = Some(ItemSettlement::Accepted(()));
+        ready(())
     }
 }
 
@@ -219,8 +237,12 @@ where
     Sends: InterpretSends<Recording<Event>, Event, Here>,
     Sends::Settlements: ClassifySettlement,
 {
-    let Interpretation::Complete(settlements) = sends.interpret(interpreter).await else {
-        panic!("the recording interpreter cannot corrupt an item");
+    let mut progress = Some(InterpretationProgress::Original(sends));
+    <Sends as InterpretSends<Recording<Event>, Event, Here>>::interpret(&mut progress, interpreter)
+        .await;
+    let Some(InterpretationProgress::Completed(Interpretation::Complete(settlements))) = progress
+    else {
+        panic!("the recording interpreter must return its actual complete settlement");
     };
     assert_eq!(settlements.settlement_status(), SettlementStatus::Accepted);
 }

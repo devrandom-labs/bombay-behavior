@@ -9,8 +9,9 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
-    ChildCreationOutcome, ChildReport, CreateChild, CreationId, CreationSettlement, Creations,
-    CreationsSettled, EstablishedActor, ItemSettlement, Never, SendSettlements, SettledItem, Step,
+    ActionItemResult, ChildCreationOutcome, ChildReport, CreateChild, CreationId,
+    CreationSettlement, Creations, CreationsSettled, EstablishedActor, ItemSettlement, Never,
+    SettledItem, Step,
 };
 
 use crate::proxy_control::admit_proxy_operation;
@@ -84,8 +85,10 @@ where
     let initial = match proxy_created
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one initial proxy operation is emitted")
     {

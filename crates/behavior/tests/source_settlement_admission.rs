@@ -1,10 +1,15 @@
 use behavior::{
     ActionItem, ActionItemResult, ActionSettlement, BehaviorActed, ClassifySettlement, Creations,
-    EventIngress, InterpretItem, InterpretSends, Interpretation, InterpreterFault, ItemSettlement,
-    MailAddr, Never, SendEffects, SendLayer, SettledItem, SettlementStatus, SourceAction,
-    SourceActions, SourceAdmission, SourceCustody, SourceSettlementCustody, Step,
+    EventIngress, InterpretItem, InterpretSends, Interpretation, InterpretationProgress,
+    InterpreterFault, ItemSettlement, MailAddr, Never, Own, SendEffects, SendInput, SendLayer,
+    SendSettlements, SettledItem, SettlementStatus, SourceAction, SourceActions, SourceAdmission,
+    SourceCustody, SourceProgress, SourceSettlementCustody, SourceSettlements, Step, finish_item,
+    prepare_item,
 };
-use core::future::Future;
+use core::future::{Future, poll_fn};
+use core::pin::pin;
+use core::task::Poll;
+
 use std::collections::VecDeque;
 
 struct ProxyOwner;
@@ -25,6 +30,35 @@ enum ProxyRejection {
 }
 
 impl ActionItem for ProxyOperation {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = OperationTicket;
     type Rejection = ProxyRejection;
     type Prerequisite = Never;
@@ -49,6 +83,35 @@ enum AssignmentRejection {
 }
 
 impl ActionItem for AssignmentDelivery {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        let (input, received) = custody;
+        match (&*input, &*received) {
+            (Some(_), None) => Some((input, received)),
+            _ => None,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = AssignmentToken;
     type Rejection = AssignmentRejection;
     type Prerequisite = Never;
@@ -124,48 +187,91 @@ impl Runtime {
 }
 
 impl<RootEvent, Path> InterpretItem<ProxyOperation, RootEvent, Path> for Runtime {
-    fn interpret_item(
-        &mut self,
-        item: ProxyOperation,
-    ) -> impl Future<Output = ItemSettlement<ProxyOperation, OperationTicket, ProxyRejection, Never>>
-    + Send {
-        let plan = self.proxy.pop_front();
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ProxyOperation>,
+        received: &'a mut Option<<ProxyOperation as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ProxyOperation: 'a,
+    {
         async move {
-            match plan {
-                Some(AttemptPlan::Accept) => ItemSettlement::Accepted(item.ticket),
-                Some(AttemptPlan::Reject) => ItemSettlement::Rejected {
-                    item,
-                    reason: ProxyRejection::Closed,
-                },
-                Some(AttemptPlan::Corrupt) | None => ItemSettlement::Corrupt {
-                    item,
-                    fault: InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                let plan = self.proxy.pop_front();
+                async move {
+                    match plan {
+                        Some(AttemptPlan::Accept) => ItemSettlement::Accepted(item.ticket),
+                        Some(AttemptPlan::Reject) => ItemSettlement::Rejected {
+                            item,
+                            reason: ProxyRejection::Closed,
+                        },
+                        Some(AttemptPlan::Corrupt) | None => ItemSettlement::Corrupt {
+                            item,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
 
 impl<RootEvent, Path> InterpretItem<AssignmentDelivery, RootEvent, Path> for Runtime {
-    fn interpret_item(
-        &mut self,
-        item: AssignmentDelivery,
-    ) -> impl Future<
-        Output = ItemSettlement<AssignmentDelivery, AssignmentToken, AssignmentRejection, Never>,
-    > + Send {
-        let plan = self.assignments.pop_front();
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<AssignmentDelivery>,
+        received: &'a mut Option<<AssignmentDelivery as ActionItem>::Reply>,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        AssignmentDelivery: 'a,
+    {
         async move {
-            match plan {
-                Some(AttemptPlan::Accept) => ItemSettlement::Accepted(item.token),
-                Some(AttemptPlan::Reject) => ItemSettlement::Rejected {
-                    item,
-                    reason: AssignmentRejection::WorkerStopped,
-                },
-                Some(AttemptPlan::Corrupt) | None => ItemSettlement::Corrupt {
-                    item,
-                    fault: InterpreterFault::CorruptTraversal,
-                },
+            if received.is_some() {
+                return;
             }
+            let Some(item) = input.take() else {
+                return;
+            };
+            let producer = {
+                let plan = self.assignments.pop_front();
+                async move {
+                    match plan {
+                        Some(AttemptPlan::Accept) => ItemSettlement::Accepted(item.token),
+                        Some(AttemptPlan::Reject) => ItemSettlement::Rejected {
+                            item,
+                            reason: AssignmentRejection::WorkerStopped,
+                        },
+                        Some(AttemptPlan::Corrupt) | None => ItemSettlement::Corrupt {
+                            item,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                    }
+                }
+            };
+            let mut producer = pin!(producer);
+            poll_fn(|context| match producer.as_mut().poll(context) {
+                Poll::Ready(settlement) => {
+                    *received = Some(settlement);
+                    Poll::Ready(())
+                }
+                Poll::Pending => Poll::Pending,
+            })
+            .await;
         }
     }
 }
@@ -215,29 +321,40 @@ impl Host {
 impl SourceAdmission<SystemEvent, ProxyOwner, ActionItemResult<ProxyOperation>> for Host {
     fn admit_source(
         &mut self,
-        input: ActionItemResult<ProxyOperation>,
-    ) -> impl Future<Output = Result<(), ActionItemResult<ProxyOperation>>> + Send {
+        input: &mut Option<ActionItemResult<ProxyOperation>>,
+        reply: &mut Option<Result<(), ActionItemResult<ProxyOperation>>>,
+    ) -> impl Future<Output = ()> + Send {
         async move {
-            let input = match SystemEvent::ingress(input) {
-                SystemEvent::Proxy(input) => input,
-                SystemEvent::Assignment(_) => panic!("proxy ingress selected the wrong variant"),
-            };
-            let ticket = match &input {
-                SettledItem::Attempted(ItemSettlement::Accepted(ticket)) => *ticket,
-                SettledItem::Attempted(
-                    ItemSettlement::Rejected {
-                        item: operation, ..
-                    }
-                    | ItemSettlement::Corrupt {
-                        item: operation, ..
-                    },
-                )
-                | SettledItem::Unattempted(operation) => operation.ticket,
-                SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
-                    match *prerequisite {}
+            if reply.is_none() {
+                if let Some(input) = input.take() {
+                    let admission = {
+                        let input = match SystemEvent::ingress(input) {
+                            SystemEvent::Proxy(input) => input,
+                            SystemEvent::Assignment(_) => {
+                                panic!("proxy ingress selected the wrong variant")
+                            }
+                        };
+                        let ticket = match &input {
+                            SettledItem::Attempted(ItemSettlement::Accepted(ticket)) => *ticket,
+                            SettledItem::Attempted(
+                                ItemSettlement::Rejected {
+                                    item: operation, ..
+                                }
+                                | ItemSettlement::Corrupt {
+                                    item: operation, ..
+                                },
+                            )
+                            | SettledItem::Unattempted(operation) => operation.ticket,
+                            SettledItem::Attempted(ItemSettlement::Blocked {
+                                prerequisite,
+                                ..
+                            }) => match *prerequisite {},
+                        };
+                        self.offer(input, AdmissionTrace::Proxy(ticket))
+                    };
+                    *reply = Some(admission);
                 }
-            };
-            self.offer(input, AdmissionTrace::Proxy(ticket))
+            }
         }
     }
 }
@@ -245,25 +362,36 @@ impl SourceAdmission<SystemEvent, ProxyOwner, ActionItemResult<ProxyOperation>> 
 impl SourceAdmission<SystemEvent, PoolOwner, ActionItemResult<AssignmentDelivery>> for Host {
     fn admit_source(
         &mut self,
-        input: ActionItemResult<AssignmentDelivery>,
-    ) -> impl Future<Output = Result<(), ActionItemResult<AssignmentDelivery>>> + Send {
+        input: &mut Option<ActionItemResult<AssignmentDelivery>>,
+        reply: &mut Option<Result<(), ActionItemResult<AssignmentDelivery>>>,
+    ) -> impl Future<Output = ()> + Send {
         async move {
-            let input = match SystemEvent::ingress(input) {
-                SystemEvent::Assignment(input) => input,
-                SystemEvent::Proxy(_) => panic!("assignment ingress selected the wrong variant"),
-            };
-            let token = match &input {
-                SettledItem::Attempted(ItemSettlement::Accepted(token)) => *token,
-                SettledItem::Attempted(
-                    ItemSettlement::Rejected { item: delivery, .. }
-                    | ItemSettlement::Corrupt { item: delivery, .. },
-                )
-                | SettledItem::Unattempted(delivery) => delivery.token,
-                SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
-                    match *prerequisite {}
+            if reply.is_none() {
+                if let Some(input) = input.take() {
+                    let admission = {
+                        let input = match SystemEvent::ingress(input) {
+                            SystemEvent::Assignment(input) => input,
+                            SystemEvent::Proxy(_) => {
+                                panic!("assignment ingress selected the wrong variant")
+                            }
+                        };
+                        let token = match &input {
+                            SettledItem::Attempted(ItemSettlement::Accepted(token)) => *token,
+                            SettledItem::Attempted(
+                                ItemSettlement::Rejected { item: delivery, .. }
+                                | ItemSettlement::Corrupt { item: delivery, .. },
+                            )
+                            | SettledItem::Unattempted(delivery) => delivery.token,
+                            SettledItem::Attempted(ItemSettlement::Blocked {
+                                prerequisite,
+                                ..
+                            }) => match *prerequisite {},
+                        };
+                        self.offer(input, AdmissionTrace::Assignment(token))
+                    };
+                    *reply = Some(admission);
                 }
-            };
-            self.offer(input, AdmissionTrace::Assignment(token))
+            }
         }
     }
 }
@@ -310,21 +438,54 @@ async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() 
         assignment: source_actions([assignment(2, "closed")]),
     });
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
-    let Interpretation::Complete(settled) = <Sends as InterpretSends<
-        Runtime,
-        SystemEvent,
-        behavior::Here,
-    >>::interpret(sends, &mut runtime)
-    .await
-    else {
+    let Interpretation::Complete(settled) = ({
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <Sends as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("both authored lanes must settle");
     };
     assert_eq!(settled.settlement_status(), SettlementStatus::Accepted);
     let mut host = Host::new(AdmissionWindow::One);
-    let SourceCustody::Admitted(settled) = settled.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Admitted(settled) = ({
+        let mut source_progress = Some(SourceProgress::Original(settled));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <Settled as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the first source result must be admitted");
     };
-    let SourceCustody::Closed(residual) = settled.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Closed(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(settled));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <Settled as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("closed admission must return the second result");
     };
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
@@ -343,19 +504,38 @@ async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() 
         assignment: source_actions([assignment(4, "untouched")]),
     };
     let mut runtime = Runtime::new(vec![AttemptPlan::Corrupt], vec![AttemptPlan::Accept]);
-    let Interpretation::Corrupt(settled) = <Sends as InterpretSends<
-        Runtime,
-        SystemEvent,
-        behavior::Here,
-    >>::interpret(sends, &mut runtime)
-    .await
-    else {
+    let Interpretation::Corrupt(settled) = ({
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <Sends as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("corruption must retain the untouched assignment suffix");
     };
     assert_eq!(settled.settlement_status(), SettlementStatus::Corrupt);
     assert_eq!(runtime.assignments.len(), 1);
     let mut host = Host::new(AdmissionWindow::Closed);
-    let SourceCustody::Closed(residual) = settled.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Closed(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(settled));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <Settled as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("closed admission must return the complete corrupt product");
     };
     assert!(host.trace.is_empty());
@@ -381,10 +561,24 @@ async fn authored_named_product_preserves_source_admission_and_corrupt_suffix() 
     };
     assert_eq!(retained.settlement_status(), SettlementStatus::Rejected);
     let mut host = Host::new(AdmissionWindow::Unlimited);
-    let SourceCustody::Retained(residual) =
-        SourceSettlementCustody::<Host, SystemEvent>::offer_next_to_source(retained, &mut host)
-            .await
-    else {
+    let SourceCustody::Retained(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(retained));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SourceAdmissionSends<
+                Vec<ActionItemResult<ProxyOperation>>,
+                Vec<ActionItemResult<AssignmentDelivery>>,
+            > as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("a rejected source result must remain retained");
     };
     assert!(host.trace.is_empty());
@@ -407,14 +601,19 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
     };
     let sends = SendLayer::new(source_actions([assignment(3, "outer")]), product);
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept; 2]);
-    let Interpretation::Complete(mut settled) =
+    let Interpretation::Complete(mut settled) = ({
+        let mut progress = Some(InterpretationProgress::Original(sends));
         <SendLayer<SourceActions<AssignmentDelivery>, Product> as InterpretSends<
             Runtime,
             SystemEvent,
             behavior::Here,
-        >>::interpret(sends, &mut runtime)
-        .await
-    else {
+        >>::interpret(&mut progress, &mut runtime)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("the nested authored product must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
@@ -423,13 +622,35 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
         AdmissionTrace::Assignment(AssignmentToken(2)),
         AdmissionTrace::Assignment(AssignmentToken(3)),
     ] {
-        let SourceCustody::Admitted(next) = settled.offer_next_to_source(&mut host).await else {
+        let SourceCustody::Admitted(next) = ({
+            let mut source_progress = Some(SourceProgress::Original(settled));
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+            if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+                <<SendLayer<SourceActions<AssignmentDelivery>, Product> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+            }
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+            let Some(SourceProgress::Completed(custody)) = source_progress else {
+                panic!("the complete original source row did not finish");
+            };
+            custody
+        }) else {
             panic!("each nested source result must transfer once");
         };
         settled = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    let exhausted = settled.offer_next_to_source(&mut host).await;
+    let exhausted = {
+        let mut source_progress = Some(SourceProgress::Original(settled));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<AssignmentDelivery>, Product> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(host.trace.len(), 3);
 
@@ -439,14 +660,19 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
     };
     let sends = SendLayer::new(product, source_actions([proxy(4, "inner")]));
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept; 2], vec![AttemptPlan::Accept]);
-    let Interpretation::Complete(mut settled) =
+    let Interpretation::Complete(mut settled) = ({
+        let mut progress = Some(InterpretationProgress::Original(sends));
         <SendLayer<Product, SourceActions<ProxyOperation>> as InterpretSends<
             Runtime,
             SystemEvent,
             behavior::Here,
-        >>::interpret(sends, &mut runtime)
-        .await
-    else {
+        >>::interpret(&mut progress, &mut runtime)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("the outer authored product must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
@@ -455,13 +681,35 @@ async fn authored_product_preserves_custody_in_both_send_layer_orders() {
         AdmissionTrace::Proxy(OperationTicket(5)),
         AdmissionTrace::Assignment(AssignmentToken(6)),
     ] {
-        let SourceCustody::Admitted(next) = settled.offer_next_to_source(&mut host).await else {
+        let SourceCustody::Admitted(next) = ({
+            let mut source_progress = Some(SourceProgress::Original(settled));
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+            if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+                <<SendLayer<Product, SourceActions<ProxyOperation>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+            }
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+            let Some(SourceProgress::Completed(custody)) = source_progress else {
+                panic!("the complete original source row did not finish");
+            };
+            custody
+        }) else {
             panic!("each outer source result must transfer once");
         };
         settled = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    let exhausted = settled.offer_next_to_source(&mut host).await;
+    let exhausted = {
+        let mut source_progress = Some(SourceProgress::Original(settled));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<Product, SourceActions<ProxyOperation>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(host.trace.len(), 3);
 }
@@ -482,17 +730,34 @@ async fn source_actions_normalize_rejection_corruption_and_unattempted_values() 
         ],
         Vec::new(),
     );
-    let interpreted = <SourceActions<ProxyOperation> as InterpretSends<
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(actions));
+        <SourceActions<ProxyOperation> as InterpretSends<
         Runtime,
         SystemEvent,
         behavior::Here,
-    >>::interpret(actions, &mut runtime)
-    .await;
+    >>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     let Interpretation::Corrupt(settlements) = interpreted else {
         panic!("the third source action must corrupt interpretation");
     };
     let mut host = Host::new(AdmissionWindow::Closed);
-    let SourceCustody::Closed(residual) = settlements.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Closed(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <SourceSettlements<ProxyOperation> as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("closed source admission must retain every result");
     };
 
@@ -516,27 +781,62 @@ async fn both_send_layer_orders_match_interpretation_order() {
         source_actions([assignment(1, "inner")]),
     );
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
-    let interpreted = <SendLayer<
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <SendLayer<
         SourceActions<ProxyOperation>,
         SourceActions<AssignmentDelivery>,
-    > as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
-        sends, &mut runtime
-    )
-    .await;
+    > as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     let Interpretation::Complete(settlements) = interpreted else {
         panic!("both source actions must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
-    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlements) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<ProxyOperation>, SourceActions<AssignmentDelivery>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the inner assignment result must be admitted first");
     };
     assert_eq!(host.trace, [AdmissionTrace::Assignment(AssignmentToken(1))]);
-    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlements) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<ProxyOperation>, SourceActions<AssignmentDelivery>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the outer proxy result must be admitted second");
     };
-    let exhausted = settlements.offer_next_to_source(&mut host).await;
+    let exhausted = {
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<ProxyOperation>, SourceActions<AssignmentDelivery>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(
         host.trace,
@@ -551,27 +851,62 @@ async fn both_send_layer_orders_match_interpretation_order() {
         source_actions([proxy(3, "inner")]),
     );
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
-    let interpreted = <SendLayer<
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <SendLayer<
         SourceActions<AssignmentDelivery>,
         SourceActions<ProxyOperation>,
-    > as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
-        sends, &mut runtime
-    )
-    .await;
+    > as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     let Interpretation::Complete(settlements) = interpreted else {
         panic!("both source actions must settle");
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
-    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlements) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<AssignmentDelivery>, SourceActions<ProxyOperation>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the inner proxy result must be admitted first");
     };
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(3))]);
-    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlements) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<AssignmentDelivery>, SourceActions<ProxyOperation>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the outer assignment result must be admitted second");
     };
-    let exhausted = settlements.offer_next_to_source(&mut host).await;
+    let exhausted = {
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<SendLayer<SourceActions<AssignmentDelivery>, SourceActions<ProxyOperation>> as SendSettlements>::Settlements as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(custody, &mut host).await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
     assert_eq!(
         host.trace,
@@ -591,31 +926,47 @@ async fn nested_products_offer_only_the_first_remaining_source() {
         vec![AttemptPlan::Accept, AttemptPlan::Accept],
         vec![AttemptPlan::Accept],
     );
-    let Interpretation::Complete(first) = <SourceActions<ProxyOperation> as InterpretSends<
+    let Interpretation::Complete(first) = ({
+        let mut progress = Some(InterpretationProgress::Original(first));
+        <SourceActions<ProxyOperation> as InterpretSends<
         Runtime,
         SystemEvent,
         behavior::Here,
-    >>::interpret(first, &mut runtime)
-    .await
-    else {
+    >>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("the first source must settle");
     };
-    let Interpretation::Complete(second) = <SourceActions<AssignmentDelivery> as InterpretSends<
-        Runtime,
-        SystemEvent,
-        behavior::Here,
-    >>::interpret(second, &mut runtime)
-    .await
-    else {
+    let Interpretation::Complete(second) = ({
+        let mut progress = Some(InterpretationProgress::Original(second));
+        <SourceActions<AssignmentDelivery> as InterpretSends<
+            Runtime,
+            SystemEvent,
+            behavior::Here,
+        >>::interpret(&mut progress, &mut runtime)
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("the second source must settle");
     };
-    let Interpretation::Complete(third) = <SourceActions<ProxyOperation> as InterpretSends<
+    let Interpretation::Complete(third) = ({
+        let mut progress = Some(InterpretationProgress::Original(third));
+        <SourceActions<ProxyOperation> as InterpretSends<
         Runtime,
         SystemEvent,
         behavior::Here,
-    >>::interpret(third, &mut runtime)
-    .await
-    else {
+    >>::interpret(&mut progress, &mut runtime).await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("the third source must settle");
     };
     let mut residual = ((first, second), third);
@@ -626,13 +977,53 @@ async fn nested_products_offer_only_the_first_remaining_source() {
         AdmissionTrace::Assignment(AssignmentToken(2)),
         AdmissionTrace::Proxy(OperationTicket(3)),
     ] {
-        let SourceCustody::Admitted(next) = residual.offer_next_to_source(&mut host).await else {
+        let SourceCustody::Admitted(next) = ({
+            let mut source_progress = Some(SourceProgress::Original(residual));
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+            if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+                <(
+                    (
+                        SourceSettlements<ProxyOperation>,
+                        SourceSettlements<AssignmentDelivery>,
+                    ),
+                    SourceSettlements<ProxyOperation>,
+                ) as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                    custody, &mut host,
+                )
+                .await;
+            }
+            <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+            let Some(SourceProgress::Completed(custody)) = source_progress else {
+                panic!("the complete original source row did not finish");
+            };
+            custody
+        }) else {
             panic!("exactly one nested source must transfer per offer");
         };
         residual = next;
         assert_eq!(host.trace.last(), Some(&expected));
     }
-    let exhausted = residual.offer_next_to_source(&mut host).await;
+    let exhausted = {
+        let mut source_progress = Some(SourceProgress::Original(residual));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <(
+                (
+                    SourceSettlements<ProxyOperation>,
+                    SourceSettlements<AssignmentDelivery>,
+                ),
+                SourceSettlements<ProxyOperation>,
+            ) as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(exhausted, SourceCustody::Exhausted(_)));
 }
 
@@ -643,21 +1034,56 @@ async fn generated_product_stops_after_closed_source_and_retains_later_field() {
         assignment: source_actions([assignment(2, "assignment")]),
     };
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
-    let interpreted =
+    let interpreted = {
+        let mut progress = Some(InterpretationProgress::Original(sends));
         <GeneratedSends as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
-            sends,
+            &mut progress,
             &mut runtime,
         )
         .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    };
     let Interpretation::Complete(settlements) = interpreted else {
         panic!("both generated fields must settle");
     };
     let mut host = Host::new(AdmissionWindow::One);
-    let SourceCustody::Admitted(settlements) = settlements.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlements) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<GeneratedSends as SendSettlements>::Settlements as SourceSettlementCustody<
+                Host,
+                SystemEvent,
+            >>::offer_next_to_source(custody, &mut host)
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the proxy result must be the only first admission");
     };
-    let SourceCustody::Closed(residual) = settlements.offer_next_to_source(&mut host).await else {
+    let SourceCustody::Closed(residual) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlements));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <<GeneratedSends as SendSettlements>::Settlements as SourceSettlementCustody<
+                Host,
+                SystemEvent,
+            >>::offer_next_to_source(custody, &mut host)
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("the host closes before the assignment result transfers");
     };
 
@@ -680,13 +1106,18 @@ async fn complete_action_custody_offers_only_one_source_result() {
         assignment: source_actions([assignment(2, "assignment")]),
     };
     let mut runtime = Runtime::new(vec![AttemptPlan::Accept], vec![AttemptPlan::Accept]);
-    let Interpretation::Complete(sends) = <GeneratedSends as InterpretSends<
-        Runtime,
-        SystemEvent,
-        behavior::Here,
-    >>::interpret(sends, &mut runtime)
-    .await
-    else {
+    let Interpretation::Complete(sends) = ({
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <GeneratedSends as InterpretSends<Runtime, SystemEvent, behavior::Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the generated product must retain its actual completed settlement");
+        };
+        settlement
+    }) else {
         panic!("both generated fields must settle");
     };
     let settlement = ActionSettlement {
@@ -696,13 +1127,48 @@ async fn complete_action_custody_offers_only_one_source_result() {
     };
     let mut host = Host::new(AdmissionWindow::Unlimited);
 
-    let SourceCustody::Admitted(settlement) = settlement.offer_next_to_source(&mut host).await
-    else {
+    let SourceCustody::Admitted(settlement) = ({
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                Creations<Never>,
+                <GeneratedSends as SendSettlements>::Settlements,
+                Never,
+            > as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    }) else {
         panic!("complete action custody must admit one result");
     };
 
     assert_eq!(host.trace, [AdmissionTrace::Proxy(OperationTicket(1))]);
-    let admitted = settlement.offer_next_to_source(&mut host).await;
+    let admitted = {
+        let mut source_progress = Some(SourceProgress::Original(settlement));
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut source_progress);
+        if let Some(SourceProgress::Offering(custody)) = &mut source_progress {
+            <ActionSettlement<
+                Creations<Never>,
+                <GeneratedSends as SendSettlements>::Settlements,
+                Never,
+            > as SourceSettlementCustody<Host, SystemEvent>>::offer_next_to_source(
+                custody, &mut host,
+            )
+            .await;
+        }
+        <_ as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut source_progress);
+        let Some(SourceProgress::Completed(custody)) = source_progress else {
+            panic!("the complete original source row did not finish");
+        };
+        custody
+    };
     assert!(matches!(admitted, SourceCustody::Admitted(_)));
 }
 
@@ -711,4 +1177,61 @@ fn generated_product_is_statically_lawful_for_both_source_inputs() {
     fn requires_source_inputs<S: behavior::SendsFor<SystemEvent>>() {}
     requires_source_inputs::<GeneratedSends>();
     assert_eq!(Step::<Never>::Continue, Step::Continue);
+}
+
+#[test]
+fn unfinished_source_reply_preserves_simultaneous_input_and_the_unattempted_tail() {
+    let current_command = String::from("current operation");
+    let tail_command = String::from("unattempted operation");
+    let current_pointer = current_command.as_ptr();
+    let tail_pointer = tail_command.as_ptr();
+    let mut sends = SourceActions::<ProxyOperation>::empty();
+    <SourceActions<ProxyOperation> as SendInput<ProxyOperation, Own>>::emit(
+        &mut sends,
+        ProxyOperation {
+            ticket: OperationTicket(17),
+            command: current_command,
+        },
+    );
+    <SourceActions<ProxyOperation> as SendInput<ProxyOperation, Own>>::emit(
+        &mut sends,
+        ProxyOperation {
+            ticket: OperationTicket(31),
+            command: tail_command,
+        },
+    );
+    let mut send_progress = Some(InterpretationProgress::Original(sends));
+    <SourceActions<ProxyOperation> as SendSettlements>::unattempted(&mut send_progress);
+    let Some(InterpretationProgress::Completed(Interpretation::Complete(original))) = send_progress
+    else {
+        panic!("the untouched original source requests must remain complete");
+    };
+    let mut progress = Some(SourceProgress::Original(original));
+    <SourceSettlements<ProxyOperation> as SourceSettlementCustody<Host, SystemEvent>>::prepare_source(&mut progress);
+    let Some(SourceProgress::Offering((Some(_), _, reply))) = &mut progress else {
+        panic!("standard preparation holds the original current input and untouched tail");
+    };
+    *reply = Some(Ok(()));
+    <SourceSettlements<ProxyOperation> as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut progress);
+    <SourceSettlements<ProxyOperation> as SourceSettlementCustody<Host, SystemEvent>>::finish_source(&mut progress);
+    let Some(SourceProgress::Offering((Some(current), mut tail, reply))) = progress else {
+        panic!("a malformed normal reply cannot erase or classify the still-owned current input");
+    };
+    let SettledItem::Unattempted(current) = current else {
+        panic!("the original current input was never attempted");
+    };
+    let SettledItem::Unattempted(tail_request) =
+        tail.next().expect("the unattempted suffix remains owned")
+    else {
+        panic!("the suffix cannot be attempted by finish");
+    };
+    let remaining = tail.next();
+    assert_eq!(current.ticket, OperationTicket(17));
+    assert_eq!(current.command.as_ptr(), current_pointer);
+    assert_eq!(current.command, "current operation");
+    assert_eq!(tail_request.ticket, OperationTicket(31));
+    assert_eq!(tail_request.command.as_ptr(), tail_pointer);
+    assert_eq!(tail_request.command, "unattempted operation");
+    assert_eq!(reply, Some(Ok(())));
+    assert!(remaining.is_none());
 }

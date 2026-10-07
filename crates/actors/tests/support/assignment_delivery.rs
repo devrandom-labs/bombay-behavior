@@ -2,8 +2,8 @@ use core::future::{Future, ready};
 use core::task::{Context, Poll, Waker};
 
 use behavior::{
-    EndpointAddress, EstablishedDelivery, ExactDeliveryReason, Here, InterpretItem, ItemSettlement,
-    Never, Protocol,
+    EndpointAddress, EstablishedDelivery, ExactDeliveryReason, Here, InterpretItem,
+    InterpretationProgress, ItemSettlement, Never, Protocol,
 };
 use behavior_actors::atomic::{AssignWorker, Assignment, AssignmentReceipt};
 
@@ -61,24 +61,36 @@ where
     <P::Addr as EndpointAddress>::Established<P>: Send,
     Job: Send,
 {
-    fn interpret_item(
-        &mut self,
-        delivery: EstablishedDelivery<P>,
-    ) -> impl Future<Output = ItemSettlement<EstablishedDelivery<P>, (), ExactDeliveryReason, Never>>
-    + Send {
-        match self.admission {
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<EstablishedDelivery<P>>,
+        received: &'a mut Option<
+            ItemSettlement<EstablishedDelivery<P>, (), ExactDeliveryReason, Never>,
+        >,
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        EstablishedDelivery<P>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(delivery) = input.take() else {
+            return ready(());
+        };
+        *received = Some(match self.admission {
             Admission::Accept => {
                 self.accepted.push(delivery);
-                ready(ItemSettlement::Accepted(()))
+                ItemSettlement::Accepted(())
             }
             Admission::Reject => {
                 self.rejections += 1;
-                ready(ItemSettlement::Rejected {
+                ItemSettlement::Rejected {
                     item: delivery,
                     reason: ExactDeliveryReason::ClosedRecipient,
-                })
+                }
             }
-        }
+        });
+        ready(())
     }
 }
 
@@ -94,15 +106,20 @@ where
     Job: Send,
 {
     let mut host = AssignmentDeliveryHost::<P>::accepting();
-    let settlement = {
-        let future = request.settle(&mut host);
+    let mut progress = Some(InterpretationProgress::Original(request));
+    {
+        let future = AssignWorker::<P, Job>::settle::<_, (), Here>(&mut progress, &mut host);
         let mut future = core::pin::pin!(future);
         let mut context = Context::from_waker(Waker::noop());
         match future.as_mut().poll(&mut context) {
-            Poll::Ready(settlement) => settlement,
+            Poll::Ready(()) => {}
             Poll::Pending => panic!("the ready exact-delivery interpreter must settle immediately"),
         }
+    }
+    let Some(InterpretationProgress::Completed(settlement)) = progress else {
+        panic!("the ready exact-delivery interpreter must return its actual complete settlement");
     };
+    let settlement = settlement.into_settlement();
     let ItemSettlement::Accepted(receipt) = settlement else {
         panic!("the accepting exact-delivery interpreter must admit its request");
     };

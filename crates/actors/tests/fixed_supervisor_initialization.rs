@@ -21,7 +21,7 @@ use behavior::{
     CreationSequence, CreationSettlement, Creations, CreationsSettled, Delivery, EndpointAddress,
     EstablishedActor, EstablishedDelivery, EstablishedRecipient, EventIngress, Here, InjectEvent,
     InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
-    Recipient, RecoverEvent, SendSettlements, SettledItem, Step, User, UserEvent,
+    Recipient, RecoverEvent, SettledItem, Step, User, UserEvent,
 };
 use behavior_actors::atomic::{
     self, ActivationPlan, ActivationPolicy, ActorDrainPolicy, CapabilityResult, DiagnosticAction,
@@ -492,7 +492,13 @@ fn first_proxy_dispatched(
     let first = fixed
         .on(commit_proxy_births(initialized.actions.creates, endpoint))
         .unwrap_or_else(|_| panic!("the proxy batch receives authorization"));
-    let mut operations = first.sends.proxy_operations.unattempted().into_inputs();
+    let mut operations = first
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert_eq!(operations.len(), 1);
     let operation = match operations.pop().expect("one operation is authorized") {
         SettledItem::Unattempted(operation) => operation,
@@ -543,8 +549,10 @@ fn routed_start(
     let operation = match authorized
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one operation is authorized")
     {
@@ -1123,8 +1131,10 @@ async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
     let creations = released
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation().get(),
@@ -1272,8 +1282,10 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
     let operation = match started
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one worker is authorized")
     {
@@ -1386,8 +1398,10 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
     let operation = match dispatched
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one tracked initial operation is emitted")
     {
@@ -1434,8 +1448,10 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
     let request = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one tracked replacement is requested")
     {
@@ -1541,8 +1557,10 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
     let shutdown = match failing
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("retiring one member emits one proxy shutdown")
     {
@@ -1823,8 +1841,10 @@ where
     let initial = match dispatched
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one initial proxy operation is dispatched")
     {
@@ -1997,8 +2017,10 @@ where
     let initial = match dispatched
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one initial proxy operation is dispatched")
     {
@@ -2071,8 +2093,10 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
     let operation = match dispatched
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one initial proxy operation is dispatched")
     {
@@ -2191,8 +2215,10 @@ where
     let operations = committed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation,
@@ -2276,8 +2302,10 @@ where
     let operations = opened
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation,
@@ -2401,8 +2429,10 @@ async fn coordinated_preparation(
     let request = match actions
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one coordinated preparation request is emitted")
     {
@@ -2529,8 +2559,10 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
         let operations = shutdown
             .sends
             .proxy_operations
-            .unattempted()
-            .into_inputs()
+            .into_items()
+            .into_iter()
+            .map(ActionItemResult::<_>::Unattempted)
+            .collect::<Vec<_>>()
             .into_iter()
             .map(|operation| match operation {
                 SettledItem::Unattempted(operation) => Some(operation),
@@ -2674,7 +2706,13 @@ async fn rest_for_one_classifies_every_distinct_second_worker_stop() {
             let admitted = fixed
                 .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
                 .unwrap_or_else(|_| panic!("the first recovery is admitted atomically"));
-            let replacements = admitted.sends.proxy_operations.unattempted().into_inputs();
+            let replacements = admitted
+                .sends
+                .proxy_operations
+                .into_items()
+                .into_iter()
+                .map(ActionItemResult::<_>::Unattempted)
+                .collect::<Vec<_>>();
             assert_eq!(replacements.len(), selected_roles.len());
             assert!(admitted.sends.worker_preparations.is_empty());
             assert!(admitted.sends.restart_schedules.is_empty());
@@ -2776,7 +2814,13 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                 let actions = fixed
                     .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
                     .unwrap_or_else(|_| panic!("every disjoint preparation remains exact"));
-                let mut emitted = actions.sends.proxy_operations.unattempted().into_inputs();
+                let mut emitted = actions
+                    .sends
+                    .proxy_operations
+                    .into_items()
+                    .into_iter()
+                    .map(ActionItemResult::<_>::Unattempted)
+                    .collect::<Vec<_>>();
                 let operation = match emitted
                     .pop()
                     .expect("each prepared role emits one replacement")
@@ -2967,8 +3011,10 @@ async fn admitted_one_for_all(
     let operations = admitted
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|operation| match operation {
             SettledItem::Unattempted(operation) => operation,
@@ -3017,8 +3063,10 @@ async fn one_for_all_with_dispatched_initial_peers() -> (
     let request = match selected
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one coordinated preparation is emitted")
     {
@@ -3065,8 +3113,10 @@ where
     match selected
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one worker preparation is emitted")
     {
@@ -3289,8 +3339,10 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
     let replacement_proxy_ids = accepted
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation().get(),
@@ -3533,8 +3585,10 @@ async fn shutdown_drains_every_proxy_selected_for_coordinated_recovery_in_roster
     let proxy_ids = shutdown
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation().get(),
@@ -3569,8 +3623,10 @@ async fn coordinated_preparation_issues_ready_replacements_in_declaration_order(
     let replacement_proxy_ids = accepted
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation().get(),
@@ -3686,7 +3742,13 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     let issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
-    let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = issued
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements.remove(0) {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => {
@@ -3753,8 +3815,10 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     let proxy_ids = shutdown
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation().get(),
@@ -3781,7 +3845,13 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
     let issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
-    let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = issued
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements
         .pop()
         .expect("one replacement occupies the single activation slot")
@@ -3825,8 +3895,10 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
     let next = match outcome_first
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the next declared replacement uses the released slot")
     {
@@ -3863,7 +3935,13 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
     let issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the coordinated recovery is admitted"));
-    let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = issued
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements.remove(0) {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => {
@@ -3950,7 +4028,13 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
     let issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the suffix recovery is admitted"));
-    let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = issued
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements.remove(0) {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => {
@@ -4017,7 +4101,13 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     let issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the suffix recovery is admitted"));
-    let mut replacements = issued.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = issued
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let index_replacement = match replacements.remove(0) {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => {
@@ -4111,8 +4201,10 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     let search_operation = match search_issued
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the first replacement is issued")
     {
@@ -4197,8 +4289,10 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     let next = match released
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one waiting replacement receives the released slot")
     {
@@ -4290,8 +4384,10 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
     let initial_search = search_started
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("only search receives an initial input");
     let shutting_down = fixed
@@ -4301,8 +4397,10 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
     let operations = shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert_eq!(operations.len(), 3);
 
     for (position, (settlement, expected_proxy)) in
@@ -4344,8 +4442,10 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
     let owner_shutdown = shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("owner emits one proxy shutdown");
 
@@ -4461,8 +4561,10 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     let shutdown = match committed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("commit emits one proxy shutdown and no initial input")
     {
@@ -4519,8 +4621,10 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
     let proxy_shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("startup shutdown emits one distinct proxy operation")
     {
@@ -4603,8 +4707,10 @@ async fn ready_roster_shutdown_waits_for_operation_and_proxy_exit() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one exact proxy shutdown is dispatched")
     {
@@ -4686,8 +4792,10 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the live proxy receives one shutdown")
     {
@@ -4749,8 +4857,10 @@ async fn transient_normal_stop_leaves_one_empty_member_with_a_live_proxy() {
     let mut operations = shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let operation = match operations
         .pop()
         .expect("the retained live proxy receives one shutdown")
@@ -5023,7 +5133,13 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
         .on(CreationsSettled::new(CreationSettlement::Settled(births)))
         .unwrap_or_else(|_| panic!("the proxy batch starts its first declared role"));
     assert_eq!(proxies.len(), 3);
-    let mut operations = started.sends.proxy_operations.unattempted().into_inputs();
+    let mut operations = started
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert_eq!(operations.len(), 1);
     let initial = match operations
         .pop()
@@ -5469,8 +5585,10 @@ async fn shutdown_accepts_unavailable_until_the_exact_proxy_exit() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one exact proxy shutdown is emitted")
     {
@@ -5659,8 +5777,10 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
     let mut requests = recovering
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let mut request = match requests.pop().expect("one preparation request is emitted") {
         SettledItem::Unattempted(request) => request,
         SettledItem::Attempted(_) => panic!("the test intercepts an uninterpreted request"),
@@ -5689,8 +5809,10 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the live proxy receives one shutdown")
     {
@@ -5766,8 +5888,10 @@ async fn one_replacement_operation() -> (
     let initial = match dispatched
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one initial proxy operation is dispatched")
     {
@@ -5814,8 +5938,10 @@ async fn one_replacement_operation() -> (
     let request = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one preparation request is emitted")
     {
@@ -5836,7 +5962,13 @@ async fn one_replacement_operation() -> (
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(preparation))
         .unwrap_or_else(|_| panic!("the exact preparation returns to its recovery owner"));
     assert!(matches!(accepted.become_, Step::Continue));
-    let mut replacements = accepted.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = accepted
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements
         .pop()
         .expect("immediate recovery issues one replacement")
@@ -5961,8 +6093,10 @@ async fn replacement_rejects_a_stop_for_another_predecessor() {
     let replacement = match issued
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .remove(0)
     {
         SettledItem::Unattempted(operation) => operation,
@@ -6027,8 +6161,10 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -6094,8 +6230,10 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -6493,8 +6631,10 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     let replacement = match accepted
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one replacement is admitted")
     {
@@ -6533,8 +6673,10 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     let shutdown = match retired
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the failed member receives one proxy shutdown")
     {
@@ -6623,8 +6765,10 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
     let retirement_creations = denied
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation(),
@@ -6683,8 +6827,10 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     let shutdown = match denied
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the live proxy receives shutdown")
     {
@@ -6738,8 +6884,10 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
     let mut schedules = scheduled
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs();
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let schedule = match schedules
         .pop()
         .expect("delayed recovery emits one unsettled schedule")
@@ -6782,7 +6930,13 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
             schedule.generation,
         )))
         .unwrap_or_else(|_| panic!("the exact timer releases replacement work"));
-    let mut replacements = released.sends.proxy_operations.unattempted().into_inputs();
+    let mut replacements = released
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     let replacement = match replacements
         .pop()
         .expect("timer release issues one replacement")
@@ -6834,8 +6988,10 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
     let schedule = match admitted
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one schedule is emitted")
     {
@@ -6911,8 +7067,10 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
     let shutdown = match failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the exact trigger proxy receives shutdown")
     {
@@ -6965,8 +7123,10 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
     let shutdown = match failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the live proxy receives shutdown")
     {
@@ -7117,8 +7277,10 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     let schedule = match admitted
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one schedule remains unsettled")
     {
@@ -7132,8 +7294,10 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one live proxy receives shutdown")
     {
@@ -7186,8 +7350,10 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -7247,8 +7413,10 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -7303,8 +7471,10 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -7351,8 +7521,10 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the stable proxy receives one shutdown")
     {
@@ -7392,8 +7564,10 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
     let shutdown = match owner_shutdown
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the owner stable proxy receives one shutdown")
     {
@@ -7606,8 +7780,10 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
     let stopped_proxies = shutdown
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .into_iter()
         .map(|settlement| match settlement {
             SettledItem::Unattempted(operation) => operation.creation(),
@@ -7764,8 +7940,10 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                 let stopped_proxies = failed
                     .sends
                     .proxy_operations
-                    .unattempted()
-                    .into_inputs()
+                    .into_items()
+                    .into_iter()
+                    .map(ActionItemResult::<_>::Unattempted)
+                    .collect::<Vec<_>>()
                     .into_iter()
                     .map(|settlement| match settlement {
                         SettledItem::Unattempted(operation) => operation.creation(),
@@ -7930,8 +8108,10 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                 let stopped_proxies = failed
                     .sends
                     .proxy_operations
-                    .unattempted()
-                    .into_inputs()
+                    .into_items()
+                    .into_iter()
+                    .map(ActionItemResult::<_>::Unattempted)
+                    .collect::<Vec<_>>()
                     .into_iter()
                     .map(|settlement| match settlement {
                         SettledItem::Unattempted(operation) => operation.creation(),
@@ -8132,8 +8312,10 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     let shutdown = match failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("retiring the failed member emits one proxy shutdown")
     {
@@ -8233,8 +8415,10 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
     let search_shutdown = match search_failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("Search receives one proxy shutdown")
     {
@@ -8253,8 +8437,10 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
     let index_shutdown = match index_failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("Index receives one proxy shutdown")
     {
@@ -8333,8 +8519,10 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
     let request = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one preparation request is emitted")
     {
@@ -8351,8 +8539,10 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
     let shutdown = match failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("the failed member receives one proxy shutdown")
     {
@@ -8489,8 +8679,10 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     let shutdown = match failed
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("complete shutdown emits one proxy operation")
     {
@@ -8605,8 +8797,10 @@ where
     let request = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one preparation request is emitted")
     {
@@ -8661,8 +8855,10 @@ where
     let schedule = match admitted
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one schedule is emitted")
     {
@@ -8753,8 +8949,10 @@ async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() 
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one exact proxy shutdown is dispatched")
     {
@@ -8795,8 +8993,10 @@ async fn ready_roster_shutdown_retires_after_rejection_and_exact_proxy_exit() {
     let shutdown = match shutting_down
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one exact proxy shutdown is dispatched")
     {
@@ -8840,8 +9040,10 @@ async fn rejected_actor_graph_deadline_transfers_the_unresolved_proxy() {
     let schedule = match shutdown
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("deadline policy emits one relative schedule")
     {
@@ -8907,8 +9109,10 @@ async fn accepted_actor_graph_deadline_requires_its_exact_elapsed_timer() {
     let schedule = match shutdown
         .sends
         .restart_schedules
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("deadline policy emits one relative schedule")
     {
@@ -9072,7 +9276,13 @@ async fn draining_management_queries_distinguish_retired_and_stopping_roles() {
     let shutdown = fixed
         .receive(RuntimeAddr(960), FixedCommand::shutdown())
         .unwrap_or_else(|_| panic!("the ready roster starts draining"));
-    let mut operations = shutdown.sends.proxy_operations.unattempted().into_inputs();
+    let mut operations = shutdown
+        .sends
+        .proxy_operations
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>();
     assert_eq!(operations.len(), 3);
     let first = match operations.remove(0) {
         SettledItem::Unattempted(operation) => operation,

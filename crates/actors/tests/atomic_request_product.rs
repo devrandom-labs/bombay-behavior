@@ -1,6 +1,8 @@
+use core::future::{Future, ready};
+
 use behavior::{
     Behavior, BehaviorAddr, ClassifySettlement, EndpointAddress, InterpretSends, Interpretation,
-    SendEffects, SendSettlements, SettlementStatus,
+    InterpretationProgress, SendEffects, SendSettlements, SettlementStatus,
 };
 use behavior_actors::atomic::{
     DynamicSupervisorRequests, FixedSupervisorRequests, InitializeWorker,
@@ -83,34 +85,93 @@ impl<const NUMBER: u8> SendEffects for Lane<NUMBER> {
 
 impl<const NUMBER: u8> SendSettlements for Lane<NUMBER> {
     type Settlements = Vec<LaneSettlement>;
+    type SourceCustody = Self::Settlements;
+    type InterpretationCustody = (Option<Self>, Option<Interpretation<Self::Settlements>>);
 
-    fn unattempted(self) -> Self::Settlements {
-        self.outcomes
-            .into_iter()
-            .map(|_| LaneSettlement::Unattempted)
-            .collect()
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        match progress.take() {
+            Some(InterpretationProgress::Original(input)) => {
+                *progress = Some(InterpretationProgress::Interpreting((Some(input), None)));
+            }
+            retained => *progress = retained,
+        }
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        if !matches!(
+            progress,
+            Some(InterpretationProgress::Interpreting((None, Some(_))))
+        ) {
+            return;
+        }
+        match progress.take() {
+            Some(InterpretationProgress::Interpreting((None, Some(received)))) => {
+                *progress = Some(InterpretationProgress::Completed(received));
+            }
+            retained => *progress = retained,
+        }
+    }
+    fn unattempted(
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
+    ) {
+        match progress.take() {
+            Some(InterpretationProgress::Original(input)) => {
+                let received = input
+                    .outcomes
+                    .into_iter()
+                    .map(|_| LaneSettlement::Unattempted)
+                    .collect();
+                *progress = Some(InterpretationProgress::Completed(Interpretation::Complete(
+                    received,
+                )));
+            }
+            retained => *progress = retained,
+        }
     }
 }
 
 impl<const NUMBER: u8> InterpretSends<Vec<u8>, (), behavior::Here> for Lane<NUMBER> {
     fn interpret(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<Self, Self::InterpretationCustody, Self::Settlements>,
+        >,
         trace: &mut Vec<u8>,
-    ) -> impl core::future::Future<Output = Interpretation<Self::Settlements>> + Send {
-        trace.push(NUMBER);
-        async move {
-            let mut settlements = Vec::new();
-            for outcome in self.outcomes {
-                match outcome {
-                    LaneOutcome::Accepted => settlements.push(LaneSettlement::Accepted(NUMBER)),
-                    LaneOutcome::Corrupt => {
-                        settlements.push(LaneSettlement::Corrupt(NUMBER));
-                        return Interpretation::Corrupt(settlements);
-                    }
-                }
-            }
-            Interpretation::Complete(settlements)
+    ) -> impl Future<Output = ()> + Send {
+        Self::prepare_interpretation(progress);
+        let Some(InterpretationProgress::Interpreting((input, received))) = progress else {
+            return ready(());
+        };
+        if received.is_some() {
+            return ready(());
         }
+        let Some(input) = input.take() else {
+            return ready(());
+        };
+        trace.push(NUMBER);
+        let mut settlements = Vec::new();
+        let mut remaining = input.outcomes.into_iter();
+        let disposition = loop {
+            match remaining.next() {
+                Some(LaneOutcome::Accepted) => settlements.push(LaneSettlement::Accepted(NUMBER)),
+                Some(LaneOutcome::Corrupt) => {
+                    settlements.push(LaneSettlement::Corrupt(NUMBER));
+                    break Interpretation::Corrupt(settlements);
+                }
+                None => break Interpretation::Complete(settlements),
+            }
+        };
+        *received = Some(disposition);
+        Self::finish_interpretation(progress);
+        ready(())
     }
 }
 
@@ -121,7 +182,12 @@ async fn interpret<Product>(
 where
     Product: InterpretSends<Vec<u8>, (), behavior::Here>,
 {
-    product.interpret(trace).await
+    let mut progress = Some(InterpretationProgress::Original(product));
+    <Product as InterpretSends<Vec<u8>, (), behavior::Here>>::interpret(&mut progress, trace).await;
+    let Some(InterpretationProgress::Completed(settlement)) = progress else {
+        panic!("the exact fixture product must return its full settlement");
+    };
+    settlement
 }
 
 #[tokio::test]

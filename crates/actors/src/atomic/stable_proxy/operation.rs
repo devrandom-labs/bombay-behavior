@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use behavior::{
     ActionItem, ActionItemResult, Address, Behavior, BehaviorAddr, ChildInputReason, CreationId,
-    EndpointAddress, EstablishedActor, ItemSettlement, Never, SettledItem, SourceAction,
+    EndpointAddress, EstablishedActor, Interpretation, InterpretationProgress, ItemSettlement,
+    Never, SettledItem, SourceAction,
 };
 
 use crate::WorkerSubmission;
@@ -149,6 +150,33 @@ where
     source: PhantomData<fn() -> Source>,
 }
 
+/// Caller-owned partial admission of one original stable-proxy operation.
+///
+/// The issued operation authority and creator correlation remain mandatory
+/// while only the actual control is loaned to an interpreter. Construction is
+/// restricted to interpreting the original ProxyOperation; this owner provides
+/// no authority constructor, field access, getter, Clone, or event policy.
+pub struct ProxyOperationCustody<Source, Worker, Plan>
+where
+    Worker: Behavior,
+    Plan: ActivationPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    creation: CreationId,
+    operation: ProxyOperationId,
+    control: Option<ProxyControl<Worker, Plan>>,
+    reply: Option<
+        ItemSettlement<
+            ProxyControl<Worker, Plan>,
+            EstablishedActor<StableProxy<Worker, Plan>>,
+            ChildInputReason,
+            Never,
+        >,
+    >,
+    source: PhantomData<fn() -> Source>,
+}
+
 /// Exact immediate result of submitting one private proxy input.
 pub type ProxyInputResult<Source, Worker, Plan> = ActionItemResult<
     ProxyOperation<Source, Worker, Plan>,
@@ -257,52 +285,163 @@ where
         (self.creation, self.control, self.operation)
     }
 
-    /// Transfer only the complete control while retaining the operation ID
-    /// until the lower interpreter returns its exact admission outcome.
+    /// Admit only the actual control while the caller retains the original
+    /// creator correlation, operation authority, and acquired lower reply.
     pub fn settle<Host>(
-        self,
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                ProxyOperationCustody<Source, Worker, Plan>,
+                ItemSettlement<Self, ProxyInputReceipt<Worker, Plan>, ChildInputReason, Never>,
+            >,
+        >,
         host: &mut Host,
-    ) -> ItemSettlement<Self, ProxyInputReceipt<Worker, Plan>, ChildInputReason, Never>
-    where
+    ) where
         Host: ProxyControlAdmission<Worker, Plan>,
     {
-        let Self {
+        Self::prepare_interpretation(progress);
+        if let Some(InterpretationProgress::Interpreting(custody)) = progress {
+            if let Some(((creation, input), received)) = Self::interpretation_input(custody) {
+                if let Some(control) = input.take() {
+                    *received = Some(host.admit_proxy_control(creation, control));
+                }
+            }
+        }
+        Self::finish_interpretation(progress);
+    }
+
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                ProxyOperationCustody<Source, Worker, Plan>,
+                ItemSettlement<Self, ProxyInputReceipt<Worker, Plan>, ChildInputReason, Never>,
+            >,
+        >,
+    ) {
+        if !matches!(progress, Some(InterpretationProgress::Original(_))) {
+            return;
+        }
+        match progress.take() {
+            Some(InterpretationProgress::Original(Self {
+                creation,
+                control,
+                operation,
+                source,
+            })) => {
+                *progress = Some(InterpretationProgress::Interpreting(
+                    ProxyOperationCustody {
+                        creation,
+                        operation,
+                        control: Some(control),
+                        reply: None,
+                        source,
+                    },
+                ));
+            }
+            retained => *progress = retained,
+        }
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut ProxyOperationCustody<Source, Worker, Plan>,
+    ) -> Option<(
+        (CreationId, &'a mut Option<ProxyControl<Worker, Plan>>),
+        &'a mut Option<
+            ItemSettlement<
+                ProxyControl<Worker, Plan>,
+                EstablishedActor<StableProxy<Worker, Plan>>,
+                ChildInputReason,
+                Never,
+            >,
+        >,
+    )>
+    where
+        Self: 'a,
+    {
+        let ProxyOperationCustody {
             creation,
             control,
-            operation,
-            source: _,
-        } = self;
-        match host.admit_proxy_control(creation, control) {
-            ItemSettlement::Accepted(proxy) => ItemSettlement::Accepted(ProxyInputReceipt {
+            reply,
+            ..
+        } = custody;
+        if control.is_some() && reply.is_none() {
+            Some(((*creation, control), reply))
+        } else {
+            None
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                ProxyOperationCustody<Source, Worker, Plan>,
+                ItemSettlement<Self, ProxyInputReceipt<Worker, Plan>, ChildInputReason, Never>,
+            >,
+        >,
+    ) {
+        if !matches!(
+            progress,
+            Some(InterpretationProgress::Interpreting(
+                ProxyOperationCustody {
+                    control: None,
+                    reply: Some(_),
+                    ..
+                }
+            ))
+        ) {
+            return;
+        }
+        match progress.take() {
+            Some(InterpretationProgress::Interpreting(ProxyOperationCustody {
                 creation,
-                proxy,
                 operation,
-            }),
-            ItemSettlement::Rejected {
-                item: control,
-                reason,
-            } => ItemSettlement::Rejected {
-                item: Self {
-                    creation,
-                    control,
-                    operation,
-                    source: PhantomData,
-                },
-                reason,
-            },
-            ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
-            ItemSettlement::Corrupt {
-                item: control,
-                fault,
-            } => ItemSettlement::Corrupt {
-                item: Self {
-                    creation,
-                    control,
-                    operation,
-                    source: PhantomData,
-                },
-                fault,
-            },
+                control: None,
+                reply: Some(reply),
+                source,
+            })) => {
+                let received = match reply {
+                    ItemSettlement::Accepted(proxy) => {
+                        ItemSettlement::Accepted(ProxyInputReceipt {
+                            creation,
+                            proxy,
+                            operation,
+                        })
+                    }
+                    ItemSettlement::Rejected {
+                        item: control,
+                        reason,
+                    } => ItemSettlement::Rejected {
+                        item: Self {
+                            creation,
+                            control,
+                            operation,
+                            source,
+                        },
+                        reason,
+                    },
+                    ItemSettlement::Corrupt {
+                        item: control,
+                        fault,
+                    } => ItemSettlement::Corrupt {
+                        item: Self {
+                            creation,
+                            control,
+                            operation,
+                            source,
+                        },
+                        fault,
+                    },
+                    ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+                };
+                let interpretation = match received {
+                    received @ ItemSettlement::Corrupt { .. } => Interpretation::Corrupt(received),
+                    received => Interpretation::Complete(received),
+                };
+                *progress = Some(InterpretationProgress::Completed(interpretation));
+            }
+            retained => *progress = retained,
         }
     }
 }
@@ -367,6 +506,49 @@ where
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
     EstablishedActor<StableProxy<Worker, Plan>>: Send,
 {
+    type Custody = ProxyOperationCustody<Source, Worker, Plan>;
+    type Input<'a>
+        = (CreationId, &'a mut Option<ProxyControl<Worker, Plan>>)
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<
+        ProxyControl<Worker, Plan>,
+        EstablishedActor<StableProxy<Worker, Plan>>,
+        ChildInputReason,
+        Never,
+    >;
+
+    fn prepare_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                Self::Custody,
+                ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>,
+            >,
+        >,
+    ) {
+        Self::prepare_interpretation(progress)
+    }
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        Self::interpretation_input(custody)
+    }
+    fn finish_interpretation(
+        progress: &mut Option<
+            InterpretationProgress<
+                Self,
+                Self::Custody,
+                ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>,
+            >,
+        >,
+    ) {
+        Self::finish_interpretation(progress)
+    }
+
     type Accepted = ProxyInputReceipt<Worker, Plan>;
     type Rejection = ChildInputReason;
     type Prerequisite = Never;
@@ -387,17 +569,27 @@ where
 #[cfg(test)]
 mod tests {
     use core::future::Future;
+    use core::pin::pin;
+    use core::task::{Context, Poll, Waker};
     use std::collections::VecDeque;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::rc::Rc;
     use std::sync::{Arc, Mutex, mpsc};
 
     use behavior::{
-        ActiveTurn, Address, BehaviorActed, ClassifySettlement, InterpreterFault, NoBirths,
-        NoSends, Protocol, SettlementStatus, User,
+        ActiveTurn, Address, BehaviorActed, ClassifySettlement, CreationSequence,
+        EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason, Here, InterpretItem,
+        InterpretSends, Interpretation, InterpreterFault, InterpreterRequests, MessageProtocol,
+        NoBirths, NoSends, Protocol, SendLayer, SettledItem, SettlementStatus, User,
     };
 
     use super::super::ProxyCommand;
     use super::*;
-    use crate::atomic::ImmediateActivation;
+    use crate::atomic::pool::assignment::{
+        AcceptedJobSequence, AssignWorker, AssignedJob, Assignment, AssignmentReceipt,
+        AssignmentSequence, CorrelationMatch, CustomerJob,
+    };
+    use crate::atomic::{ImmediateActivation, WorkerAttempt};
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct RuntimeAddr(u64);
@@ -501,11 +693,28 @@ mod tests {
     enum ControlAdmission {
         Accept(EstablishedActor<StableProxy<Worker, ImmediateActivation>>),
         Reject,
+        Corrupt,
+        Interrupt,
+    }
+
+    enum AssignmentAdmission {
+        Accept,
+        Reject,
+        Corrupt,
+        Interrupt,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    enum CapabilityAttempt {
+        Proxy(CreationId, u8),
+        Assignment(usize),
     }
 
     struct ProxyControlHost {
         admissions: VecDeque<ControlAdmission>,
         observed: Vec<(u64, u8)>,
+        assignment_admissions: VecDeque<AssignmentAdmission>,
+        attempts: Vec<CapabilityAttempt>,
     }
 
     impl ProxyControlHost {
@@ -526,12 +735,21 @@ mod tests {
                 ProxyCommand::Shutdown => panic!("this witness issues worker starts only"),
             };
             self.observed.push((creation.get(), worker));
+            self.attempts
+                .push(CapabilityAttempt::Proxy(creation, worker));
             match self
                 .admissions
                 .pop_front()
                 .expect("one lower admission per proxy control")
             {
                 ControlAdmission::Accept(proxy) => ItemSettlement::Accepted(proxy),
+                ControlAdmission::Corrupt => ItemSettlement::Corrupt {
+                    item: control,
+                    fault: InterpreterFault::CorruptTraversal,
+                },
+                ControlAdmission::Interrupt => {
+                    panic!("application proxy control conversion interrupted")
+                }
                 ControlAdmission::Reject => ItemSettlement::Rejected {
                     item: control,
                     reason: ChildInputReason::ClosedControlLane,
@@ -613,9 +831,18 @@ mod tests {
         let mut host = ProxyControlHost {
             admissions: VecDeque::from([ControlAdmission::Accept(proxy), ControlAdmission::Reject]),
             observed: Vec::new(),
+            assignment_admissions: VecDeque::new(),
+            attempts: Vec::new(),
         };
 
-        let ItemSettlement::Accepted(accepted) = second.settle(&mut host) else {
+        let ItemSettlement::Accepted(accepted) = ({
+            let mut progress = Some(InterpretationProgress::Original(second));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        }) else {
             panic!("the second control reaches the exact proxy");
         };
         let accepted = second_witness
@@ -629,7 +856,14 @@ mod tests {
         let ItemSettlement::Rejected {
             item: returned,
             reason,
-        } = first.settle(&mut host)
+        } = ({
+            let mut progress = Some(InterpretationProgress::Original(first));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        })
         else {
             panic!("the first control returns its actual rejected request");
         };
@@ -677,7 +911,14 @@ mod tests {
         let ItemSettlement::Rejected {
             item: returned,
             reason,
-        } = first.settle(&mut host)
+        } = ({
+            let mut progress = Some(InterpretationProgress::Original(first));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        })
         else {
             panic!("closed private control returns the complete start request");
         };
@@ -703,7 +944,14 @@ mod tests {
         let ItemSettlement::Rejected {
             item: returned,
             reason,
-        } = second.settle(&mut host)
+        } = ({
+            let mut progress = Some(InterpretationProgress::Original(second));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        })
         else {
             panic!("missing binding returns the complete shutdown request");
         };
@@ -720,7 +968,14 @@ mod tests {
         let ItemSettlement::Rejected {
             item: returned,
             reason,
-        } = third.settle(&mut host)
+        } = ({
+            let mut progress = Some(InterpretationProgress::Original(third));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        })
         else {
             panic!("closed private control returns the complete replacement request");
         };
@@ -934,5 +1189,1648 @@ mod tests {
             }
             SettledItem::Attempted(_) => panic!("unattempted stays unattempted"),
         }
+    }
+
+    impl<Path>
+        InterpretItem<
+            EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+            (),
+            Path,
+        > for ProxyControlHost
+    {
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<
+                EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+            >,
+            received: &'a mut Option<<EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>> as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>: 'a,
+        {
+            async move {
+                if received.is_some() {
+                    return;
+                }
+                let Some(delivery) = input.take() else {
+                    return;
+                };
+                *received = Some({
+                    self.attempts.push(CapabilityAttempt::Assignment(
+                        delivery.message.payload().as_ptr() as usize,
+                    ));
+                    match self
+                        .assignment_admissions
+                        .pop_front()
+                        .expect("one actual assignment admission")
+                    {
+                        AssignmentAdmission::Accept => ItemSettlement::Accepted(()),
+                        AssignmentAdmission::Reject => ItemSettlement::Rejected {
+                            item: delivery,
+                            reason: ExactDeliveryReason::ClosedRecipient,
+                        },
+                        AssignmentAdmission::Corrupt => ItemSettlement::Corrupt {
+                            item: delivery,
+                            fault: InterpreterFault::CorruptTraversal,
+                        },
+                        AssignmentAdmission::Interrupt => {
+                            panic!("application assignment conversion interrupted")
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    impl<Path>
+        InterpretItem<
+            AssignWorker<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>, Box<str>>,
+            (),
+            Path,
+        > for ProxyControlHost
+    {
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: &'a mut Option<
+                EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+            >,
+            received: &'a mut Option<<EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>> as ActionItem>::Reply>,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            AssignWorker<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>, Box<str>>: 'a,
+        {
+            <Self as InterpretItem<
+                EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+                (),
+                Path,
+            >>::interpret_item(self, input, received)
+        }
+    }
+
+    impl<Path> InterpretItem<ProxyOperation<Owner, Worker, ImmediateActivation>, (), Path>
+        for ProxyControlHost
+    {
+        fn interpret_item<'a>(
+            &'a mut self,
+            input: (
+                CreationId,
+                &'a mut Option<ProxyControl<Worker, ImmediateActivation>>,
+            ),
+            received: &'a mut Option<
+                ItemSettlement<
+                    ProxyControl<Worker, ImmediateActivation>,
+                    EstablishedActor<StableProxy<Worker, ImmediateActivation>>,
+                    ChildInputReason,
+                    Never,
+                >,
+            >,
+        ) -> impl Future<Output = ()> + Send + 'a
+        where
+            ProxyOperation<Owner, Worker, ImmediateActivation>: 'a,
+        {
+            async move {
+                if received.is_some() {
+                    return;
+                }
+                let (creation, input) = input;
+                let Some(control) = input.take() else {
+                    return;
+                };
+                *received = Some(self.admit_proxy_control(creation, control));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn unrelated_templates_proxy_then_assignment_complete_original_products() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+        let original_proxy_recipient = proxy.recipient();
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Reject]),
+            attempts: Vec::new(),
+        };
+        let product = SendLayer::new(
+            InterpreterRequests::one(assignment_request),
+            InterpreterRequests::one(proxy_request),
+        );
+        let interpretation = {
+            let mut progress = Some(InterpretationProgress::Original(product));
+            InterpretSends::<_, (), Here>::interpret(&mut progress, &mut host).await;
+            let Some(InterpretationProgress::Completed(interpretation)) = progress else {
+                panic!("both real templates must complete their exact product");
+            };
+            interpretation
+        };
+        let Interpretation::Complete(product) = interpretation else {
+            panic!("both real templates complete");
+        };
+        let SendLayer { owned, inner } = product;
+        let (mut assignment_rows, mut proxy_rows) = (owned, inner);
+
+        let assignment_row = assignment_rows
+            .pop()
+            .expect("whole original assignment row");
+        let proxy_row = proxy_rows.pop().expect("whole original proxy row");
+        let SettledItem::Attempted(ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        }) = assignment_row
+        else {
+            panic!("actual original rejection");
+        };
+        let (target, assignment, receipt) = returned.into_parts();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let SettledItem::Attempted(ItemSettlement::Accepted(proxy_receipt)) = proxy_row else {
+            panic!("actual proxy admission");
+        };
+        let proxy_receipt = proxy_witness
+            .admit_receipt(proxy_receipt)
+            .unwrap_or_else(|_| panic!("original proxy operation correlation"));
+        let (returned_creation, returned_proxy, operation) = proxy_receipt.into_parts();
+        assert_eq!(target, assignment_target);
+        assert_eq!(assignment.payload().as_ptr() as usize, original_payload);
+        assert_eq!(&**assignment.payload(), "original assignment");
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(reason, ExactDeliveryReason::ClosedRecipient);
+        assert_eq!(returned_creation, proxy_creation);
+        assert_eq!(returned_proxy.recipient(), original_proxy_recipient);
+        assert!(assignment_rows.is_empty());
+        assert!(proxy_rows.is_empty());
+        assert_eq!(
+            host.attempts,
+            [
+                CapabilityAttempt::Proxy(proxy_creation, 7),
+                CapabilityAttempt::Assignment(original_payload)
+            ]
+        );
+        assert_eq!(host.observed, [(proxy_creation.get(), 7)]);
+        assert!(host.admissions.is_empty());
+        assert!(host.assignment_admissions.is_empty());
+        drop(operation);
+        assert_eq!(proxy_allocation.strong_count(), 0);
+    }
+
+    #[test]
+    fn unrelated_templates_proxy_then_assignment_borrowed_progress_retains_original_proxy_allocation()
+     {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Interrupt]),
+            attempts: Vec::new(),
+        };
+
+        let product = SendLayer::new(
+            InterpreterRequests::one(assignment_request),
+            InterpreterRequests::one(proxy_request),
+        );
+        let mut progress = Some(InterpretationProgress::Original(product));
+        let (interruption, retained_owners) = {
+            let mut interpretation = pin!(InterpretSends::<_, (), Here>::interpret(
+                &mut progress,
+                &mut host
+            ));
+            let mut context = Context::from_waker(Waker::noop());
+            let interruption = catch_unwind(AssertUnwindSafe(|| {
+                interpretation.as_mut().poll(&mut context)
+            }));
+            (interruption, proxy_allocation.strong_count())
+        };
+        drop(progress);
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(assigned);
+        drop(worker_attempt);
+        drop(proxy_witness);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Proxy(proxy_creation, 7),
+                CapabilityAttempt::Assignment(original_payload)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(discharged_owners, 0);
+        // Acquired prefix remains in caller-owned progress until explicit discharge.
+        assert_eq!(
+            retained_owners, 2,
+            "original proxy correlation must coexist with its external witness"
+        );
+    }
+
+    #[test]
+    fn unrelated_templates_proxy_then_assignment_lexical_receipt_custody_survives_lower_panic() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+        let original_proxy_recipient = proxy.recipient();
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Interrupt]),
+            attempts: Vec::new(),
+        };
+
+        let ItemSettlement::Accepted(proxy_receipt) = ({
+            let mut progress = Some(InterpretationProgress::Original(proxy_request));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        }) else {
+            panic!("normal first proxy admission");
+        };
+        let (target, assignment, receipt) = assignment_request.into_parts();
+        let mut delivery = Some(EstablishedDelivery::new(target, assignment));
+        let mut received = None;
+        let (interruption, retained_owners) = {
+            let mut lower = pin!(<ProxyControlHost as InterpretItem<
+                EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+                (),
+                Here,
+            >>::interpret_item(
+                &mut host, &mut delivery, &mut received
+            ));
+            let mut context = Context::from_waker(Waker::noop());
+            let interruption = catch_unwind(AssertUnwindSafe(|| lower.as_mut().poll(&mut context)));
+            (interruption, proxy_allocation.strong_count())
+        };
+        drop(delivery);
+        drop(received);
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let proxy_receipt = proxy_witness
+            .admit_receipt(proxy_receipt)
+            .unwrap_or_else(|_| panic!("whole prior proxy receipt"));
+        let (returned_creation, returned_proxy, operation) = proxy_receipt.into_parts();
+        let returned_recipient = returned_proxy.recipient();
+        drop(returned_proxy);
+        drop(operation);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(receipt);
+        drop(assigned);
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_creation, proxy_creation);
+        assert_eq!(returned_recipient, original_proxy_recipient);
+
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Proxy(proxy_creation, 7),
+                CapabilityAttempt::Assignment(original_payload)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+
+    #[tokio::test]
+    async fn unrelated_templates_assignment_then_proxy_complete_original_products() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+        let original_proxy_recipient = proxy.recipient();
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Reject]),
+            attempts: Vec::new(),
+        };
+        let product = SendLayer::new(
+            InterpreterRequests::one(proxy_request),
+            InterpreterRequests::one(assignment_request),
+        );
+        let interpretation = {
+            let mut progress = Some(InterpretationProgress::Original(product));
+            InterpretSends::<_, (), Here>::interpret(&mut progress, &mut host).await;
+            let Some(InterpretationProgress::Completed(interpretation)) = progress else {
+                panic!("both real templates must complete their exact product");
+            };
+            interpretation
+        };
+        let Interpretation::Complete(product) = interpretation else {
+            panic!("both real templates complete");
+        };
+        let SendLayer { owned, inner } = product;
+        let (mut proxy_rows, mut assignment_rows) = (owned, inner);
+
+        let assignment_row = assignment_rows
+            .pop()
+            .expect("whole original assignment row");
+        let proxy_row = proxy_rows.pop().expect("whole original proxy row");
+        let SettledItem::Attempted(ItemSettlement::Rejected {
+            item: returned,
+            reason,
+        }) = assignment_row
+        else {
+            panic!("actual original rejection");
+        };
+        let (target, assignment, receipt) = returned.into_parts();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let SettledItem::Attempted(ItemSettlement::Accepted(proxy_receipt)) = proxy_row else {
+            panic!("actual proxy admission");
+        };
+        let proxy_receipt = proxy_witness
+            .admit_receipt(proxy_receipt)
+            .unwrap_or_else(|_| panic!("original proxy operation correlation"));
+        let (returned_creation, returned_proxy, operation) = proxy_receipt.into_parts();
+        assert_eq!(target, assignment_target);
+        assert_eq!(assignment.payload().as_ptr() as usize, original_payload);
+        assert_eq!(&**assignment.payload(), "original assignment");
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(reason, ExactDeliveryReason::ClosedRecipient);
+        assert_eq!(returned_creation, proxy_creation);
+        assert_eq!(returned_proxy.recipient(), original_proxy_recipient);
+        assert!(assignment_rows.is_empty());
+        assert!(proxy_rows.is_empty());
+        assert_eq!(
+            host.attempts,
+            [
+                CapabilityAttempt::Assignment(original_payload),
+                CapabilityAttempt::Proxy(proxy_creation, 7)
+            ]
+        );
+        assert_eq!(host.observed, [(proxy_creation.get(), 7)]);
+        assert!(host.admissions.is_empty());
+        assert!(host.assignment_admissions.is_empty());
+        drop(operation);
+        assert_eq!(proxy_allocation.strong_count(), 0);
+    }
+
+    #[test]
+    fn unrelated_templates_assignment_then_proxy_borrowed_progress_retains_original_proxy_allocation()
+     {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Interrupt]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Accept]),
+            attempts: Vec::new(),
+        };
+        drop(proxy);
+
+        let product = SendLayer::new(
+            InterpreterRequests::one(proxy_request),
+            InterpreterRequests::one(assignment_request),
+        );
+        let mut progress = Some(InterpretationProgress::Original(product));
+        let (interruption, retained_owners) = {
+            let mut interpretation = pin!(InterpretSends::<_, (), Here>::interpret(
+                &mut progress,
+                &mut host
+            ));
+            let mut context = Context::from_waker(Waker::noop());
+            let interruption = catch_unwind(AssertUnwindSafe(|| {
+                interpretation.as_mut().poll(&mut context)
+            }));
+            (interruption, proxy_allocation.strong_count())
+        };
+        drop(progress);
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(assigned);
+        drop(worker_attempt);
+        drop(proxy_witness);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Assignment(original_payload),
+                CapabilityAttempt::Proxy(proxy_creation, 7)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(discharged_owners, 0);
+        // Acquired prefix remains in caller-owned progress until explicit discharge.
+        assert_eq!(
+            retained_owners, 2,
+            "original proxy correlation must coexist with its external witness"
+        );
+    }
+
+    #[test]
+    fn unrelated_templates_assignment_then_proxy_lexical_receipt_custody_survives_lower_panic() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Interrupt]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Accept]),
+            attempts: Vec::new(),
+        };
+
+        drop(proxy);
+        let mut context = Context::from_waker(Waker::noop());
+        let mut assignment_progress = Some(InterpretationProgress::Original(assignment_request));
+        let settlement = {
+            let mut normal = pin!(AssignWorker::<
+                MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+                Box<str>,
+            >::settle::<_, (), Here>(
+                &mut assignment_progress, &mut host
+            ));
+            normal.as_mut().poll(&mut context)
+        };
+        let Poll::Ready(()) = settlement else {
+            panic!("normal first assignment producer completes");
+        };
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(
+            ItemSettlement::Accepted(receipt),
+        ))) = assignment_progress
+        else {
+            panic!("normal first assignment receipt");
+        };
+        let (returned_creation, control, operation) = proxy_request.into_parts();
+        let interruption = catch_unwind(AssertUnwindSafe(|| {
+            host.admit_proxy_control(returned_creation, control)
+        }));
+        let retained_owners = proxy_allocation.strong_count();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let original_operation = Arc::ptr_eq(&operation.token, &proxy_witness.token);
+        drop(operation);
+        drop(proxy_witness);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(receipt);
+        drop(assigned);
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_creation, proxy_creation);
+        assert!(original_operation);
+
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Assignment(original_payload),
+                CapabilityAttempt::Proxy(proxy_creation, 7)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+    enum NativeBoundary {
+        BeforeInputTransfer,
+        ApplicationConsumption,
+    }
+
+    impl ProxyControlHost {
+        async fn interpret_assignment_custody(
+            &mut self,
+            delivery: &mut Option<
+                EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+            >,
+            boundary: NativeBoundary,
+        ) -> ItemSettlement<
+            EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+            (),
+            ExactDeliveryReason,
+            Never,
+        > {
+            match boundary {
+                NativeBoundary::BeforeInputTransfer => {
+                    panic!("host interrupted before acquiring assignment input")
+                }
+                NativeBoundary::ApplicationConsumption => {
+                    let original = delivery
+                        .take()
+                        .expect("original assignment input retained before acquisition");
+                    let mut input = Some(original);
+                    let mut received = None;
+                    <Self as InterpretItem<
+                        EstablishedDelivery<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>>,
+                        (),
+                        Here,
+                    >>::interpret_item(self, &mut input, &mut received)
+                    .await;
+                    received.expect("normal lower assignment callback publishes its actual reply")
+                }
+            }
+        }
+
+        fn admit_proxy_custody(
+            &mut self,
+            creation: CreationId,
+            control: &mut Option<ProxyControl<Worker, ImmediateActivation>>,
+            boundary: NativeBoundary,
+        ) -> ItemSettlement<
+            ProxyControl<Worker, ImmediateActivation>,
+            EstablishedActor<StableProxy<Worker, ImmediateActivation>>,
+            ChildInputReason,
+            Never,
+        > {
+            match boundary {
+                NativeBoundary::BeforeInputTransfer => {
+                    panic!("host interrupted before acquiring proxy input")
+                }
+                NativeBoundary::ApplicationConsumption => {
+                    let original = control
+                        .take()
+                        .expect("original proxy input retained before acquisition");
+                    self.admit_proxy_control(creation, original)
+                }
+            }
+        }
+    }
+    #[test]
+    fn unrelated_templates_proxy_then_assignment_borrowed_custody_before_input_transfer() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+        let original_proxy_recipient = proxy.recipient();
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Interrupt]),
+            attempts: Vec::new(),
+        };
+
+        let ItemSettlement::Accepted(proxy_receipt) = ({
+            let mut progress = Some(InterpretationProgress::Original(proxy_request));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        }) else {
+            panic!("normal first proxy admission");
+        };
+        let (target, assignment, receipt) = assignment_request.into_parts();
+        let mut delivery = Some(EstablishedDelivery::new(target, assignment));
+        let (interruption, retained_owners) = {
+            let mut lower =
+                pin!(host.interpret_assignment_custody(
+                    &mut delivery,
+                    NativeBoundary::BeforeInputTransfer
+                ));
+            let mut context = Context::from_waker(Waker::noop());
+            let interruption = catch_unwind(AssertUnwindSafe(|| lower.as_mut().poll(&mut context)));
+            (interruption, proxy_allocation.strong_count())
+        };
+        let original_delivery = delivery
+            .as_ref()
+            .expect("unacquired assignment remains caller-owned after loan disposal");
+        let returned_payload = original_delivery.message.payload().as_ptr() as usize;
+        let returned_contents = original_delivery.message.payload().to_string();
+        let returned_target = original_delivery.to.clone();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let proxy_receipt = proxy_witness
+            .admit_receipt(proxy_receipt)
+            .unwrap_or_else(|_| panic!("whole prior proxy receipt"));
+        let (returned_creation, returned_proxy, operation) = proxy_receipt.into_parts();
+        let returned_recipient = returned_proxy.recipient();
+        drop(returned_proxy);
+        drop(operation);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(delivery);
+        drop(receipt);
+        drop(assigned);
+        let assignment_target_observed = assignment_target.clone();
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_payload, original_payload);
+        assert_eq!(returned_contents, "original assignment");
+        assert_eq!(returned_target, assignment_target_observed);
+        assert_eq!(returned_creation, proxy_creation);
+        assert_eq!(returned_recipient, original_proxy_recipient);
+
+        assert_eq!(attempts, [CapabilityAttempt::Proxy(proxy_creation, 7)]);
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert_eq!(assignment_admissions.len(), 1);
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+    #[test]
+    fn unrelated_templates_proxy_then_assignment_borrowed_custody_application_consumption() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+        let original_proxy_recipient = proxy.recipient();
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Interrupt]),
+            attempts: Vec::new(),
+        };
+
+        let ItemSettlement::Accepted(proxy_receipt) = ({
+            let mut progress = Some(InterpretationProgress::Original(proxy_request));
+            ProxyOperation::settle(&mut progress, &mut host);
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the exact host returns its complete original settlement");
+            };
+            settlement.into_settlement()
+        }) else {
+            panic!("normal first proxy admission");
+        };
+        let (target, assignment, receipt) = assignment_request.into_parts();
+        let mut delivery = Some(EstablishedDelivery::new(target, assignment));
+        let (interruption, retained_owners) = {
+            let mut lower = pin!(host.interpret_assignment_custody(
+                &mut delivery,
+                NativeBoundary::ApplicationConsumption
+            ));
+            let mut context = Context::from_waker(Waker::noop());
+            let interruption = catch_unwind(AssertUnwindSafe(|| lower.as_mut().poll(&mut context)));
+            (interruption, proxy_allocation.strong_count())
+        };
+        let remaining_delivery = delivery;
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let proxy_receipt = proxy_witness
+            .admit_receipt(proxy_receipt)
+            .unwrap_or_else(|_| panic!("whole prior proxy receipt"));
+        let (returned_creation, returned_proxy, operation) = proxy_receipt.into_parts();
+        let returned_recipient = returned_proxy.recipient();
+        drop(returned_proxy);
+        drop(operation);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(receipt);
+        drop(assigned);
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(remaining_delivery.is_none());
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_creation, proxy_creation);
+        assert_eq!(returned_recipient, original_proxy_recipient);
+
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Proxy(proxy_creation, 7),
+                CapabilityAttempt::Assignment(original_payload)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+    #[test]
+    fn unrelated_templates_assignment_then_proxy_borrowed_custody_before_input_transfer() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Interrupt]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Accept]),
+            attempts: Vec::new(),
+        };
+
+        drop(proxy);
+        let mut context = Context::from_waker(Waker::noop());
+        let mut assignment_progress = Some(InterpretationProgress::Original(assignment_request));
+        let settlement = {
+            let mut normal = pin!(AssignWorker::<
+                MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+                Box<str>,
+            >::settle::<_, (), Here>(
+                &mut assignment_progress, &mut host
+            ));
+            normal.as_mut().poll(&mut context)
+        };
+        let Poll::Ready(()) = settlement else {
+            panic!("normal first assignment producer completes");
+        };
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(
+            ItemSettlement::Accepted(receipt),
+        ))) = assignment_progress
+        else {
+            panic!("normal first assignment receipt");
+        };
+        let (returned_creation, control, operation) = proxy_request.into_parts();
+        let mut control = Some(control);
+        let interruption = catch_unwind(AssertUnwindSafe(|| {
+            host.admit_proxy_custody(
+                returned_creation,
+                &mut control,
+                NativeBoundary::BeforeInputTransfer,
+            )
+        }));
+        let original_control = control
+            .as_ref()
+            .expect("unacquired proxy input remains caller-owned after call disposal");
+        let returned_worker = match &original_control.command {
+            ProxyCommand::Start(submission) => submission.worker.0,
+            ProxyCommand::Replace(_) | ProxyCommand::Shutdown => {
+                panic!("original input is the issued worker start")
+            }
+        };
+        let retained_owners = proxy_allocation.strong_count();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let original_operation = Arc::ptr_eq(&operation.token, &proxy_witness.token);
+        drop(operation);
+        drop(proxy_witness);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(receipt);
+        drop(assigned);
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_creation, proxy_creation);
+        assert!(original_operation);
+        assert_eq!(returned_worker, 7);
+
+        assert_eq!(attempts, [CapabilityAttempt::Assignment(original_payload)]);
+        assert!(observed.is_empty());
+        assert_eq!(admissions.len(), 1);
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+    #[test]
+    fn unrelated_templates_assignment_then_proxy_borrowed_custody_application_consumption() {
+        let mut creations = CreationSequence::new();
+        let proxy_creation = creations.issue().expect("original proxy creation");
+        let worker_creation = creations.issue().expect("original worker attempt");
+        let worker_attempt = WorkerAttempt::issued(worker_creation);
+        let mut assignments = AssignmentSequence::new();
+        let (correlation, assignment) = assignments
+            .assign(&worker_attempt, Box::<str>::from("original assignment"))
+            .expect("original assignment correlation");
+        let original_payload = assignment.payload().as_ptr() as usize;
+        let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+        let assignment_request = AssignWorker::<
+            MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+            _,
+        >::new(assignment_target.clone(), &correlation, assignment);
+        let mut jobs = AcceptedJobSequence::new();
+        let (job_id, admitted) = jobs.issue().expect("original customer admission");
+        let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+            CustomerJob {
+                id: job_id,
+                admitted,
+                payload: 7,
+                customer: 9,
+            },
+            correlation,
+        );
+        let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+            proxy_creation,
+            WorkerSubmission::immediate(Worker(7)),
+        );
+        let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+        let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            Installed::new(Endpoint(31)),
+        );
+
+        let mut host = ProxyControlHost {
+            admissions: VecDeque::from([ControlAdmission::Interrupt]),
+            observed: Vec::new(),
+            assignment_admissions: VecDeque::from([AssignmentAdmission::Accept]),
+            attempts: Vec::new(),
+        };
+
+        drop(proxy);
+        let mut context = Context::from_waker(Waker::noop());
+        let mut assignment_progress = Some(InterpretationProgress::Original(assignment_request));
+        let settlement = {
+            let mut normal = pin!(AssignWorker::<
+                MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+                Box<str>,
+            >::settle::<_, (), Here>(
+                &mut assignment_progress, &mut host
+            ));
+            normal.as_mut().poll(&mut context)
+        };
+        let Poll::Ready(()) = settlement else {
+            panic!("normal first assignment producer completes");
+        };
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(
+            ItemSettlement::Accepted(receipt),
+        ))) = assignment_progress
+        else {
+            panic!("normal first assignment receipt");
+        };
+        let (returned_creation, control, operation) = proxy_request.into_parts();
+        let mut control = Some(control);
+        let interruption = catch_unwind(AssertUnwindSafe(|| {
+            host.admit_proxy_custody(
+                returned_creation,
+                &mut control,
+                NativeBoundary::ApplicationConsumption,
+            )
+        }));
+        let remaining_control = control;
+        let retained_owners = proxy_allocation.strong_count();
+        let receipt_match = assigned.compare_receipt(&receipt);
+        let original_operation = Arc::ptr_eq(&operation.token, &proxy_witness.token);
+        drop(operation);
+        drop(proxy_witness);
+
+        let ProxyControlHost {
+            admissions,
+            observed,
+            assignment_admissions,
+            attempts,
+        } = host;
+        drop(receipt);
+        drop(assigned);
+        drop(worker_attempt);
+        let discharged_owners = proxy_allocation.strong_count();
+        let interruption_was_caught = interruption.is_err();
+        drop(interruption);
+        assert!(interruption_was_caught);
+        assert!(remaining_control.is_none());
+        assert!(matches!(receipt_match, CorrelationMatch::Exact));
+        assert_eq!(returned_creation, proxy_creation);
+        assert!(original_operation);
+
+        assert_eq!(
+            attempts,
+            [
+                CapabilityAttempt::Assignment(original_payload),
+                CapabilityAttempt::Proxy(proxy_creation, 7)
+            ]
+        );
+        assert_eq!(observed, [(proxy_creation.get(), 7)]);
+        assert!(admissions.is_empty());
+        assert!(assignment_admissions.is_empty());
+        assert_eq!(retained_owners, 2);
+        assert_eq!(discharged_owners, 0);
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum BorrowedNormalAdmission {
+        Accepted,
+        Rejected,
+        Corrupt,
+    }
+
+    #[tokio::test]
+    async fn unrelated_templates_proxy_then_assignment_borrowed_normal_products() {
+        for expected in [
+            BorrowedNormalAdmission::Accepted,
+            BorrowedNormalAdmission::Rejected,
+            BorrowedNormalAdmission::Corrupt,
+        ] {
+            let mut creations = CreationSequence::new();
+            let proxy_creation = creations.issue().expect("original proxy creation");
+            let worker_creation = creations.issue().expect("original worker attempt");
+            let worker_attempt = WorkerAttempt::issued(worker_creation);
+            let mut assignments = AssignmentSequence::new();
+            let (correlation, assignment) = assignments
+                .assign(&worker_attempt, Box::<str>::from("original assignment"))
+                .expect("original assignment correlation");
+            let original_payload = assignment.payload().as_ptr() as usize;
+            let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+            let assignment_request = AssignWorker::<
+                MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+                _,
+            >::new(
+                assignment_target.clone(), &correlation, assignment
+            );
+            let mut jobs = AcceptedJobSequence::new();
+            let (job_id, admitted) = jobs.issue().expect("original customer admission");
+            let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+                CustomerJob {
+                    id: job_id,
+                    admitted,
+                    payload: 7,
+                    customer: 9,
+                },
+                correlation,
+            );
+            let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+                proxy_creation,
+                WorkerSubmission::immediate(Worker(7)),
+            );
+            let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+            let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                Installed::new(Endpoint(31)),
+            );
+            let original_proxy_recipient = proxy.recipient();
+
+            let admission = match expected {
+                BorrowedNormalAdmission::Accepted => AssignmentAdmission::Accept,
+                BorrowedNormalAdmission::Rejected => AssignmentAdmission::Reject,
+                BorrowedNormalAdmission::Corrupt => AssignmentAdmission::Corrupt,
+            };
+            let mut host = ProxyControlHost {
+                admissions: VecDeque::from([ControlAdmission::Accept(proxy)]),
+                observed: Vec::new(),
+                assignment_admissions: VecDeque::from([admission]),
+                attempts: Vec::new(),
+            };
+            let ItemSettlement::Accepted(prior) = ({
+                let mut progress = Some(InterpretationProgress::Original(proxy_request));
+                ProxyOperation::settle(&mut progress, &mut host);
+                let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                    panic!("the exact host returns its complete original settlement");
+                };
+                settlement.into_settlement()
+            }) else {
+                panic!("actual previous proxy accepted receipt");
+            };
+            let (target, assignment, receipt) = assignment_request.into_parts();
+            let mut delivery = Some(EstablishedDelivery::new(target, assignment));
+            let lower = host
+                .interpret_assignment_custody(&mut delivery, NativeBoundary::ApplicationConsumption)
+                .await;
+            // The lower future is fully disposed before mandatory receipt transfer.
+            let current: ItemSettlement<
+                AssignWorker<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>, Box<str>>,
+                AssignmentReceipt,
+                ExactDeliveryReason,
+                Never,
+            > = match lower {
+                ItemSettlement::Accepted(()) => ItemSettlement::Accepted(receipt),
+                ItemSettlement::Rejected {
+                    item: EstablishedDelivery { to, message },
+                    reason,
+                } => ItemSettlement::Rejected {
+                    item: AssignWorker::returned(to, message, receipt),
+                    reason,
+                },
+                ItemSettlement::Corrupt {
+                    item: EstablishedDelivery { to, message },
+                    fault,
+                } => ItemSettlement::Corrupt {
+                    item: AssignWorker::returned(to, message, receipt),
+                    fault,
+                },
+                ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+            };
+            let prior = proxy_witness
+                .admit_receipt(prior)
+                .unwrap_or_else(|_| panic!("whole prior original proxy receipt"));
+            let (returned_creation, returned_proxy, operation) = prior.into_parts();
+            let returned_recipient = returned_proxy.recipient();
+            drop(returned_proxy);
+            drop(operation);
+            let ProxyControlHost {
+                admissions,
+                observed,
+                assignment_admissions,
+                attempts,
+            } = host;
+            match (expected, current) {
+                (BorrowedNormalAdmission::Accepted, ItemSettlement::Accepted(receipt)) => {
+                    let receipt_match = assigned.compare_receipt(&receipt);
+                    drop(receipt);
+                    assert!(matches!(receipt_match, CorrelationMatch::Exact));
+                }
+                (BorrowedNormalAdmission::Rejected, ItemSettlement::Rejected { item, reason }) => {
+                    let (target, assignment, receipt) = item.into_parts();
+                    let receipt_match = assigned.compare_receipt(&receipt);
+                    assert!(matches!(receipt_match, CorrelationMatch::Exact));
+                    assert_eq!(reason, ExactDeliveryReason::ClosedRecipient);
+                    assert_eq!(target, assignment_target);
+                    assert_eq!(assignment.payload().as_ptr() as usize, original_payload);
+                    assert_eq!(assignment.payload().as_ref(), "original assignment");
+                    drop((target, assignment, receipt));
+                }
+                (BorrowedNormalAdmission::Corrupt, ItemSettlement::Corrupt { item, fault }) => {
+                    let (target, assignment, receipt) = item.into_parts();
+                    let receipt_match = assigned.compare_receipt(&receipt);
+                    assert!(matches!(receipt_match, CorrelationMatch::Exact));
+                    assert_eq!(fault, InterpreterFault::CorruptTraversal);
+                    assert_eq!(target, assignment_target);
+                    assert_eq!(assignment.payload().as_ptr() as usize, original_payload);
+                    assert_eq!(assignment.payload().as_ref(), "original assignment");
+                    drop((target, assignment, receipt));
+                }
+                _ => panic!(
+                    "complete current assignment product disagrees with actual lower normal admission"
+                ),
+            }
+            assert!(delivery.is_none());
+            assert_eq!(returned_creation, proxy_creation);
+            assert_eq!(returned_recipient, original_proxy_recipient);
+            assert_eq!(
+                attempts,
+                [
+                    CapabilityAttempt::Proxy(proxy_creation, 7),
+                    CapabilityAttempt::Assignment(original_payload)
+                ]
+            );
+            assert_eq!(observed, [(proxy_creation.get(), 7)]);
+            assert!(admissions.is_empty());
+            assert!(assignment_admissions.is_empty());
+            drop(assigned);
+            drop(worker_attempt);
+            let discharged = proxy_allocation.strong_count();
+            assert_eq!(discharged, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn unrelated_templates_assignment_then_proxy_borrowed_normal_products() {
+        for expected in [
+            BorrowedNormalAdmission::Accepted,
+            BorrowedNormalAdmission::Rejected,
+            BorrowedNormalAdmission::Corrupt,
+        ] {
+            let mut creations = CreationSequence::new();
+            let proxy_creation = creations.issue().expect("original proxy creation");
+            let worker_creation = creations.issue().expect("original worker attempt");
+            let worker_attempt = WorkerAttempt::issued(worker_creation);
+            let mut assignments = AssignmentSequence::new();
+            let (correlation, assignment) = assignments
+                .assign(&worker_attempt, Box::<str>::from("original assignment"))
+                .expect("original assignment correlation");
+            let original_payload = assignment.payload().as_ptr() as usize;
+            let assignment_target = EstablishedRecipient::issued(Endpoint(41));
+            let assignment_request = AssignWorker::<
+                MessageProtocol<RuntimeAddr, Assignment<Box<str>>>,
+                _,
+            >::new(
+                assignment_target.clone(), &correlation, assignment
+            );
+            let mut jobs = AcceptedJobSequence::new();
+            let (job_id, admitted) = jobs.issue().expect("original customer admission");
+            let assigned: AssignedJob<u8, u8, u8, RuntimeAddr> = AssignedJob::new(
+                CustomerJob {
+                    id: job_id,
+                    admitted,
+                    payload: 7,
+                    customer: 9,
+                },
+                correlation,
+            );
+            let (proxy_witness, proxy_request) = ProxyOperation::<Owner, _, _>::initial(
+                proxy_creation,
+                WorkerSubmission::immediate(Worker(7)),
+            );
+            let proxy_allocation = Arc::downgrade(&proxy_witness.token);
+            let proxy = EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                Installed::new(Endpoint(31)),
+            );
+            let original_proxy_recipient = proxy.recipient();
+
+            let admission = match expected {
+                BorrowedNormalAdmission::Accepted => ControlAdmission::Accept(proxy),
+                BorrowedNormalAdmission::Rejected => {
+                    drop(proxy);
+                    ControlAdmission::Reject
+                }
+                BorrowedNormalAdmission::Corrupt => {
+                    drop(proxy);
+                    ControlAdmission::Corrupt
+                }
+            };
+            let mut host = ProxyControlHost {
+                admissions: VecDeque::from([admission]),
+                observed: Vec::new(),
+                assignment_admissions: VecDeque::from([AssignmentAdmission::Accept]),
+                attempts: Vec::new(),
+            };
+            let mut assignment_progress =
+                Some(InterpretationProgress::Original(assignment_request));
+            AssignWorker::<MessageProtocol<RuntimeAddr, Assignment<Box<str>>>, Box<str>>::settle::<
+                _,
+                (),
+                Here,
+            >(&mut assignment_progress, &mut host)
+            .await;
+            let Some(InterpretationProgress::Completed(Interpretation::Complete(
+                ItemSettlement::Accepted(prior),
+            ))) = assignment_progress
+            else {
+                panic!("actual previous assignment accepted receipt");
+            };
+            let (creation, control, operation) = proxy_request.into_parts();
+            let mut control = Some(control);
+            let lower = host.admit_proxy_custody(
+                creation,
+                &mut control,
+                NativeBoundary::ApplicationConsumption,
+            );
+            // The lower call is over before original private authority transfer.
+            let current: ItemSettlement<
+                ProxyOperation<Owner, Worker, ImmediateActivation>,
+                ProxyInputReceipt<Worker, ImmediateActivation>,
+                ChildInputReason,
+                Never,
+            > = match lower {
+                ItemSettlement::Accepted(proxy) => {
+                    ItemSettlement::Accepted(ProxyInputReceipt::new(creation, proxy, operation))
+                }
+                ItemSettlement::Rejected {
+                    item: control,
+                    reason,
+                } => ItemSettlement::Rejected {
+                    item: ProxyOperation {
+                        creation,
+                        control,
+                        operation,
+                        source: PhantomData,
+                    },
+                    reason,
+                },
+                ItemSettlement::Corrupt {
+                    item: control,
+                    fault,
+                } => ItemSettlement::Corrupt {
+                    item: ProxyOperation {
+                        creation,
+                        control,
+                        operation,
+                        source: PhantomData,
+                    },
+                    fault,
+                },
+                ItemSettlement::Blocked { prerequisite, .. } => match prerequisite {},
+            };
+            let prior_match = assigned.compare_receipt(&prior);
+            drop(prior);
+            let admitted = proxy_witness
+                .admit(SettledItem::Attempted(current))
+                .unwrap_or_else(|_| panic!("whole original current proxy product"));
+            let ProxyControlHost {
+                admissions,
+                observed,
+                assignment_admissions,
+                attempts,
+            } = host;
+            assert!(matches!(prior_match, CorrelationMatch::Exact));
+            match (expected, admitted) {
+                (
+                    BorrowedNormalAdmission::Accepted,
+                    SettledItem::Attempted(ItemSettlement::Accepted(receipt)),
+                ) => {
+                    let (returned_creation, actor, operation) = receipt.into_parts();
+                    let returned_recipient = actor.recipient();
+                    drop((actor, operation));
+                    assert_eq!(returned_creation, proxy_creation);
+                    assert_eq!(returned_recipient, original_proxy_recipient);
+                }
+                (
+                    BorrowedNormalAdmission::Rejected,
+                    SettledItem::Attempted(ItemSettlement::Rejected { item, reason }),
+                ) => {
+                    let (returned_creation, original_control, operation) = item.into_parts();
+                    let ProxyCommand::Start(submission) = original_control.command else {
+                        panic!("original proxy input is Start");
+                    };
+                    assert_eq!(returned_creation, proxy_creation);
+                    assert_eq!(submission.worker.0, 7);
+                    assert_eq!(reason, ChildInputReason::ClosedControlLane);
+                    drop((submission, operation));
+                }
+                (
+                    BorrowedNormalAdmission::Corrupt,
+                    SettledItem::Attempted(ItemSettlement::Corrupt { item, fault }),
+                ) => {
+                    let (returned_creation, original_control, operation) = item.into_parts();
+                    let ProxyCommand::Start(submission) = original_control.command else {
+                        panic!("original proxy input is Start");
+                    };
+                    assert_eq!(returned_creation, proxy_creation);
+                    assert_eq!(submission.worker.0, 7);
+                    assert_eq!(fault, InterpreterFault::CorruptTraversal);
+                    drop((submission, operation));
+                }
+                _ => panic!(
+                    "complete current proxy product disagrees with actual lower normal admission"
+                ),
+            }
+            assert!(control.is_none());
+            assert_eq!(
+                attempts,
+                [
+                    CapabilityAttempt::Assignment(original_payload),
+                    CapabilityAttempt::Proxy(proxy_creation, 7)
+                ]
+            );
+            assert_eq!(observed, [(proxy_creation.get(), 7)]);
+            assert!(admissions.is_empty());
+            assert!(assignment_admissions.is_empty());
+            drop(assigned);
+            drop(worker_attempt);
+            let discharged = proxy_allocation.strong_count();
+            assert_eq!(discharged, 0);
+        }
+    }
+    struct ColdWorker(Rc<Vec<u64>>);
+
+    impl Protocol for ColdWorker {
+        type Addr = RuntimeAddr;
+        type Msg = Never;
+    }
+    impl Behavior for ColdWorker {
+        type Protocol = Self;
+        type Event = User<RuntimeAddr, Never>;
+        type Sends = NoSends;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+        fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            match event.message {}
+        }
+    }
+
+    struct ColdControlRejection;
+    impl ProxyControlAdmission<ColdWorker, ImmediateActivation> for ColdControlRejection {
+        fn admit_proxy_control(
+            &mut self,
+            _: CreationId,
+            control: ProxyControl<ColdWorker, ImmediateActivation>,
+        ) -> ItemSettlement<
+            ProxyControl<ColdWorker, ImmediateActivation>,
+            EstablishedActor<StableProxy<ColdWorker, ImmediateActivation>>,
+            ChildInputReason,
+            Never,
+        > {
+            ItemSettlement::Rejected {
+                item: control,
+                reason: ChildInputReason::ClosedControlLane,
+            }
+        }
+    }
+
+    #[test]
+    fn synchronous_proxy_admission_preserves_cold_non_send_worker_state() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("cold original creation is issued");
+        let state = Rc::new(vec![31, 37]);
+        let original = Rc::as_ptr(&state);
+        let (witness, operation) = ProxyOperation::<Owner, _, _>::initial(
+            creation,
+            WorkerSubmission::immediate(ColdWorker(state)),
+        );
+        let mut progress = Some(InterpretationProgress::Original(operation));
+        ProxyOperation::settle(&mut progress, &mut ColdControlRejection);
+        let Some(InterpretationProgress::Completed(Interpretation::Complete(
+            ItemSettlement::Rejected { item, reason },
+        ))) = progress
+        else {
+            panic!("cold control rejection must return the whole original operation");
+        };
+        let (item, reason) = witness
+            .admit_rejection(item, reason)
+            .unwrap_or_else(|_| panic!("the same operation authority remains paired"));
+        let (returned_creation, control, authority) = item.into_parts();
+        let ProxyCommand::Start(submission) = control.command else {
+            panic!("the original cold input is a start control");
+        };
+        assert_eq!(returned_creation, creation);
+        assert_eq!(reason, ChildInputReason::ClosedControlLane);
+        assert_eq!(Rc::as_ptr(&submission.worker.0), original);
+        assert_eq!(submission.worker.0.as_slice(), &[31, 37]);
+        drop(authority);
     }
 }

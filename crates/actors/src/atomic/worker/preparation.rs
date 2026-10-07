@@ -5,7 +5,8 @@ use core::ops::ControlFlow;
 use std::sync::Arc;
 
 use behavior::{
-    ActionItem, ActionItemResult, Behavior, ItemSettlement, Never, SettledItem, SourceAction,
+    ActionItem, ActionItemResult, Behavior, InterpretationProgress, ItemSettlement, Never,
+    SettledItem, SourceAction, finish_item, prepare_item,
 };
 
 use crate::atomic::RoleName;
@@ -443,6 +444,29 @@ where
         (&mut self.source, self.current.role())
     }
 
+    /// Borrow each accepted role, original worker, and activation plan in order.
+    ///
+    /// The complete pending request, including its original preparation ticket,
+    /// remains owned by the caller. No submission is cloned or transferred.
+    #[must_use]
+    pub fn prepared_workers(&self) -> impl Iterator<Item = (&Role, &Worker, &Plan)> {
+        self.prepared.iter().map(|prepared| {
+            (
+                prepared.role.role(),
+                &prepared.submission.worker,
+                &prepared.submission.activation,
+            )
+        })
+    }
+
+    /// Borrow the untouched roles after the current role in their original order.
+    ///
+    /// The existing `source_and_role` method supplies the source and current role.
+    #[must_use]
+    pub fn remaining_roles(&self) -> impl Iterator<Item = &Role> {
+        self.remaining.iter().map(RoleName::role)
+    }
+
     /// Accept one submission for the current role.
     #[must_use]
     pub fn accept(
@@ -610,6 +634,37 @@ where
     Worker: Behavior + Send,
     Plan: ActivationPlan,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = WorkerPreparationStarted;
     type Rejection = Never;
     type Prerequisite = Never;
@@ -628,6 +683,8 @@ where
 #[cfg(test)]
 mod tests {
     use core::ops::ControlFlow;
+    use core::ptr;
+    use std::sync::Arc;
 
     use behavior::{
         ActionItemResult, ActiveTurn, Behavior, BehaviorActed, MailAddr, MessageProtocol, Never,
@@ -643,6 +700,9 @@ mod tests {
     enum Role {
         Api,
         Storage,
+        Search,
+        Queue,
+        Index,
     }
 
     #[derive(Debug, Eq, PartialEq)]
@@ -799,5 +859,77 @@ mod tests {
         assert_eq!(source, Source(23));
         assert!(core::ptr::eq(role.role(), storage.role()));
         assert!(remaining.is_empty());
+    }
+
+    #[test]
+    fn pending_observation_preserves_original_workers_roles_and_ticket() {
+        for roles in [
+            [
+                Role::Api,
+                Role::Storage,
+                Role::Search,
+                Role::Queue,
+                Role::Index,
+            ],
+            [
+                Role::Storage,
+                Role::Api,
+                Role::Index,
+                Role::Search,
+                Role::Queue,
+            ],
+        ] {
+            let [first, second, current, later, last] = roles;
+            let first = RoleName::new(first);
+            let second = RoleName::new(second);
+            let current = RoleName::new(current);
+            let later = RoleName::new(later);
+            let last = RoleName::new(last);
+            let first_role = first.clone().into_role();
+            let second_role = second.clone().into_role();
+            let current_role = current.clone().into_role();
+            let later_role = later.clone().into_role();
+            let last_role = last.clone().into_role();
+            let (issued, request) =
+                Request::new(Source(31), first, vec![second, current, later, last]);
+            let ticket_allocation = Arc::downgrade(&issued.token);
+            let (started, starting) = request.start();
+            let ControlFlow::Continue(pending) = starting.accept(submission(11)) else {
+                panic!("four remaining roles cannot complete preparation");
+            };
+            let ControlFlow::Continue(mut pending) = pending.accept(submission(13)) else {
+                panic!("three remaining roles cannot complete preparation");
+            };
+            let prepared: Vec<_> = pending
+                .prepared_workers()
+                .map(|(role, worker, plan)| (ptr::from_ref(role), worker.0, plan.0))
+                .collect();
+            let expected_prepared = [
+                (Arc::as_ptr(&first_role), 11, 11),
+                (Arc::as_ptr(&second_role), 13, 13),
+            ];
+            assert_eq!(prepared, expected_prepared);
+            let remaining: Vec<_> = pending.remaining_roles().map(ptr::from_ref).collect();
+            let expected_remaining = [Arc::as_ptr(&later_role), Arc::as_ptr(&last_role)];
+            assert_eq!(remaining, expected_remaining);
+            let source_current = {
+                let (source, role) = pending.source_and_role();
+                (source.0, ptr::from_ref(role))
+            };
+            assert_eq!(source_current, (31, Arc::as_ptr(&current_role)));
+            assert!(started.accepts(&pending.ticket));
+            assert!(issued.matches(&pending.ticket));
+            assert_eq!(ticket_allocation.strong_count(), 3);
+            drop((pending, started, issued));
+            assert_eq!(ticket_allocation.strong_count(), 0);
+            let role_counts = [
+                Arc::strong_count(&first_role),
+                Arc::strong_count(&second_role),
+                Arc::strong_count(&current_role),
+                Arc::strong_count(&later_role),
+                Arc::strong_count(&last_role),
+            ];
+            assert_eq!(role_counts, [1, 1, 1, 1, 1]);
+        }
     }
 }

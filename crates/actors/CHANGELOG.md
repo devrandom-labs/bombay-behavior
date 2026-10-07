@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** worker preparation, initialization, activation and assignment interpretation use independently owned receiving values.
+- Preserve the original activation attempt and exact startup, rejection and shutdown custody in proxy and pool transitions.
+
 ## [0.22.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.21.2...bombay-behavior-actors-v0.22.0) - 2026-10-04
 
 ### Fixed

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** generated send, creation and action interpretation uses the new borrowed-producer receiving contracts. These expansions require the matching new Core and Actors release; they are incompatible with the published 0.22 algebra.
+
 ## [0.13.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.13.0...bombay-behavior-macros-v0.13.1) - 2026-10-03
 
 ### Other

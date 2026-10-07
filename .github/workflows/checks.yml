@@ -31,6 +31,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Nix for the API audit tool
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Install the stack-safe published API audit tool
+        run: |
+          nix develop -c bash --noprofile --norc -euo pipefail <<'BASH'
+          : "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}" "${GITHUB_PATH:?}"
+          audit_root="$(mktemp -d "$RUNNER_TEMP/semver-checks-stack-safe-json.XXXXXX")"
+          curl --fail --show-error --location \
+            https://static.crates.io/crates/cargo-semver-checks/cargo-semver-checks-0.51.0.crate \
+            --output "$audit_root/cargo-semver-checks.crate"
+          curl --fail --show-error --location \
+            https://static.crates.io/crates/trustfall_rustdoc/trustfall_rustdoc-0.41.0.crate \
+            --output "$audit_root/trustfall_rustdoc.crate"
+          printf '%s  %s\n' \
+            484e65e62077aed1a119d04ab414038d20b9013302b7353487ff69a461842bf8 \
+            "$audit_root/cargo-semver-checks.crate" \
+            4e8e5bc5ca93f6c30f148911c07229c704144de5920cc06851e57a8214372804 \
+            "$audit_root/trustfall_rustdoc.crate" | sha256sum --check --strict
+          tar --extract --gzip --file "$audit_root/cargo-semver-checks.crate" --directory "$audit_root"
+          tar --extract --gzip --file "$audit_root/trustfall_rustdoc.crate" --directory "$audit_root"
+          checker_source="$audit_root/cargo-semver-checks-0.51.0"
+          rustdoc_source="$audit_root/trustfall_rustdoc-0.41.0"
+          patch --batch --forward --fuzz=0 --strip=1 --directory "$rustdoc_source" \
+            < "$GITHUB_WORKSPACE/.github/semver-checks-stack-safe-json.patch"
+          printf '\n[patch.crates-io]\ntrustfall_rustdoc = { path = "../trustfall_rustdoc-0.41.0" }\n' \
+            >> "$checker_source/Cargo.toml"
+          cp "$GITHUB_WORKSPACE/.github/semver-checks-stack-safe-json.Cargo.lock" "$checker_source/Cargo.lock"
+          cargo build --locked --release --bin cargo-semver-checks \
+            --manifest-path "$checker_source/Cargo.toml" --target-dir "$audit_root/target"
+          mkdir "$audit_root/bin"
+          cp "$audit_root/target/release/cargo-semver-checks" "$audit_root/bin/cargo-semver-checks"
+          "$audit_root/bin/cargo-semver-checks" --version
+          printf '%s\n' "$audit_root/bin" >> "$GITHUB_PATH"
+          BASH
+
       - name: Compare published APIs
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
@@ -143,6 +183,12 @@ jobs:
           fi
           mkdir -p "shard-report-${{ matrix.shard }}"
           cp "$report_dir/outcomes.json" "$report_dir/mutants.json" "shard-report-${{ matrix.shard }}/"
+          cp -R "$report_dir/log" "shard-report-${{ matrix.shard }}/"
+          if [ -d "$report_dir/diff" ]; then
+            cp -R "$report_dir/diff" "shard-report-${{ matrix.shard }}/"
+          else
+            jq -e 'all(.outcomes[]; .diff_path == null)' "$report_dir/outcomes.json"
+          fi
 
       - name: Upload shard report
         uses: actions/upload-artifact@v4
@@ -220,12 +266,41 @@ jobs:
         run: nix build .#default -L
 
       - name: Merge shard reports into one campaign
+        shell: bash
         run: |
           mkdir -p merged
-          jq -s '{outcomes: (map(.outcomes) | add)}' shards/mutation-shard-*/outcomes.json > merged/outcomes.json
-          jq -s 'add | unique' shards/mutation-shard-*/mutants.json > merged/mutants.json
+          for shard in 0 1 2 3 4 5 6 7; do
+            shard_report="shards/mutation-shard-$shard"
+            jq -e '[.outcomes[] | select(.scenario == "Baseline")] |
+              length == 1 and .[0].summary == "Success"' "$shard_report/outcomes.json"
+            cp -R "$shard_report" "merged/mutation-shard-$shard"
+            jq --arg shard "mutation-shard-$shard" '
+              .outcomes |= map(
+                reduce ["log_path", "diff_path"][] as $artifact (.;
+                  if .[$artifact] == null then .
+                  elif (.[$artifact] | type) != "string" or
+                       (.[$artifact] | startswith("/") or startswith("./") or
+                        . == "." or (split("/") | index("..") != null)) then
+                    error("invalid original shard artifact path")
+                  else .[$artifact] = ($shard + "/" + .[$artifact])
+                  end
+                )
+              )' "$shard_report/outcomes.json" > "merged/mutation-shard-$shard/rebased-outcomes.json"
+          done
+          jq -e -s 'map(.outcomes[] | select(.scenario == "Baseline") |
+            {scenario, summary, phase_results:
+              [.phase_results[] | {phase, process_status, argv}]}) |
+            unique | length == 1' shards/mutation-shard-*/outcomes.json
+          # All eight baseline facts remain in the original shard reports.
+          # Select one campaign baseline only after every shard baseline passed.
+          jq -s '{outcomes:
+            ([.[0].outcomes[] | select(.scenario == "Baseline")] +
+             [.[].outcomes[] | select(.scenario != "Baseline")])
+          }' merged/mutation-shard-*/rebased-outcomes.json > merged/outcomes.json
+          jq -s 'add' shards/mutation-shard-*/mutants.json > merged/mutants.json
 
       - name: Strict mutation verdict over the merged campaign
+        shell: bash
         run: |
           ./result/bin/behavior-mutants-gate check merged mutants-baseline.json \
             | tee merged-mutation-gate-report.txt

@@ -9,7 +9,7 @@ use crate::{ChildStopped, ReplyRoute};
 
 use super::super::pool::worker::{CurrentWorker, WorkerPreparationError, WorkerReplacementError};
 use super::super::pool::{Assignment, JobId, SubmissionId};
-use super::super::worker::{ActivationAttempt, WorkerActivationOutcome};
+use super::super::worker::{WorkerActivationGrant, WorkerActivationOutcome};
 use super::super::{
     ActivationPermit, ActivationPlan, WorkerAttempt, WorkerCreationRejection, WorkerPreparation,
     WorkerSource, WorkerSubmission,
@@ -371,7 +371,7 @@ where
     WorkerActivationReturned {
         role: RoleName<Role>,
         worker: WorkerAttempt,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         outcome: WorkerActivationOutcome<W, P>,
     },
     WorkerShutdownRejected {
@@ -496,5 +496,769 @@ where
         formatter
             .debug_struct("FifoDiagnostic")
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod live_activation_correlation {
+    use super::super::requests::FifoRequests;
+    use super::super::{FifoEvent, FifoOperating, FifoPool, PoolState};
+    use super::{FifoDiagnostic, FifoDiagnosticCause};
+    use crate::atomic::pool::ShutdownSequence;
+    use crate::atomic::pool::assignment::{AcceptedJobSequence, AssignmentSequence};
+    use crate::atomic::pool::worker::activation_pool_correlation::{
+        ActivationEndpoint, ActivationWorker, assert_current_worker, initialized_activation,
+    };
+    use crate::atomic::pool::worker::{CurrentWorker, Member, MemberState, Worker, WorkerPhase};
+    use crate::atomic::restart::RecoveryCount;
+    use crate::atomic::restart::RestartBudget;
+    use crate::atomic::worker::WorkerActivationOutcome;
+    use crate::atomic::{
+        ActivationPolicy, ActorDrainPolicy, BacklogCapacity, ImmediateActivation, Interruption,
+        PoolFailureReaction, PoolRecovery, RoleName, WorkerAttempt,
+    };
+    use crate::{
+        Active, ChildStopped, DiagnosticAction, DiagnosticDisposition, Exit, StopOnShutdown,
+    };
+    use behavior::{Actions, CreationSequence, EstablishedActor, Never, Step};
+    use core::convert::Infallible;
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    #[tokio::test]
+    async fn fifo_dispatched_live_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::ActivationDispatched {
+                        attempt: original_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+            let pool: FifoPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                Infallible,
+                u8,
+                u16,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(FifoEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let FifoRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        FifoDiagnostic {
+                            cause:
+                                FifoDiagnosticCause::Unexpected(FifoEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let PoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.members.len(), 1);
+                assert!(operating.backlog.is_empty());
+                assert_eq!(operating.cursor, 0);
+                let member = &operating.members[0];
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                assert!(stopped.is_none());
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn fifo_dispatched_stopped_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let stopped_at = Instant::now();
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::ActivationDispatched {
+                        attempt: original_attempt.clone(),
+                        stopped: Some(ChildStopped::new(creation, Ok(Exit::Normal), stopped_at)),
+                    },
+                }),
+            };
+            let pool: FifoPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                Infallible,
+                u8,
+                u16,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(FifoEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let FifoRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        FifoDiagnostic {
+                            cause:
+                                FifoDiagnosticCause::Unexpected(FifoEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let PoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.members.len(), 1);
+                assert!(operating.backlog.is_empty());
+                assert_eq!(operating.cursor, 0);
+                let member = &operating.members[0];
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                let Some(stopped) = stopped else {
+                    panic!("the original stopped child remains owned")
+                };
+                assert_eq!(stopped.child, creation);
+                assert!(matches!(&stopped.outcome, Ok(Exit::Normal)));
+                assert_eq!(stopped.at, stopped_at);
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn fifo_activating_live_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::Activating {
+                        attempt: original_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+            let pool: FifoPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                Infallible,
+                u8,
+                u16,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(FifoEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let FifoRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        FifoDiagnostic {
+                            cause:
+                                FifoDiagnosticCause::Unexpected(FifoEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let PoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.members.len(), 1);
+                assert!(operating.backlog.is_empty());
+                assert_eq!(operating.cursor, 0);
+                let member = &operating.members[0];
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::Activating { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                assert!(stopped.is_none());
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn fifo_activating_stopped_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let stopped_at = Instant::now();
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::Activating {
+                        attempt: original_attempt.clone(),
+                        stopped: Some(ChildStopped::new(creation, Ok(Exit::Normal), stopped_at)),
+                    },
+                }),
+            };
+            let pool: FifoPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                Infallible,
+                u8,
+                u16,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(FifoEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let FifoRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        FifoDiagnostic {
+                            cause:
+                                FifoDiagnosticCause::Unexpected(FifoEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let PoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.members.len(), 1);
+                assert!(operating.backlog.is_empty());
+                assert_eq!(operating.cursor, 0);
+                let member = &operating.members[0];
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::Activating { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                let Some(stopped) = stopped else {
+                    panic!("the original stopped child remains owned")
+                };
+                assert_eq!(stopped.child, creation);
+                assert!(matches!(&stopped.outcome, Ok(Exit::Normal)));
+                assert_eq!(stopped.at, stopped_at);
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn fifo_original_activation_started_then_ready_preserves_all_lanes() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let started = original.started();
+        let role = RoleName::new(23_u64);
+        let expected_role = role.clone().into_role();
+        let member = Member {
+            role,
+            recoveries: RecoveryCount::default(),
+            state: MemberState::Worker(Worker {
+                current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                phase: WorkerPhase::ActivationDispatched {
+                    attempt: original_attempt.clone(),
+                    stopped: None,
+                },
+            }),
+        };
+        let pool: FifoPool<u64, ActivationWorker, ImmediateActivation, Never, Infallible, u8, u16> =
+            FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+        let mut pool = Active { behavior: pool };
+
+        let inputs = [
+            (
+                started,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                original.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let actions = pool
+                .transition(FifoEvent::WorkerActivationReported(input))
+                .unwrap_or_else(|error| {
+                    panic!("the original activation returns complete Actions: {error}")
+                });
+            let Actions {
+                sends,
+                creates,
+                become_,
+            } = actions;
+            let FifoRequests {
+                worker_observations,
+                worker_initializations,
+                worker_activations,
+                customer_outcomes,
+                worker_assignments,
+                worker_preparations,
+                restart_schedules,
+                worker_shutdowns,
+                diagnostics,
+            } = sends;
+            assert!(worker_observations.is_empty());
+            assert!(worker_initializations.is_empty());
+            assert!(worker_activations.is_empty());
+            assert!(customer_outcomes.as_slice().is_empty());
+            assert!(worker_assignments.is_empty());
+            assert!(worker_preparations.is_empty());
+            assert!(restart_schedules.is_empty());
+            assert!(worker_shutdowns.is_empty());
+            assert!(diagnostics.is_empty());
+            assert!(creates.is_empty());
+            assert!(matches!(become_, Step::Continue));
+            let PoolState::Operating(operating) = &pool.state else {
+                panic!("original activation leaves the pool operating")
+            };
+            assert_eq!(operating.members.len(), 1);
+            assert!(operating.backlog.is_empty());
+            assert_eq!(operating.cursor, 0);
+            let member = &operating.members[0];
+            let actual_role = member.role.clone().into_role();
+            assert!(Arc::ptr_eq(&actual_role, &expected_role));
+            assert_eq!(*actual_role, 23);
+            assert_eq!(member.recoveries, RecoveryCount::default());
+            let MemberState::Worker(Worker { current, phase }) = &member.state else {
+                panic!("the actual original worker stays owned")
+            };
+            assert_current_worker(current, &worker, &expected_actor);
+            match (report, phase) {
+                (
+                    WorkerActivationOutcome::Started,
+                    WorkerPhase::Activating {
+                        attempt,
+                        stopped: None,
+                    },
+                ) => {
+                    assert!(attempt == &original_attempt);
+                }
+                (WorkerActivationOutcome::Ready(()), WorkerPhase::Idle) => {}
+                _ => panic!("actual Started enters Activating and actual Ready enters Idle"),
+            }
+        }
     }
 }

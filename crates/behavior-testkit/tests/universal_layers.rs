@@ -44,7 +44,9 @@ fn finalize_cache(
 
 #[test]
 fn captured_and_function_layers_preserve_domain_sends_and_outer_shutdown() {
-    let stashed = apply(cache(), |inner| Stash::new(inner, deliver_cache));
+    let stashed = apply(cache(), |inner| {
+        Stash::new(inner, |_, message| deliver_cache(message))
+    });
     let mut root = apply(stashed, StopOnShutdown::new)
         .initialize()
         .unwrap()

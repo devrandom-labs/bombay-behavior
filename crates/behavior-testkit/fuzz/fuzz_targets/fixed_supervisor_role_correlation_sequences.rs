@@ -23,8 +23,8 @@ use behavior_actors::atomic::{
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
-    ChildReport, CreationId, EstablishedActor, EstablishedRecipient, ItemSettlement,
-    MessageProtocol, Never, Recipient, SendSettlements, SettledItem, Step,
+    ActionItemResult, ChildReport, CreationId, EstablishedActor, EstablishedRecipient,
+    ItemSettlement, MessageProtocol, Never, Recipient, SettledItem, Step,
 };
 use libfuzzer_sys::fuzz_target;
 use proxy_control::admit_proxy_operation;
@@ -154,8 +154,10 @@ fn begin_recovery(
     let preparation = match preparing
         .sends
         .worker_preparations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("one-role recovery emits one preparation")
     {
@@ -169,8 +171,7 @@ fn begin_recovery(
         ))
         .unwrap_or_else(|_| panic!("the exact preparation start is accepted"));
     assert!(started.creates.is_empty());
-    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(successor)))
-    {
+    let preparation = match starting.accept(WorkerSubmission::immediate(Worker::new(successor))) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => panic!("one selected role needs one worker submission"),
     };
@@ -180,8 +181,10 @@ fn begin_recovery(
     let operation = match admitted
         .sends
         .proxy_operations
-        .unattempted()
-        .into_inputs()
+        .into_items()
+        .into_iter()
+        .map(ActionItemResult::<_>::Unattempted)
+        .collect::<Vec<_>>()
         .pop()
         .expect("immediate release emits one replacement")
     {

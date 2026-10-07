@@ -49,13 +49,14 @@ pub use actor::{
 };
 pub use effects::{
     Acted, ActionItem, ActionItemResult, ActionSettlement, ActionSettlements, Actions, AppendSend,
-    Become, BehaviorSettlements, ClassifySettlement, CreationEvent, CreationSettlement,
-    CreationSettlements, CreationsSettled, InterpretCreations, InterpretItem, InterpretSends,
-    Interpretation, InterpreterFault, InterpreterRequest, InterpreterRequests, ItemSettlement,
-    LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own, ParentReportReason, ReportToParent,
-    RetirementCreationSettlement, ReturnsToEmitter, SendEffects, SendInput, SendLayer,
-    SendSettlements, SendsFor, SettledItem, SettlementStatus, SourceAction, SourceActions,
-    SourceAdmission, SourceCustody, SourceSettlementCustody, SourceSettlements, settle_item,
+    Become, BehaviorSettlements, ClassifySettlement, CreationEvent, CreationInterpretationCustody,
+    CreationSettlement, CreationSettlements, CreationsSettled, InterpretCreations, InterpretItem,
+    InterpretSends, Interpretation, InterpretationProgress, InterpreterFault, InterpreterRequest,
+    InterpreterRequests, ItemSettlement, LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own,
+    ParentReportReason, ReportToParent, RetirementCreationSettlement, ReturnsToEmitter,
+    SendEffects, SendInput, SendLayer, SendSettlements, SendsFor, SettledItem, SettlementStatus,
+    SourceAction, SourceActions, SourceAdmission, SourceCustody, SourceProgress,
+    SourceSettlementCustody, SourceSettlements, finish_item, prepare_item, settle_item,
 };
 pub use next::{Never, Step, Stopped};
 pub use transition::{
@@ -250,10 +251,13 @@ pub use user_event::{
 /// }
 /// struct Incomplete;
 /// impl<RootEvent, Path> behavior::InterpretItem<behavior::Delivery<AuditProtocol>, RootEvent, Path> for Incomplete {
-///     fn interpret_item(&mut self, _: behavior::Delivery<AuditProtocol>) -> impl core::future::Future<
-///         Output = behavior::ItemSettlement<behavior::Delivery<AuditProtocol>, (), behavior::Never, behavior::Never>,
-///     > + Send {
-///         async { behavior::ItemSettlement::Accepted(()) }
+///     fn interpret_item<'a>(&'a mut self, input: &'a mut Option<behavior::Delivery<AuditProtocol>>, received: &'a mut Option<<behavior::Delivery<AuditProtocol> as behavior::ActionItem>::Reply>) -> impl core::future::Future<Output = ()> + Send + 'a where behavior::Delivery<AuditProtocol>: 'a {
+///         async move {
+///             if received.is_some() { return; }
+///             let Some(delivery) = input.take() else { return; };
+///             drop(delivery);
+///             *received = Some(behavior::ItemSettlement::Accepted(()));
+///         }
 ///     }
 /// }
 /// fn require_complete()

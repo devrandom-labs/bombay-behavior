@@ -16,7 +16,7 @@ use crate::{
 use super::super::restart::RecoveryCount;
 use super::super::schedule::ScheduleKey;
 use super::super::worker::{
-    ActivationAttempt, WorkerActivationOutcome, WorkerPreparationExpectation,
+    WorkerActivationGrant, WorkerActivationOutcome, WorkerPreparationExpectation,
     WorkerPreparationOutcome,
 };
 use super::super::worker::{
@@ -104,11 +104,11 @@ where
         activation: P,
     },
     ActivationDispatched {
-        attempt: ActivationAttempt,
+        attempt: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     },
     Activating {
-        attempt: ActivationAttempt,
+        attempt: WorkerActivationGrant<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
     },
     Idle,
@@ -611,8 +611,8 @@ where
         permit: ActivationPermit<W>,
         activation: P,
     },
-    ActivationStart(ActivationAttempt),
-    Activation(ActivationAttempt),
+    ActivationStart(WorkerActivationGrant<W, P>),
+    Activation(WorkerActivationGrant<W, P>),
 }
 
 pub(in crate::atomic) enum WorkerShutdownStatus<P, A>
@@ -721,7 +721,7 @@ where
         workers: Vec<RetiringWorker<Role, W, P>>,
         role: RoleName<Role>,
         worker: WorkerAttempt,
-        activation: ActivationAttempt,
+        activation: WorkerActivationGrant<W, P>,
         outcome: WorkerActivationOutcome<W, P>,
     },
     Unrelated {
@@ -745,7 +745,7 @@ where
         }
     }
 
-    fn activation(&self) -> Option<&ActivationAttempt> {
+    fn activation(&self) -> Option<&WorkerActivationGrant<W, P>> {
         match &self.state {
             RetirementStatus::Established {
                 startup:
@@ -2026,31 +2026,35 @@ where
             ));
         }
         match phase {
-            WorkerPhase::ActivationDispatched { attempt, stopped } => match input.into_started() {
-                Ok(()) => Ok(Self {
-                    role,
-                    recoveries,
-                    state: MemberState::Worker(Worker {
-                        current,
-                        phase: WorkerPhase::Activating { attempt, stopped },
-                    }),
-                }),
-                Err(input) => Err((
-                    Self {
+            WorkerPhase::ActivationDispatched { attempt, stopped }
+                if &attempt == input.attempt() =>
+            {
+                match input.into_started() {
+                    Ok(()) => Ok(Self {
                         role,
                         recoveries,
                         state: MemberState::Worker(Worker {
                             current,
-                            phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                            phase: WorkerPhase::Activating { attempt, stopped },
                         }),
-                    },
-                    input,
-                )),
-            },
+                    }),
+                    Err(input) => Err((
+                        Self {
+                            role,
+                            recoveries,
+                            state: MemberState::Worker(Worker {
+                                current,
+                                phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                            }),
+                        },
+                        input,
+                    )),
+                }
+            }
             WorkerPhase::Activating {
                 attempt,
                 stopped: None,
-            } => match input.into_ready() {
+            } if &attempt == input.attempt() => match input.into_ready() {
                 Ok(_) => Ok(Self {
                     role,
                     recoveries,
@@ -2385,5 +2389,315 @@ pub(in crate::atomic) fn ordered_creation_positions(
     match positions.first() {
         Some(_) => Some(positions),
         None => None,
+    }
+}
+
+#[cfg(test)]
+mod activation_correlation {
+    use std::sync::Arc;
+
+    use behavior::{
+        ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase, CreationSequence,
+        EndpointAddress, EstablishedActor, EstablishedRecipient, MessageProtocol, Never, NoBirths,
+        NoSends, Protocol, User,
+    };
+
+    use super::{CurrentWorker, Member, MemberState, RecoveryCount, RoleName, Worker, WorkerPhase};
+    use crate::StopOnShutdown;
+    use crate::atomic::{
+        BeginActivation, ImmediateActivation, InitializationAttempt, InitializeWorker,
+        WorkerAttempt, WorkerInitializationOutcome, WorkerInitializationReport,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct ActivationAddress(u64);
+
+    impl Address for ActivationAddress {
+        type Nonce = u64;
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct ActivationEndpoint(u64);
+
+    impl EndpointAddress for ActivationAddress {
+        type Established<P>
+            = ActivationEndpoint
+        where
+            P: Protocol<Addr = Self>;
+        type Installed<B>
+            = ActivationEndpoint
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+
+        fn recipient<B>(installed: &Self::Installed<B>) -> Self::Established<B::Protocol>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            *installed
+        }
+    }
+
+    struct ActivationWorker;
+
+    impl BehaviorBase for ActivationWorker {
+        type Base = Self;
+        fn base(&self) -> &Self::Base {
+            self
+        }
+    }
+
+    impl Behavior for ActivationWorker {
+        type Protocol = MessageProtocol<ActivationAddress, Never>;
+        type Event = User<ActivationAddress, Never>;
+        type Sends = NoSends;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            match event.message {}
+        }
+    }
+
+    fn initialized_activation(
+        worker: WorkerAttempt,
+        target: EstablishedRecipient<MessageProtocol<ActivationAddress, Never>>,
+    ) -> BeginActivation<ActivationWorker, ImmediateActivation> {
+        let initialization = InitializationAttempt::issued(&worker);
+        let request = InitializeWorker::new(
+            worker.clone(),
+            initialization.clone(),
+            target,
+            ImmediateActivation,
+        );
+        let report = request.resolve(WorkerInitializationOutcome::ReadyForActivation);
+        let WorkerInitializationReport::ReadyForActivation {
+            worker: returned_worker,
+            initialization: returned_initialization,
+            activation,
+            permit,
+        } = report
+        else {
+            panic!("the original ready initialization returns its permit")
+        };
+        assert_eq!(returned_worker, worker);
+        assert_eq!(returned_initialization, initialization);
+        BeginActivation::new(activation, permit)
+    }
+
+    #[test]
+    fn live_member_returns_a_same_worker_started_from_another_attempt() {
+        let mut creations = CreationSequence::new();
+        let creation = creations
+            .issue()
+            .expect("one real creation correlation is available");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let expected_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(expected_attempt != foreign_attempt);
+        let role = RoleName::new(23_u64);
+        let expected_role = role.clone().into_role();
+        let member: Member<u64, ActivationWorker, ImmediateActivation, Never, Never, Never> =
+            Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), actor),
+                    phase: WorkerPhase::ActivationDispatched {
+                        attempt: expected_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+        let input = foreign.started();
+        let admission = member.admit_activation(input);
+        drop(original);
+        drop(foreign);
+        let Err((returned_member, returned_input)) = admission else {
+            panic!("same worker identity cannot substitute a different activation attempt")
+        };
+        let Member {
+            role,
+            recoveries,
+            state,
+        } = returned_member;
+        let MemberState::Worker(Worker { current, phase }) = state else {
+            panic!("rejected activation preserves the complete worker state")
+        };
+        let WorkerPhase::ActivationDispatched { attempt, stopped } = phase else {
+            panic!("foreign Started must not advance the original dispatched phase")
+        };
+        let returned_role = role.into_role();
+        assert!(Arc::ptr_eq(&returned_role, &expected_role));
+        assert_eq!(*returned_role, 23);
+        assert_eq!(recoveries, RecoveryCount::default());
+        assert_eq!(current.attempt, worker);
+        assert_eq!(current.actor, expected_actor);
+        assert!(attempt == expected_attempt);
+        assert!(stopped.is_none());
+        assert_eq!(returned_input.worker(), worker);
+        assert!(returned_input.attempt() == &foreign_attempt);
+        let started = returned_input.into_started();
+        assert!(started.is_ok());
+    }
+
+    #[tokio::test]
+    async fn live_member_returns_a_same_worker_ready_from_another_attempt() {
+        let mut creations = CreationSequence::new();
+        let creation = creations
+            .issue()
+            .expect("one real creation correlation is available");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(29));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let expected_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(expected_attempt != foreign_attempt);
+        let role = RoleName::new(31_u64);
+        let expected_role = role.clone().into_role();
+        let member: Member<u64, ActivationWorker, ImmediateActivation, Never, Never, Never> =
+            Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), actor),
+                    phase: WorkerPhase::Activating {
+                        attempt: expected_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+        let input = foreign.activate().await;
+        let admission = member.admit_activation(input);
+        drop(original);
+        let Err((returned_member, returned_input)) = admission else {
+            panic!("same worker identity cannot substitute a different activation attempt")
+        };
+        let Member {
+            role,
+            recoveries,
+            state,
+        } = returned_member;
+        let MemberState::Worker(Worker { current, phase }) = state else {
+            panic!("rejected activation preserves the complete worker state")
+        };
+        let WorkerPhase::Activating { attempt, stopped } = phase else {
+            panic!("foreign Ready must not make the original activation idle")
+        };
+        let returned_role = role.into_role();
+        assert!(Arc::ptr_eq(&returned_role, &expected_role));
+        assert_eq!(*returned_role, 31);
+        assert_eq!(recoveries, RecoveryCount::default());
+        assert_eq!(current.attempt, worker);
+        assert_eq!(current.actor, expected_actor);
+        assert!(attempt == expected_attempt);
+        assert!(stopped.is_none());
+        assert_eq!(returned_input.worker(), worker);
+        assert!(returned_input.attempt() == &foreign_attempt);
+        let ready = returned_input.into_ready();
+        assert!(matches!(ready, Ok(())));
+    }
+}
+
+#[cfg(test)]
+pub(in crate::atomic) mod activation_pool_correlation {
+    use super::CurrentWorker;
+    use crate::StopOnShutdown;
+    use crate::atomic::{
+        Assignment, BeginActivation, Completion, ImmediateActivation, InitializationAttempt,
+        InitializeWorker, WorkerAttempt, WorkerInitializationOutcome, WorkerInitializationReport,
+    };
+    use behavior::{
+        Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase, EndpointAddress,
+        EstablishedActor, EstablishedRecipient, InterpreterRequests, MessageProtocol, Never,
+        NoBirths, Protocol, ReportToParent, User,
+    };
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(in crate::atomic) struct ActivationAddress(pub(in crate::atomic) u64);
+    impl Address for ActivationAddress {
+        type Nonce = u64;
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(in crate::atomic) struct ActivationEndpoint(pub(in crate::atomic) u64);
+    impl EndpointAddress for ActivationAddress {
+        type Established<P>
+            = ActivationEndpoint
+        where
+            P: Protocol<Addr = Self>;
+        type Installed<B>
+            = ActivationEndpoint
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>;
+        fn recipient<B>(installed: &Self::Installed<B>) -> Self::Established<B::Protocol>
+        where
+            B: Behavior<Protocol: Protocol<Addr = Self>>,
+        {
+            *installed
+        }
+    }
+
+    pub(in crate::atomic) struct ActivationWorker;
+    impl BehaviorBase for ActivationWorker {
+        type Base = Self;
+        fn base(&self) -> &Self::Base {
+            self
+        }
+    }
+    impl Behavior for ActivationWorker {
+        type Protocol = MessageProtocol<ActivationAddress, Assignment<u8>>;
+        type Event = User<ActivationAddress, Assignment<u8>>;
+        type Sends = InterpreterRequests<ReportToParent<Completion<u16>>>;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+        fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            let result = u16::from(*event.message.payload());
+            Ok(Actions::cont().with_send(event.message.complete(result)))
+        }
+    }
+
+    pub(in crate::atomic) fn initialized_activation(
+        worker: WorkerAttempt,
+        target: EstablishedRecipient<MessageProtocol<ActivationAddress, Assignment<u8>>>,
+    ) -> BeginActivation<ActivationWorker, ImmediateActivation> {
+        let initialization = InitializationAttempt::issued(&worker);
+        let report = InitializeWorker::new(
+            worker.clone(),
+            initialization.clone(),
+            target,
+            ImmediateActivation,
+        )
+        .resolve(WorkerInitializationOutcome::ReadyForActivation);
+        let WorkerInitializationReport::ReadyForActivation {
+            worker: returned_worker,
+            initialization: returned_initialization,
+            activation,
+            permit,
+        } = report
+        else {
+            panic!("original ready initialization returns its exact permit")
+        };
+        assert_eq!(returned_worker, worker);
+        assert_eq!(returned_initialization, initialization);
+        BeginActivation::new(activation, permit)
+    }
+
+    pub(in crate::atomic) fn assert_current_worker(
+        current: &CurrentWorker<ActivationWorker>,
+        worker: &WorkerAttempt,
+        actor: &EstablishedActor<StopOnShutdown<ActivationWorker>>,
+    ) {
+        assert_eq!(&current.attempt, worker);
+        assert_eq!(&current.actor, actor);
     }
 }

@@ -1,8 +1,9 @@
 use std::time::{Duration, Instant};
 
 use behavior::{
-    ActionItem, ActionItemResult, Behavior, InterpreterRequests, ItemSettlement, MailAddr,
-    MessageProtocol, Never, NoBirths, NoSends, SendLayer, SendSettlements, SettledItem, User,
+    ActionItem, ActionItemResult, Behavior, Interpretation, InterpretationProgress,
+    InterpreterRequests, ItemSettlement, MailAddr, MessageProtocol, Never, NoBirths, NoSends,
+    SendLayer, SendSettlements, SettledItem, User,
 };
 use behavior_actors::{
     Deadline, ReceiveTimeout, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
@@ -118,7 +119,14 @@ fn every_dependency_rejection_is_explicit_and_requests_remain_unattempted() {
     assert_eq!(absolute_rejections.len(), 2);
 
     let request = ScheduleAfter::new(TimerId(2), TimerGeneration(5), Duration::ZERO);
-    let unattempted = InterpreterRequests::one(request).unattempted();
+    let mut progress = Some(InterpretationProgress::Original(InterpreterRequests::one(
+        request,
+    )));
+    <InterpreterRequests<ScheduleAfter> as SendSettlements>::unattempted(&mut progress);
+    let Some(InterpretationProgress::Completed(Interpretation::Complete(unattempted))) = progress
+    else {
+        panic!("cold timer must preserve its exact complete request");
+    };
     assert_eq!(
         unattempted,
         vec![behavior::SettledItem::Unattempted(request)]

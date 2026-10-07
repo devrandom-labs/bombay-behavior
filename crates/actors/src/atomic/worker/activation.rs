@@ -6,34 +6,84 @@ use core::marker::PhantomData;
 
 use behavior::{
     ActionItem, Behavior, BehaviorAddr, EndpointAddress, EstablishedRecipient, Here,
-    InterpreterRequest, Never, ReturnsToEmitter,
+    InterpretationProgress, InterpreterRequest, ItemSettlement, Never, ReturnsToEmitter,
+    finish_item, prepare_item,
 };
 
 use super::initialization::{ActivationPermit, InitializationAttempt};
 use super::{ActivationPlan, WorkerAttempt};
 
-#[derive(Clone)]
-pub(in super::super) struct ActivationAttempt {
+/// The original worker/plan-typed activation correlation issued with a permit.
+///
+/// Readiness and rejection are absent from this owner. Its original private
+/// issuer remains inside BeginActivation. A caller cannot fabricate a grant,
+/// but into_parts returns the original permit and supports reissuing a request.
+/// This owner does not impose a one-mint-ever policy on that affine permit.
+pub struct WorkerActivationGrant<W, P> {
     worker: WorkerAttempt,
     token: Arc<()>,
+    worker_plan: PhantomData<fn() -> (W, P)>,
 }
 
-impl ActivationAttempt {
-    fn issued(worker: &WorkerAttempt) -> Self {
+impl<W, P> Clone for WorkerActivationGrant<W, P> {
+    fn clone(&self) -> Self {
         Self {
-            worker: worker.clone(),
-            token: Arc::new(()),
+            worker: self.worker.clone(),
+            token: Arc::clone(&self.token),
+            worker_plan: PhantomData,
         }
     }
 }
 
-impl PartialEq for ActivationAttempt {
+impl<W, P> WorkerActivationGrant<W, P> {
+    fn issued(worker: &WorkerAttempt) -> Self {
+        Self {
+            worker: worker.clone(),
+            token: Arc::new(()),
+            worker_plan: PhantomData,
+        }
+    }
+
+    /// Original worker correlation carried by this grant.
+    #[must_use]
+    pub fn worker(&self) -> WorkerAttempt {
+        self.worker.clone()
+    }
+}
+
+impl<W, P> PartialEq for WorkerActivationGrant<W, P> {
     fn eq(&self, other: &Self) -> bool {
         self.worker == other.worker && Arc::ptr_eq(&self.token, &other.token)
     }
 }
 
-impl Eq for ActivationAttempt {}
+impl<W, P> Eq for WorkerActivationGrant<W, P> {}
+
+impl<W, P> WorkerActivationGrant<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: ActivationPlan,
+{
+    /// Form the existing input from the original concrete plan's acquired reply.
+    ///
+    /// The independent correlation stays owned, as when started() produces a
+    /// correlated input. Acceptance remains the actor's existing policy.
+    /// The receiving actor applies its existing correlation policy. Resolving a
+    /// reply does not consume the initialization permit.
+    #[must_use]
+    pub fn resolve(&self, reply: Result<P::Ready, P::Rejection>) -> WorkerActivation<W, P> {
+        WorkerActivation {
+            worker: self.worker(),
+            activation: self.clone(),
+            outcome: match reply {
+                Ok(readiness) => WorkerActivationOutcome::Ready(readiness),
+                Err(rejection) => WorkerActivationOutcome::Rejected(rejection),
+            },
+            worker_type: PhantomData,
+        }
+    }
+}
 
 /// Exact reason activation work was not admitted by its owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,7 +111,7 @@ where
     BehaviorAddr<W>: EndpointAddress,
     P: ActivationPlan,
 {
-    activation: ActivationAttempt,
+    activation: WorkerActivationGrant<W, P>,
     permit: ActivationPermit<W>,
     plan: P,
 }
@@ -76,10 +126,21 @@ where
     #[must_use]
     pub fn new(plan: P, permit: ActivationPermit<W>) -> Self {
         Self {
-            activation: ActivationAttempt::issued(permit.worker_evidence()),
+            activation: WorkerActivationGrant::issued(permit.worker_evidence()),
             permit,
             plan,
         }
+    }
+
+    /// Transfer original permit/plan and its exact typed grant independently.
+    #[must_use]
+    pub fn into_parts(self) -> (ActivationPermit<W>, P, WorkerActivationGrant<W, P>) {
+        let Self {
+            activation,
+            permit,
+            plan,
+        } = self;
+        (permit, plan, activation)
     }
 
     /// Exact installed worker target carried by the permit.
@@ -100,7 +161,7 @@ where
         self.permit.initialization()
     }
 
-    pub(in super::super) fn attempt(&self) -> ActivationAttempt {
+    pub(in super::super) fn attempt(&self) -> WorkerActivationGrant<W, P> {
         self.activation.clone()
     }
 
@@ -173,6 +234,37 @@ where
     EstablishedRecipient<W::Protocol>: Send,
     P: ActivationPlan,
 {
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
     type Accepted = ();
     type Rejection = ActivationStartRejection;
     type Prerequisite = Never;
@@ -202,7 +294,7 @@ where
     P: ActivationPlan,
 {
     worker: WorkerAttempt,
-    activation: ActivationAttempt,
+    activation: WorkerActivationGrant<W, P>,
     outcome: WorkerActivationOutcome<W, P>,
     worker_type: PhantomData<fn() -> W>,
 }
@@ -219,7 +311,7 @@ where
         self.worker.clone()
     }
 
-    pub(in super::super) const fn attempt(&self) -> &ActivationAttempt {
+    pub(in super::super) const fn attempt(&self) -> &WorkerActivationGrant<W, P> {
         &self.activation
     }
 
@@ -227,7 +319,7 @@ where
         self,
     ) -> (
         WorkerAttempt,
-        ActivationAttempt,
+        WorkerActivationGrant<W, P>,
         WorkerActivationOutcome<W, P>,
     ) {
         (self.worker, self.activation, self.outcome)

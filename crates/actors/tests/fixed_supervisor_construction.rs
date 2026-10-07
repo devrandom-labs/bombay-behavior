@@ -1,3 +1,4 @@
+use behavior::InterpretationProgress;
 mod installed_control;
 
 use core::time::Duration;
@@ -12,8 +13,8 @@ use behavior::{
 };
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction,
-    OrderedRoles, ProxyControl, ProxyControlAdmission, ProxyPhase, Recovery, RestartLimit,
-    RestartRelease, StableProxy, Strategy, WorkerSource, WorkerSubmission, fixed,
+    OrderedRoles, ProxyControl, ProxyControlAdmission, ProxyOperation, ProxyPhase, Recovery,
+    RestartLimit, RestartRelease, StableProxy, Strategy, WorkerSource, WorkerSubmission, fixed,
 };
 use behavior_actors::{Activate, Active};
 
@@ -331,7 +332,14 @@ fn initialization_creates_and_admits_one_ordered_proxy_batch() {
         proxy,
         worker_creations: 0,
     };
-    let settlement = operation.settle(&mut host);
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(operation));
+        ProxyOperation::settle(&mut progress, &mut host);
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual proxy host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert!(matches!(settlement, ItemSettlement::Accepted(_)));
     assert_eq!(host.worker_creations, 1);
     let settled = supervisor

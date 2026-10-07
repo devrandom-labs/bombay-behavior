@@ -69,7 +69,7 @@ proptest! {
     ) {
         let due = Instant::now() + Duration::from_secs(1);
         let behavior = behavior_actors::Deadline::new(
-            behavior_actors::Stash::new(Machine::new(Vec::new(), Phase::A, on), route),
+            behavior_actors::Stash::new(Machine::new(Vec::new(), Phase::A, on), |_, message| route(message)),
             behavior_actors::TimerId(0),
             Some(due),
             |_| Step::Continue,

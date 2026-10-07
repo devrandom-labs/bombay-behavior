@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** action interpretation borrows producers while exact settlements and source progress remain in independently owned receiving values. Producer disposal cannot silently erase acquired progress.
+- Generated send and creation products preserve complete accepted and rejected inputs through the same owning algebra.
+
 ## [0.22.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.21.2...bombay-behavior-v0.22.0) - 2026-10-04
 
 ### Other

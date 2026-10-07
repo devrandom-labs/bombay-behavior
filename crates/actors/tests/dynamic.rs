@@ -1,3 +1,4 @@
+use behavior::InterpretationProgress;
 mod installed_control;
 
 use std::collections::VecDeque;
@@ -19,10 +20,10 @@ use behavior_actors::atomic::{
     DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryCapacity, EntryRetirement,
     EntryStopFailureReason, InitialWorkerOutcome, InterruptedWorker, ProxyControl,
     ProxyControlAdmission, ProxyDiagnostic, ProxyDrain, ProxyInputReceipt, ProxyInputResult,
-    ProxyOutcome, ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome, StableProxy,
-    StartRejection, UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
-    WorkerChangeRejection, WorkerCreationRejection, WorkerInitializationOutcome, WorkerStartResult,
-    WorkerSubmission, ZeroCapacity, dynamic,
+    ProxyOperation, ProxyOutcome, ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome,
+    StableProxy, StartRejection, UnexpectedExit, WorkerChange, WorkerChangeInterruption,
+    WorkerChangeReceipt, WorkerChangeRejection, WorkerCreationRejection,
+    WorkerInitializationOutcome, WorkerStartResult, WorkerSubmission, ZeroCapacity, dynamic,
 };
 use behavior_actors::{
     Activate, Active, ChildStopped, Exit, ReplyDelivery, ReplyRoute, ScheduleAfterRejection,
@@ -457,7 +458,14 @@ fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
         proxy,
         worker_creations: 0,
     };
-    let settlement = operation.settle(&mut host);
+    let settlement = {
+        let mut progress = Some(InterpretationProgress::Original(operation));
+        ProxyOperation::settle(&mut progress, &mut host);
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual proxy host must return its complete settlement");
+        };
+        settlement.into_settlement()
+    };
     assert!(matches!(settlement, ItemSettlement::Accepted(_)));
     assert_eq!(host.worker_creations, 1);
     let accepted = supervisor

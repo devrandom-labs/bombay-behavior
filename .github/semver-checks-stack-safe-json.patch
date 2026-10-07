@@ -1,0 +1,28 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -61,6 +61,10 @@
+ 
+ [dependencies.serde_json]
+ version = "1.0.143"
++features = ["unbounded_depth"]
++
++[dependencies.serde_stacker]
++version = "=0.1.14"
+ 
+ [dependencies.thiserror]
+ version = "2.0.16"
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -106,7 +106,11 @@
+ where
+     T: for<'a> Deserialize<'a>,
+ {
+-    serde_json::from_str(file_data).map_err(|e| {
++    let mut deserializer = serde_json::Deserializer::from_str(file_data);
++    deserializer.disable_recursion_limit();
++    let parsed = T::deserialize(serde_stacker::Deserializer::new(&mut deserializer))
++        .and_then(|value| deserializer.end().map(|()| value));
++    parsed.map_err(|e| {
+         LoadingError::RustdocParsing(
+             format_version,
+             path.display().to_string(),

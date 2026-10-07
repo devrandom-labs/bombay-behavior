@@ -1,3 +1,4 @@
+use behavior::{Here, InterpretationProgress};
 use std::time::Instant;
 
 use behavior::{
@@ -151,7 +152,18 @@ async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_custo
 
     let mut delivery = AssignmentDeliveryHost::<SearchWorker>::rejecting();
     let primary_rejected: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
-        SettledItem::Attempted(primary_assignment.settle(&mut delivery).await);
+        SettledItem::Attempted({
+            let mut progress = Some(InterpretationProgress::Original(primary_assignment));
+            AssignWorker::<SearchWorker, SearchJob>::settle::<_, (), Here>(
+                &mut progress,
+                &mut delivery,
+            )
+            .await;
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the actual assignment host must return its complete settlement");
+            };
+            settlement.into_settlement()
+        });
     let primary_quarantined = pool
         .transition(KeyedEvent::AssignmentSettled(primary_rejected))
         .unwrap_or_else(|error| panic!("primary assignment rejection failed: {error}"));
@@ -164,7 +176,18 @@ async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_custo
         .unwrap_or_else(|| panic!("rejected delivery quarantines the primary worker"));
 
     let replica_rejected: ActionItemResult<AssignWorker<SearchWorker, SearchJob>> =
-        SettledItem::Attempted(replica_assignment.settle(&mut delivery).await);
+        SettledItem::Attempted({
+            let mut progress = Some(InterpretationProgress::Original(replica_assignment));
+            AssignWorker::<SearchWorker, SearchJob>::settle::<_, (), Here>(
+                &mut progress,
+                &mut delivery,
+            )
+            .await;
+            let Some(InterpretationProgress::Completed(settlement)) = progress else {
+                panic!("the actual assignment host must return its complete settlement");
+            };
+            settlement.into_settlement()
+        });
     let replica_quarantined = pool
         .transition(KeyedEvent::AssignmentSettled(replica_rejected))
         .unwrap_or_else(|error| panic!("replica assignment rejection failed: {error}"));

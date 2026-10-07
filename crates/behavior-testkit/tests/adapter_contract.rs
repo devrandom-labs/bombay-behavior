@@ -74,7 +74,7 @@ where
 #[test]
 fn inferred_stack_crosses_one_generic_adapter_layer() {
     let inferred = accepts_closed_behavior(behavior_actors::Deadline::new(
-        behavior_actors::Stash::new(Domain, deliver),
+        behavior_actors::Stash::new(Domain, |_, message| deliver(message)),
         TimerId(4),
         Some(Instant::now()),
         deadline,

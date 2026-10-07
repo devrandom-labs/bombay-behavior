@@ -134,7 +134,7 @@ fn measure_fsm() -> f64 {
 /// the hot path without holding.
 fn measure_stash() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
-    let behavior = behavior_actors::Stash::new(Sink(0), |_| StashRoute::Deliver);
+    let behavior = behavior_actors::Stash::new(Sink(0), |_, _| StashRoute::Deliver);
     let mut behavior = behavior.initialize().unwrap().behavior;
     let started = Instant::now();
     for index in 0..iterations {
@@ -159,7 +159,7 @@ fn measure_nested() -> f64 {
     let due = Instant::now() + Duration::from_mins(1);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(Sink(0), |_| StashRoute::Deliver),
+            behavior_actors::Stash::new(Sink(0), |_, _| StashRoute::Deliver),
             MailAddr(7),
             stop_on_abnormal_death,
         ),

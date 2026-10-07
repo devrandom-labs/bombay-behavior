@@ -48,7 +48,7 @@ Callers compose at the value level; Rust infers the full nested type:
 
 ```rust,ignore
 let behavior = domain
-    .layer(|inner| Stash::new(inner, admission))
+    .layer(|inner| Stash::new(inner, |_, message| admission(message)))
     .layer(|inner| ReceiveTimeout::new(inner, timer, idle, on_idle))
     .layer(StopOnShutdown::new);
 ```

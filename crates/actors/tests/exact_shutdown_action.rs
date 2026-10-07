@@ -1,12 +1,13 @@
 //! Total settlement contract for exact orderly worker shutdown.
 
-use core::future::Future;
+use core::future::{Future, ready};
 use core::marker::PhantomData;
 
 use behavior::{
     ActionItem, Actions, Address, Behavior, BehaviorActed, EndpointAddress, EstablishedActor, Here,
     Ingress, InterpretInstalledActor, InterpretItem, InterpretSends, Interpretation,
-    InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol, SettledItem, User,
+    InterpretationProgress, InterpreterRequests, ItemSettlement, Never, NoBirths, Protocol,
+    SettledItem, User,
 };
 use behavior_actors::{
     InterpretEstablishedShutdown, ShutdownEstablished, ShutdownId, ShutdownRejection,
@@ -114,18 +115,24 @@ impl InterpretInstalledActor<StopOnShutdown<Worker>> for ShutdownRuntime {
 impl<RootEvent> InterpretItem<ShutdownEstablished<StopOnShutdown<Worker>, Here>, RootEvent, Here>
     for ShutdownRuntime
 {
-    fn interpret_item(
-        &mut self,
-        item: ShutdownEstablished<StopOnShutdown<Worker>, Here>,
-    ) -> impl Future<
-        Output = ItemSettlement<
-            ShutdownEstablished<StopOnShutdown<Worker>, Here>,
-            ShutdownId,
-            ShutdownRejection,
-            Never,
+    fn interpret_item<'a>(
+        &'a mut self,
+        input: &'a mut Option<ShutdownEstablished<StopOnShutdown<Worker>, Here>>,
+        received: &'a mut Option<
+            <ShutdownEstablished<StopOnShutdown<Worker>, Here> as ActionItem>::Reply,
         >,
-    > + Send {
-        core::future::ready(item.settle(self))
+    ) -> impl Future<Output = ()> + Send + 'a
+    where
+        ShutdownEstablished<StopOnShutdown<Worker>, Here>: 'a,
+    {
+        if received.is_some() {
+            return ready(());
+        }
+        let Some(item) = input.take() else {
+            return ready(());
+        };
+        *received = Some(item.settle(self));
+        ready(())
     }
 }
 
@@ -206,9 +213,18 @@ async fn exact_shutdown_uses_the_generic_ordered_product_law() {
         calls: Vec::new(),
     };
 
-    match <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(sends, &mut runtime)
-        .await
-    {
+    match {
+        let mut progress = Some(InterpretationProgress::Original(sends));
+        <_ as InterpretSends<_, User<RuntimeAddr, ()>, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the actual shutdown product must retain its complete settlement");
+        };
+        settlement
+    } {
         Interpretation::Complete(settlements) => {
             assert_eq!(settlements.len(), 2);
             match &settlements[0] {
