@@ -31,6 +31,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Nix for the API audit tool
+        uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Install the stack-safe published API audit tool
+        run: |
+          nix develop -c bash --noprofile --norc -euo pipefail <<'BASH'
+          : "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}" "${GITHUB_PATH:?}"
+          audit_root="$(mktemp -d "$RUNNER_TEMP/semver-checks-stack-safe-json.XXXXXX")"
+          curl --fail --show-error --location \
+            https://static.crates.io/crates/cargo-semver-checks/cargo-semver-checks-0.51.0.crate \
+            --output "$audit_root/cargo-semver-checks.crate"
+          curl --fail --show-error --location \
+            https://static.crates.io/crates/trustfall_rustdoc/trustfall_rustdoc-0.41.0.crate \
+            --output "$audit_root/trustfall_rustdoc.crate"
+          printf '%s  %s\n' \
+            484e65e62077aed1a119d04ab414038d20b9013302b7353487ff69a461842bf8 \
+            "$audit_root/cargo-semver-checks.crate" \
+            4e8e5bc5ca93f6c30f148911c07229c704144de5920cc06851e57a8214372804 \
+            "$audit_root/trustfall_rustdoc.crate" | sha256sum --check --strict
+          tar --extract --gzip --file "$audit_root/cargo-semver-checks.crate" --directory "$audit_root"
+          tar --extract --gzip --file "$audit_root/trustfall_rustdoc.crate" --directory "$audit_root"
+          checker_source="$audit_root/cargo-semver-checks-0.51.0"
+          rustdoc_source="$audit_root/trustfall_rustdoc-0.41.0"
+          patch --batch --forward --fuzz=0 --strip=1 --directory "$rustdoc_source" \
+            < "$GITHUB_WORKSPACE/.github/semver-checks-stack-safe-json.patch"
+          printf '\n[patch.crates-io]\ntrustfall_rustdoc = { path = "../trustfall_rustdoc-0.41.0" }\n' \
+            >> "$checker_source/Cargo.toml"
+          cp "$GITHUB_WORKSPACE/.github/semver-checks-stack-safe-json.Cargo.lock" "$checker_source/Cargo.lock"
+          cargo build --locked --release --bin cargo-semver-checks \
+            --manifest-path "$checker_source/Cargo.toml" --target-dir "$audit_root/target"
+          mkdir "$audit_root/bin"
+          cp "$audit_root/target/release/cargo-semver-checks" "$audit_root/bin/cargo-semver-checks"
+          "$audit_root/bin/cargo-semver-checks" --version
+          printf '%s\n' "$audit_root/bin" >> "$GITHUB_PATH"
+          BASH
+
       - name: Compare published APIs
         uses: obi1kenobi/cargo-semver-checks-action@v2
         with:
