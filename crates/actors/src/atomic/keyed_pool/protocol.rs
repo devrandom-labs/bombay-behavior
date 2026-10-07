@@ -555,3 +555,808 @@ where
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod live_activation_correlation {
+    use super::super::binding::{BindingCapacity, BindingTable};
+    use super::super::requests::KeyedRequests;
+    use super::super::role::RoleCell;
+    use super::super::{KeyedEvent, KeyedOperating, KeyedPool, KeyedPoolState};
+    use super::{KeyedDiagnostic, KeyedDiagnosticCause};
+    use crate::atomic::pool::ShutdownSequence;
+    use crate::atomic::pool::assignment::{AcceptedJobSequence, AssignmentSequence};
+    use crate::atomic::pool::worker::activation_pool_correlation::{
+        ActivationEndpoint, ActivationWorker, assert_current_worker, initialized_activation,
+    };
+    use crate::atomic::pool::worker::{CurrentWorker, Member, MemberState, Worker, WorkerPhase};
+    use crate::atomic::restart::RecoveryCount;
+    use crate::atomic::restart::RestartBudget;
+    use crate::atomic::worker::WorkerActivationOutcome;
+    use crate::atomic::{
+        ActivationPolicy, ActorDrainPolicy, BacklogCapacity, ImmediateActivation, Interruption,
+        PoolFailureReaction, PoolRecovery, RoleName, WorkerAttempt,
+    };
+    use crate::{
+        Active, ChildStopped, DiagnosticAction, DiagnosticDisposition, Exit, StopOnShutdown,
+    };
+    use behavior::{Actions, CreationSequence, EstablishedActor, Never, Step};
+    use core::convert::Infallible;
+    use std::sync::Arc;
+    use std::time::Instant;
+    fn role_for_key(_: &u64) -> u64 {
+        23
+    }
+
+    #[tokio::test]
+    async fn keyed_dispatched_live_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::ActivationDispatched {
+                        attempt: original_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+            let binding_capacity = BindingCapacity::new(2).expect("two real binding slots");
+            let pool: KeyedPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                fn(&u64) -> u64,
+                Infallible,
+                u64,
+                u8,
+                u16,
+            > = KeyedPool {
+                state: KeyedPoolState::Operating(KeyedOperating {
+                    roles: vec![RoleCell::new(member, BacklogCapacity::new(2))],
+                    bindings: BindingTable::new(binding_capacity),
+                }),
+                selector: role_for_key,
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                binding_capacity,
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(KeyedEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let KeyedRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    binding_replies,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.is_empty());
+                assert!(binding_replies.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        KeyedDiagnostic {
+                            cause:
+                                KeyedDiagnosticCause::Unexpected(KeyedEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let KeyedPoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.roles.len(), 1);
+                assert!(operating.roles[0].queue.is_empty());
+                assert!(operating.bindings.binding(&7_u64).is_none());
+                let member = &operating.roles[0].member;
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                assert!(stopped.is_none());
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn keyed_dispatched_stopped_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let stopped_at = Instant::now();
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::ActivationDispatched {
+                        attempt: original_attempt.clone(),
+                        stopped: Some(ChildStopped::new(creation, Ok(Exit::Normal), stopped_at)),
+                    },
+                }),
+            };
+            let binding_capacity = BindingCapacity::new(2).expect("two real binding slots");
+            let pool: KeyedPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                fn(&u64) -> u64,
+                Infallible,
+                u64,
+                u8,
+                u16,
+            > = KeyedPool {
+                state: KeyedPoolState::Operating(KeyedOperating {
+                    roles: vec![RoleCell::new(member, BacklogCapacity::new(2))],
+                    bindings: BindingTable::new(binding_capacity),
+                }),
+                selector: role_for_key,
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                binding_capacity,
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(KeyedEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let KeyedRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    binding_replies,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.is_empty());
+                assert!(binding_replies.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        KeyedDiagnostic {
+                            cause:
+                                KeyedDiagnosticCause::Unexpected(KeyedEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let KeyedPoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.roles.len(), 1);
+                assert!(operating.roles[0].queue.is_empty());
+                assert!(operating.bindings.binding(&7_u64).is_none());
+                let member = &operating.roles[0].member;
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::ActivationDispatched { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                let Some(stopped) = stopped else {
+                    panic!("the original stopped child remains owned")
+                };
+                assert_eq!(stopped.child, creation);
+                assert!(matches!(&stopped.outcome, Ok(Exit::Normal)));
+                assert_eq!(stopped.at, stopped_at);
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn keyed_activating_live_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::Activating {
+                        attempt: original_attempt.clone(),
+                        stopped: None,
+                    },
+                }),
+            };
+            let binding_capacity = BindingCapacity::new(2).expect("two real binding slots");
+            let pool: KeyedPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                fn(&u64) -> u64,
+                Infallible,
+                u64,
+                u8,
+                u16,
+            > = KeyedPool {
+                state: KeyedPoolState::Operating(KeyedOperating {
+                    roles: vec![RoleCell::new(member, BacklogCapacity::new(2))],
+                    bindings: BindingTable::new(binding_capacity),
+                }),
+                selector: role_for_key,
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                binding_capacity,
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(KeyedEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let KeyedRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    binding_replies,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.is_empty());
+                assert!(binding_replies.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        KeyedDiagnostic {
+                            cause:
+                                KeyedDiagnosticCause::Unexpected(KeyedEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let KeyedPoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.roles.len(), 1);
+                assert!(operating.roles[0].queue.is_empty());
+                assert!(operating.bindings.binding(&7_u64).is_none());
+                let member = &operating.roles[0].member;
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::Activating { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                assert!(stopped.is_none());
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn keyed_activating_stopped_returns_the_original_foreign_activation_twice() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let foreign = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let foreign_attempt = foreign.attempt();
+        assert!(original_attempt != foreign_attempt);
+        let stopped_at = Instant::now();
+        let inputs = [
+            (
+                foreign.started(),
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                foreign.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let role = RoleName::new(23_u64);
+            let expected_role = role.clone().into_role();
+            let member = Member {
+                role,
+                recoveries: RecoveryCount::default(),
+                state: MemberState::Worker(Worker {
+                    current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                    phase: WorkerPhase::Activating {
+                        attempt: original_attempt.clone(),
+                        stopped: Some(ChildStopped::new(creation, Ok(Exit::Normal), stopped_at)),
+                    },
+                }),
+            };
+            let binding_capacity = BindingCapacity::new(2).expect("two real binding slots");
+            let pool: KeyedPool<
+                u64,
+                ActivationWorker,
+                ImmediateActivation,
+                Never,
+                fn(&u64) -> u64,
+                Infallible,
+                u64,
+                u8,
+                u16,
+            > = KeyedPool {
+                state: KeyedPoolState::Operating(KeyedOperating {
+                    roles: vec![RoleCell::new(member, BacklogCapacity::new(2))],
+                    bindings: BindingTable::new(binding_capacity),
+                }),
+                selector: role_for_key,
+                activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                binding_capacity,
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
+            let mut pool = Active { behavior: pool };
+            let mut returned = input;
+            for _ in 0..2 {
+                let actions = pool
+                    .transition(KeyedEvent::WorkerActivationReported(returned))
+                    .unwrap_or_else(|error| {
+                        panic!("the activation fold returns its real Actions: {error}")
+                    });
+                let Actions {
+                    sends,
+                    creates,
+                    become_,
+                } = actions;
+                let KeyedRequests {
+                    worker_observations,
+                    worker_initializations,
+                    worker_activations,
+                    customer_outcomes,
+                    binding_replies,
+                    worker_assignments,
+                    worker_preparations,
+                    restart_schedules,
+                    worker_shutdowns,
+                    diagnostics,
+                } = sends;
+                assert!(worker_observations.is_empty());
+                assert!(worker_initializations.is_empty());
+                assert!(worker_activations.is_empty());
+                assert!(customer_outcomes.is_empty());
+                assert!(binding_replies.as_slice().is_empty());
+                assert!(worker_assignments.is_empty());
+                assert!(worker_preparations.is_empty());
+                assert!(restart_schedules.is_empty());
+                assert!(worker_shutdowns.is_empty());
+                assert!(creates.is_empty());
+                assert!(matches!(become_, Step::Continue));
+                let mut diagnostics = diagnostics.into_requests();
+                assert_eq!(diagnostics.len(), 1);
+                let DiagnosticAction::Terminal {
+                    diagnostic:
+                        KeyedDiagnostic {
+                            cause:
+                                KeyedDiagnosticCause::Unexpected(KeyedEvent::WorkerActivationReported(
+                                    input,
+                                )),
+                        },
+                } = diagnostics.remove(0)
+                else {
+                    panic!(
+                        "a foreign attempt returns the complete original activation through the existing Unexpected policy"
+                    )
+                };
+                assert_eq!(input.worker(), worker);
+                assert!(input.attempt() == &foreign_attempt);
+                returned = input;
+                let KeyedPoolState::Operating(operating) = &pool.state else {
+                    panic!("foreign activation must not retire the original pool")
+                };
+                assert_eq!(operating.roles.len(), 1);
+                assert!(operating.roles[0].queue.is_empty());
+                assert!(operating.bindings.binding(&7_u64).is_none());
+                let member = &operating.roles[0].member;
+                let role = member.role.clone().into_role();
+                assert!(Arc::ptr_eq(&role, &expected_role));
+                assert_eq!(*role, 23);
+                assert_eq!(member.recoveries, RecoveryCount::default());
+                let MemberState::Worker(Worker {
+                    current,
+                    phase: WorkerPhase::Activating { attempt, stopped },
+                }) = &member.state
+                else {
+                    panic!("foreign report preserves the exact original worker phase")
+                };
+                assert_current_worker(current, &worker, &expected_actor);
+                assert!(attempt == &original_attempt);
+                let Some(stopped) = stopped else {
+                    panic!("the original stopped child remains owned")
+                };
+                assert_eq!(stopped.child, creation);
+                assert!(matches!(&stopped.outcome, Ok(Exit::Normal)));
+                assert_eq!(stopped.at, stopped_at);
+            }
+            let (returned_worker, returned_attempt, outcome) = returned.into_parts();
+            assert_eq!(returned_worker, worker);
+            assert!(returned_attempt == foreign_attempt);
+            match (report, outcome) {
+                (WorkerActivationOutcome::Started, WorkerActivationOutcome::Started)
+                | (WorkerActivationOutcome::Ready(()), WorkerActivationOutcome::Ready(())) => {}
+                _ => panic!("the original complete activation outcome is preserved"),
+            }
+        }
+        drop(original);
+    }
+
+    #[tokio::test]
+    async fn keyed_original_activation_started_then_ready_preserves_all_lanes() {
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original worker creation");
+        let worker = WorkerAttempt::issued(creation);
+        let actor =
+            EstablishedActor::<StopOnShutdown<ActivationWorker>>::issued(ActivationEndpoint(19));
+        let expected_actor = actor.clone();
+        let original = initialized_activation(worker.clone(), actor.recipient());
+        let original_attempt = original.attempt();
+        let started = original.started();
+        let role = RoleName::new(23_u64);
+        let expected_role = role.clone().into_role();
+        let member = Member {
+            role,
+            recoveries: RecoveryCount::default(),
+            state: MemberState::Worker(Worker {
+                current: CurrentWorker::new(worker.clone(), expected_actor.clone()),
+                phase: WorkerPhase::ActivationDispatched {
+                    attempt: original_attempt.clone(),
+                    stopped: None,
+                },
+            }),
+        };
+        let binding_capacity = BindingCapacity::new(2).expect("two real binding slots");
+        let pool: KeyedPool<
+            u64,
+            ActivationWorker,
+            ImmediateActivation,
+            Never,
+            fn(&u64) -> u64,
+            Infallible,
+            u64,
+            u8,
+            u16,
+        > = KeyedPool {
+            state: KeyedPoolState::Operating(KeyedOperating {
+                roles: vec![RoleCell::new(member, BacklogCapacity::new(2))],
+                bindings: BindingTable::new(binding_capacity),
+            }),
+            selector: role_for_key,
+            activation: ActivationPolicy::new(1).expect("one actual activation slot"),
+            recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+            restarts: RestartBudget::empty(),
+            backlog: BacklogCapacity::new(2),
+            binding_capacity,
+            interruption: Interruption::Fail,
+            actor_drain: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+            creations: CreationSequence::new(),
+            jobs: AcceptedJobSequence::new(),
+            assignments: AssignmentSequence::new(),
+            shutdowns: ShutdownSequence::new(),
+            next_restart_timer: 1,
+        };
+        let mut pool = Active { behavior: pool };
+
+        let inputs = [
+            (
+                started,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Started,
+            ),
+            (
+                original.activate().await,
+                WorkerActivationOutcome::<ActivationWorker, ImmediateActivation>::Ready(()),
+            ),
+        ];
+        for (input, report) in inputs {
+            let actions = pool
+                .transition(KeyedEvent::WorkerActivationReported(input))
+                .unwrap_or_else(|error| {
+                    panic!("the original activation returns complete Actions: {error}")
+                });
+            let Actions {
+                sends,
+                creates,
+                become_,
+            } = actions;
+            let KeyedRequests {
+                worker_observations,
+                worker_initializations,
+                worker_activations,
+                customer_outcomes,
+                binding_replies,
+                worker_assignments,
+                worker_preparations,
+                restart_schedules,
+                worker_shutdowns,
+                diagnostics,
+            } = sends;
+            assert!(worker_observations.is_empty());
+            assert!(worker_initializations.is_empty());
+            assert!(worker_activations.is_empty());
+            assert!(customer_outcomes.is_empty());
+            assert!(binding_replies.as_slice().is_empty());
+            assert!(worker_assignments.is_empty());
+            assert!(worker_preparations.is_empty());
+            assert!(restart_schedules.is_empty());
+            assert!(worker_shutdowns.is_empty());
+            assert!(diagnostics.is_empty());
+            assert!(creates.is_empty());
+            assert!(matches!(become_, Step::Continue));
+            let KeyedPoolState::Operating(operating) = &pool.state else {
+                panic!("original activation leaves the pool operating")
+            };
+            assert_eq!(operating.roles.len(), 1);
+            assert!(operating.roles[0].queue.is_empty());
+            assert!(operating.bindings.binding(&7_u64).is_none());
+            let member = &operating.roles[0].member;
+            let actual_role = member.role.clone().into_role();
+            assert!(Arc::ptr_eq(&actual_role, &expected_role));
+            assert_eq!(*actual_role, 23);
+            assert_eq!(member.recoveries, RecoveryCount::default());
+            let MemberState::Worker(Worker { current, phase }) = &member.state else {
+                panic!("the actual original worker stays owned")
+            };
+            assert_current_worker(current, &worker, &expected_actor);
+            match (report, phase) {
+                (
+                    WorkerActivationOutcome::Started,
+                    WorkerPhase::Activating {
+                        attempt,
+                        stopped: None,
+                    },
+                ) => {
+                    assert!(attempt == &original_attempt);
+                }
+                (WorkerActivationOutcome::Ready(()), WorkerPhase::Idle) => {}
+                _ => panic!("actual Started enters Activating and actual Ready enters Idle"),
+            }
+        }
+    }
+}

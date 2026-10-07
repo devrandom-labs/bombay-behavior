@@ -2473,7 +2473,7 @@ where
                 WorkerPhase::ActivationDispatched {
                     attempt,
                     stopped: None,
-                } => {
+                } if &attempt == input.attempt() => {
                     let (returned_worker, returned_attempt, outcome) = input.into_parts();
                     let mut actions: FifoActions<
                         Role,
@@ -2524,7 +2524,7 @@ where
                 WorkerPhase::Activating {
                     attempt,
                     stopped: None,
-                } => {
+                } if &attempt == input.attempt() => {
                     let (returned_worker, returned_attempt, outcome) = input.into_parts();
                     match outcome {
                         WorkerActivationOutcome::Started => {
@@ -2615,9 +2615,9 @@ where
                     }
                 }
                 WorkerPhase::ActivationDispatched {
-                    attempt: _,
+                    attempt,
                     stopped: Some(stopped),
-                } => {
+                } if &attempt == input.attempt() => {
                     let (returned_worker, returned_attempt, outcome) = input.into_parts();
                     match outcome {
                         outcome @ (WorkerActivationOutcome::Started
@@ -2641,7 +2641,7 @@ where
                 WorkerPhase::Activating {
                     attempt,
                     stopped: Some(stopped),
-                } => {
+                } if &attempt == input.attempt() => {
                     let (returned_worker, returned_attempt, outcome) = input.into_parts();
                     match outcome {
                         WorkerActivationOutcome::Started => {
