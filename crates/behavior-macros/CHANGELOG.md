@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.13.1...bombay-behavior-macros-v0.14.0) - 2026-10-08
+
+### Fixed
+
+- *(behavior)* [**breaking**] preserve exact receiving custody ([#86](https://github.com/devrandom-labs/bombay-behavior/pull/86))
+
 ### Changed
 
 - **Breaking:** generated send, creation and action interpretation uses the new borrowed-producer receiving contracts. These expansions require the matching new Core and Actors release; they are incompatible with the published 0.22 algebra.
