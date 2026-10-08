@@ -1,10 +1,8 @@
 # Bombay Behavior
 
-> Unreleased breaking change: this source uses independently owned receiving
-> values for action interpretation and worker startup. It requires a matching
-> new Core, Actors and Macros release. Published `0.22` remains a separate
-> registry contract; this feature branch is not proof of publication or full
-> Bombay EXEC acceptance.
+> Core and Actors `0.23` use independently owned receiving values for action
+> interpretation and worker startup. They require Macros `0.14`.
+> Core and Actors `0.22` use the earlier registry contract.
 
 Bombay Behavior is the statically typed functional core of the Bombay actor
 stack. `bombay-behavior` defines the pure `Behavior` fold and its explicit
@@ -143,8 +141,8 @@ See [Nominal Behavior attribute](docs/behavior-attribute.md).
 
 ```toml
 [dependencies]
-bombay-behavior = "0.22"
-bombay-behavior-actors = "0.22"
+bombay-behavior = "0.23"
+bombay-behavior-actors = "0.23"
 ```
 
 Composition has two axes. `Behavior::layer` invokes a statically typed
