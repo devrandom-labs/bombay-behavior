@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.22.0...bombay-behavior-actors-v0.23.0) - 2026-10-08
+
+### Fixed
+
+- *(behavior)* [**breaking**] preserve exact receiving custody ([#86](https://github.com/devrandom-labs/bombay-behavior/pull/86))
+
 ### Changed
 
 - **Breaking:** worker preparation, initialization, activation and assignment interpretation use independently owned receiving values.
