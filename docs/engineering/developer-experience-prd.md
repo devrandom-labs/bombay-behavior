@@ -1,6 +1,6 @@
 # Behavior and Bombay developer experience PRD
 
-Status: candidate. Scope: one canonical application path, simpler component
+Status: active. Scope: one canonical application path, simpler component
 contracts, and a smaller documentation system. This is a specification for
 staged work, not an implemented API or authorization for a broad rewrite.
 
@@ -658,15 +658,181 @@ terminal experiments.
 
 ## Completion and change record
 
+### Requirement checklist
+
+This is the single implementation checklist. `Open` includes unexecuted
+acceptance; no source inventory or focused pass closes an entire requirement.
+
+| ID | Implementation and tests | Remaining work / disposition |
+| --- | --- | --- |
+| DX01 | Existing Application declaration/composition inspected | Open: unify App, all seven journeys, cold recovery |
+| DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
+| DX03 | Existing global terminal projection traced through child launch/retirement | Open: transitive and recursive inferred custody; no leaf shortcut |
+| DX04 | Borrowed work/cleanup and lossless completed-work selection; seven focused debug/release tests | Open: inferred descendant consumption and actor retirement custody audit |
+| DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
+| DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
+| DX07 | Existing actor facade remains authoritative | Open: expansion/hygiene/private/generic corpus |
+| DX08 | Existing named Actions lanes retained | Open: unrelated templates, both orders, complete effects |
+| DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
+| DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
+| DX11 | Existing preparation and completion custody retained | Open: source refusal, prepared prefix, shutdown and late completion |
+| DX12 | Existing occurrence/creation owners inspected | Open: inferred roles, relational identity and rejection corpus |
+| DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
+| DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
+| DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
+| DX16 | Receiving loans and child retirement inspected | Open: independently proved leaf custody/boilerplate reduction |
+| DX17 | No exports or bounds changed | Open: consumer/invariant audit and competing spelling deletion |
+| DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
+| DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
+| DX20 | Existing ActorInterface/ExternalActor retained | Open: correlated replies, cancellation and slow/closed customers |
+| DX21 | Existing lifecycle and child retirement retained | Open: inferred access with complete shutdown/retirement evidence |
+| DX22 | Existing Entity/HTTP owners retained | Open: same Application spine, exact rejection and family/root failures |
+| DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
+| DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
+| DX25 | Pre-edit missing-method regression, seven debug/release tests, killed cleanup inversion, 65 custody/runner tests | Open: inferred syntax and complete downstream corpus |
+| DX26 | Counter baseline remains 144 physical main lines | Open: comparable caller/compiler/runtime measurements |
+| DX27 | Published locked owner source confirmed | Open: extracted/renamed consumers and final cross-repository gates |
+| DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
+
+### Application result conservation experiment
+
+The first bounded terminal-consumption change implements a derived custody
+law: inspecting an application result borrows it; consuming completed work
+returns its output **and** the independent cleanup Result; selecting completed
+work from another phase returns that entire original outcome. Work completion
+does not certify successful cleanup or even successful actor initialization.
+This is a substep of stage 1, not a substitute for inferred terminal custody.
+
+Desired caller syntax is `outcome.work_output()`, `outcome.cleanup()`, and
+`outcome.try_into_completed()`. The ownership equation is
+`Completed(Output, Result<Cleanup, ApplicationCleanupError>) ->
+Ok((Output, Result<Cleanup, ApplicationCleanupError>))`; every other phase
+maps to `Err(original_outcome)`. No callbacks, disposal policy, Clone, Debug,
+Send or actor type annotation is required by these operations.
+
+Pre-edit regression: Bombay `tests/application_outcome.rs` will exercise all
+six outcome alternatives with move-only values, work success plus cleanup
+failure, and a live counter journey. It must fail for the missing operations
+before production edits. Reuse ApplicationOutcome, ApplicationCleanupError,
+the existing execute_application_with receiving owner, actor facade, named
+sends and lifecycle; delete the counter's duplicated completed-work match.
+ActorRetirement, child bindings, projection, Driver and primitive semantics
+remain their existing owners; no new actor algebra is needed for this law.
+
+Expected paths: Bombay application/execution.rs, application_outcome test,
+counter main, application guide and coordination/status; this owning PRD.
+Expected production delta: at most +60 lines; public types +0/-0.
+The full retained batch must record actual deltas, tests and drift below.
+
+Pre-edit result: the five result-consumption regressions (plus the included
+counter's two pure tests) fail compilation solely with 14 E0599 missing-method
+diagnostics. The added live startup-refusal witness retains a non-Send local
+work closure and exact rejected actor. No production edit existed at this cut.
+
+Pre-edit drift checkpoint: ApplicationOutcome has six alternatives;
+ApplicationWorkCustody has five; ActorRetirement has 22. These remain the
+control/custody sums; this experiment adds no phase, result sum, actor dispatch,
+public type or module. Every alternative owns the existing cold, staged,
+prepared, uninvoked, completed or interrupted custody required for exact
+return. Cardinality and child selection are unchanged. Direct borrowing and
+Result with the original outcome express the law. There is no new arrival
+history, repeated cause, cardinality assumption, transition authority, boolean,
+structural path or effect traversal. Cross-checks: PRD affine custody and
+complete application result laws; execution-ownership DG-API/DG-WORK and
+Driver D-RETIRE-1. Atomic-family normalized laws are unaffected because no
+actor input, Actions, creation, wrapper or interpreter changes. Disposition
+awaits the post-edit measurements and debug/optimized witnesses.
+
+Dependency verification: both worktrees are clean at initial docs commits
+67318ac/d809174 on codex/developer-experience-docs. Bombay locks published
+Behavior/Actors 0.23.0; registry vcs metadata identifies d69f992, whose complete
+AGENTS.md is byte-identical to Behavior's current instructions. Address 0.3.0,
+Communication 0.1.3, private Observe, and Timers 0.1.0 at 13e884d remain the
+selected primitives; no patch to Behavior is used. Inspected owner transition,
+settlement, creation, wrapper, mailbox admission, address lease, observation,
+timer generation, application composition, launch and retirement paths.
+Cross-checked execution-ownership DG-API/DG-PROJECTION/DG-WORK and Driver
+D-RETIRE-1; no aggregate actor policy is changed. DX1 has no prerequisite
+backlog edge. Stage 2 remains dependent on the full stage-1 inference witness.
+
+Fresh environment baseline: pinned Nix shell enters successfully with Rust
+1.99.0. `cargo test --locked -p bombay-rs --test application_children` passes
+the caller compile-pass and invalid-child denial. It ran with incremental
+compilation/debug information disabled in a task-owned temporary target to
+contain disk use. This is not the authoritative flake pass. Initial free space
+was 1.3 GB; the baseline consumed approximately 753 MB. Do not delete unrelated
+caches or treat prior signing/disk failures as waived.
+
+Post-edit checkpoint: outcome/work-custody/retirement alternatives remain
+6/5/22; creation bindings remain Established/Rejected/StartupRejected. No
+subordinate alternative or actor transition branch changes. The three
+inspections contain six match arms, with no dispatch or state mutation.
+The affected execution owner is 1887 -> 1944 physical lines, one module -> one;
+public declarations 14 -> 17 (only work_output/cleanup/try_into_completed).
+All retained values remain in their original phase or are transferred together
+from Completed. The same residue scan and laws above pass; no atomic policy or
+normalized-family contract changed. Disposition: **pass for this bounded
+custody law**, with full programme and inferred topology still open.
+
+Complete current task delta from the initial documentation commits: Bombay
+production (including executable example): +64/-8/net +56; tests +310/-0;
+public types +0/-0, public methods +3/-0. Six Bombay paths plus this owning PRD
+and its evidence appendix are changed; no source/dependency change in Behavior.
+The retained Bombay commit is 6d1d493. Counter main is 144 ->
+143 physical lines; its terminal enum, six runner arguments and retirement
+assertions remain. This is new consumption capability, not claimed overall
+ceremony reduction or performance acceptance.
+
+Exact focused commands run in Bombay's pinned shell, using the task-owned
+CARGO_TARGET_DIR and CARGO_INCREMENTAL=0/CARGO_PROFILE_DEV_DEBUG=0/
+CARGO_PROFILE_TEST_DEBUG=0 to contain build space:
+
+- `cargo test --locked -p bombay-rs --test application_outcome`: seven pass.
+- The same command with `--release`: seven pass after final source changes.
+- `cargo test --locked -p bombay-rs --test application_outcome --test completed_application_receiving --test application_terminal_custody --test run_with`: 7 + 38 + 4 + 16 = 65 pass; includes five independent authority denials.
+- `cargo clippy --locked -p bombay-rs --test application_outcome -p bombay-example-counter --all-targets -- -D warnings`: passes.
+- `cargo fmt --all -- --check` and both working-tree `git diff --check`: pass.
+
+The real inversion rejected Completed when cleanup was Err. Its named
+completed_work_preserves_cleanup_failure test compiled and failed at the
+law assertion, not for a compiler error. Source-copy mutation left both
+worktrees intact. Sharing its temporary Cargo target initially reused a
+mutated binary; clearing that task-owned target and rebuilding established the
+65 positive passes above. Future inversions must use independent targets.
+
+Fresh Bombay `nix flake check` exited unsuccessfully while disk became full;
+a subsequent shell entry explicitly failed to open Nix's SQLite fetch cache.
+No gate pass is inferred. With user authorization to free space, unreferenced
+Nix store paths and regenerable tool caches were reclaimed, restoring about
+7.8 GB free. Neither the other AI's main-2 source nor its target was changed.
+The two-job retry also exhausted disk during linking. Reclaiming regenerable
+Cargo artifacts from inactive checkouts restored about 23 GB; active checkout
+targets and benchmark reports were preserved. The final
+`nix flake check --max-jobs 1 -L` passed all 21 aarch64-darwin checks, including
+build, tests, mutation evidence, coverage, Loom, Clippy, docs, formatting and
+all seven example gates. Other platform checks were not executed.
+An earlier disk-starved trybuild batch falsely reported expected denials as
+success; the rebuilt six-fixture runner corpus passes after reclamation.
+
+Fresh Behavior `nix flake check --max-jobs 1 -L` passes all ten native checks:
+build (including Darwin signing), fmt, audit, deny, TOML formatting, nextest,
+docs, doctests, package and Clippy. Nextest reports 920 passed, zero skipped.
+Its derivations use pinned Rust 1.95.0; Bombay's focused shell reports 1.99.0.
+Neither prior signing failure nor disk failure is waived. Non-native platforms
+and optional exhaustive mutation gates remain unexecuted at this cut.
+
 The programme is complete only when ordinary users can follow the canonical
 journey across every selected example without assembly plumbing, and all
 affected semantic denials and complete ownership traces remain proved. Closing
 this PRD does not mean all networking, durability or optional platform work is
 implemented; their coverage mapping preserves those separate obligations.
 
-This review changes documentation only: this PRD, its source coverage appendix,
-retired historical records, compact retained requirements and repaired indexes
-and links in both repositories. Production: `+0 / -0 / net 0`. Tests:
-`+0 / -0 / net 0`. Public API: `+0 / -0`. No semantic experiment has been
-implemented, so no state-machine reduction or passing runtime evidence is
-claimed. The appendix records the document validation and any gate limitations.
+The next isolated counter consumer removes the runner's generic arguments and
+terminal enum. It fails with E0283: the terminal type remains unconstrained.
+This establishes a concrete Bombay inference gap; no Behavior change follows
+from it yet. An outside-workspace consumer additionally needs the workspace's
+immutable Timers patch: registry Timers 0.1.0 lacks the selected ScheduleError
+and token contract. The inference probe uses that exact patch to isolate
+E0283. DX27 remains open until the packaged dependency contract works without
+consumer repair. The initial documentation-only validation remains historical
+evidence in the appendix; it does not describe this implementation batch.

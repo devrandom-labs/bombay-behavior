@@ -203,7 +203,21 @@ Bombay replaces the 13,280-line EXEC campaign with a compact execution contract 
 - Previously rejected placeholders, inferred provenance and structural caller work remain prohibited by AGENTS and DEAD_ENDS; replacing a dated audit does not reopen them as acceptable shortcuts.
 - EXEC retains caller-host execution, exact work/output and cleanup custody, opacity of native panic payloads, independent observation authority, actual result acquisition before producer destruction, and cooperative-host limits. DX04–05, DX16 and DX21 must preserve those distinctions. Its archived delivery record is historical evidence, not a fresh test certificate.
 
-## Validation record
+## Implementation evidence
+
+The owning PRD contains the sole DX01–DX28 checklist, experiment provenance,
+measurements and current verification. Bombay's first retained implementation
+adds lossless ApplicationOutcome inspection and completed-work consumption;
+its focused counter/startup-refusal corpus passes seven tests in debug and
+release, and the combined custody corpus passes 65. The cleanup-failure
+semantic inversion is killed. Fresh `nix flake check --max-jobs 1 -L` passes
+all 21 aarch64-darwin Bombay checks and all ten Behavior checks, including
+successful Darwin signing and 920 nextest tests with zero skipped.
+Full topology inference and the remaining
+selected acceptance criteria remain open. The record below describes the
+initial documentation commits, rather than the current implementation diff.
+
+## Initial documentation validation
 
 Executed on the documentation branches, 2026-10-08:
 
