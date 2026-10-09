@@ -2,11 +2,13 @@
 
 ## Status and authority
 
-This document is the AA-30 independent semantic model for one FIFO worker
-pool. It is a non-production falsification oracle. It does not select Rust
-types, define another behavior algebra, implement a pool, or mark a production
-coverage row implemented. `docs/engineering/atomic-actor-solution.md` remains the
-production design authority.
+This is an independent semantic model for one FIFO worker pool, retained as a
+requirements and falsification oracle. Historical blocked/completed labels below
+belong to the original research snapshot; they are not current implementation
+status. Verify representation and support from owner source and executable tests.
+The [DevX PRD](../engineering/developer-experience-prd.md) requires law-by-law
+reconciliation before condensing this model. Deleted design ledgers in Git
+history are not production authority.
 
 The actor-model laws used here are isolated processing of one communication,
 communications to known recipients, fresh actor creation, and explicit next
@@ -1204,10 +1206,10 @@ AA-30 records these findings for governing-document reconciliation:
    one worker, so it cannot expose the two-worker retry-order counterexample.
 
 These are falsification findings, not production API amendments. Before an
-executable task relies on any selected mechanism, the feature catalogue,
-solution, inventory, retained-core decision, research audit, and interpreter
-boundary must be reconciled together or the existing concrete boundary must be
-proved to express the same law unchanged.
+executable task relies on a selected mechanism, reconcile the feature
+requirements and this model with current owner/interpreter source and
+independent tests, or prove that the existing contract expresses the same law
+unchanged.
 
 ## First-slice non-features and blocker
 

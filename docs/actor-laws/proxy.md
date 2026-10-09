@@ -1,5 +1,12 @@
 # Stable proxy falsification model
 
+This retained model specifies requirements and independent falsification cases.
+Its research statuses, source inventories and test counts are historical, not
+current implementation evidence. Reconcile them with owner source and executed
+tests under the [DevX PRD](../engineering/developer-experience-prd.md) before
+selecting work. Deleted design ledgers do not govern production.
+
+
 ## Status and authority
 
 This document is the AA-01 independent semantic model for a stable worker
@@ -563,8 +570,8 @@ diagnostics: ProxyDiagnostic
 
 The resulting nine-lane product is a non-production falsification requirement,
 not an amendment to design authority. It records a focused disagreement with
-the solution's six-lane product. AA-03 may not implement activation until the
-solution, matrix, retained-core decision, and research audit are reconciled or
+the historical solution's six-lane product. Before changing activation,
+reconcile this requirement with the current owner source and independent tests, or
 an existing named lane is proven to own the same exact operation without
 reinterpretation.
 

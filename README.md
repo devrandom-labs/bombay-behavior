@@ -86,11 +86,11 @@ asynchronous interpretation requires `Send` only for transported values.
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).
 
-The [actor-template composition audit](docs/engineering/template-composition-audit.md)
-and [Behavior Actors template law audit](docs/engineering/template-law-audit.md)
-preserve historical design evidence. The [repository quality checklist](docs/engineering/repository-quality-audit.md)
-tracks current verification gaps; retained source and normalized actor laws
-govern current behavior.
+The [developer-experience PRD](docs/engineering/developer-experience-prd.md)
+selects a simpler canonical usage path, with code evidence and explicit acceptance
+criteria. The [quality obligations](docs/engineering/repository-quality-audit.md)
+retain unresolved verification work. Source and tests establish implementation;
+law documents specify the guarantees to preserve.
 
 The [external actor-system interface](docs/external-actor-interface.md) records
 the intended common boundary for HTTP, CLI, tests, embedded clients, and future
@@ -220,9 +220,7 @@ they are never flattened into a dynamic envelope.
 The distinct direct-pool contracts are documented in [FIFO pool](docs/fifo-pool.md)
 and [keyed pool](docs/keyed-pool.md). Correctness-sensitive actor arrangements
 are documented in [Actor composition](docs/composition-recipes.md).
-Historical catalogue classification and adversarial tests are recorded in the
-[composition](docs/engineering/template-composition-audit.md) and
-[template-law](docs/engineering/template-law-audit.md) engineering records.
+
 
 ## Development
 

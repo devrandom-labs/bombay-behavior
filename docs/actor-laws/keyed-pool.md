@@ -1,5 +1,12 @@
 # Keyed-pool falsification model
 
+This retained model specifies requirements and independent falsification cases.
+Its research statuses, source inventories and test counts are historical, not
+current implementation evidence. Reconcile them with owner source and executed
+tests under the [DevX PRD](../engineering/developer-experience-prd.md) before
+selecting work. Deleted design ledgers do not govern production.
+
+
 ## Status and authority
 
 This document is the AA-40 independent semantic model for one keyed
