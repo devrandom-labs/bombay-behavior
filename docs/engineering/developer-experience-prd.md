@@ -690,7 +690,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
-| DX26 | Counter baseline remains 144 physical main lines | Open: comparable caller/compiler/runtime measurements |
+| DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles reach acceptance execution with space remaining | Open: canonical caller/compiler/runtime measurements and final resource gates |
 | DX27 | Timers 0.2 released/pinned; owner and Bombay gates, unpatched extracted/MSRV and renamed facade evidence pass | Open: package the final inferred API and execute its downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
@@ -1778,3 +1778,130 @@ expected-red inferred-custody acceptance tests, and the candidate still fails
 pure parent authoring. No signing, disk, MSRV, package or final programme gate
 is waived by these focused passes. Idle task-owned candidate build caches were
 removed to recover space; candidate sources, evidence and other AI work remain.
+
+Finite child-permission hypothesis: factory availability must depend on the
+actual direct child's send permissions, not on recursively proving the entire
+created actor's execution. This is derived separation of pure authoring from
+interpretation. The existing failing pure_parent declaration and the green
+recursive/refusal journeys remain the pre-edit regressions; both must pass.
+The ordinary-Rust probe rejects two overlapping context equalities (E0284),
+but one equality inherited from the existing sealed trait preserves the exact
+computed child context and its send bound. No public runtime type or arbitrary
+extra context parameter is justified by that result.
+
+The next source-copy substep adds ActorCapabilities to the existing private
+sealing trait, bound to the exact existing CreatedActorCapabilities product.
+Its only concrete implementation remains ApplicationCapabilities; obtaining
+that associated value still requires the existing scoped creation contract.
+Then the facade can require each authored child position to have its existing
+CreationScope in that exact context, rather than gating on full CommitActions.
+Caller syntax, original loan/request, creation ordering, interpreter kernel and
+retirement data remain unchanged. No stored value, public type, runtime branch
+or state alternative is added; expected owners are creation and facade, under
+80 lines. Both birth declaration forms, generic/private/renamed authoring,
+scope/creation denials, wrappers and real families remain gates. A cycle or
+missing readiness at another child invalidates the hypothesis.
+
+Pre-edit checkpoint: retirement/control/binding alternatives unchanged; no
+subordinate state is proposed. The sole associated context is the existing
+child runtime product: actual actor, resources, typed parent-report port, child
+bindings and origin. Its value still belongs to the creation interpreter.
+Cross-check existing creation freshness, explicit provenance, Driver custody
+and source-correct facade laws. Disposition awaits the complete witnesses.
+
+Declared-context disposition: reopen before facade lowering. The single
+association works in the ordinary-Rust send probe, but putting the existing
+CreatedActorCapabilities product in CreationScope's supertrait produces six
+E0277 errors at ActorCreation's generic Birth equality. It prematurely
+normalizes the closed child product and requests Behavior for Birth::Child;
+that is false for legal heterogeneous sums. No suggested Behavior bound,
+extra generic, capability widening or facade migration is accepted. The
+source-copy sealing change is removed and both owner files restored.
+Actor/control/custody sums, runtime branches and public spellings remain
+unchanged. The trial changed one private sealing association, stored no new
+value and touched no interpreter. The assumption that a scalar context
+association preserves the richer birth/product equation was falsified.
+Logs: /private/tmp/bombay-devx-declared-context-library.log and the three
+ordinary-Rust context probes.
+
+Native verification resource policy: committed Bombay a9b88dc's full flake
+check fails during test linking with rustc-LLVM No space left on device,
+starting first with 4.8 GB and again with 8.3 GB after completed task cache
+cleanup. Both use the exact pinned toolchain; the retry also limits build cores
+to one. Neither is a gate pass. Shared APFS space is confirmed for /nix and
+the workspace; this is not a separate volume-quota assumption.
+
+Nix checks produce verification artifacts rather than debugger sessions.
+Disable development/test debug-symbol emission and incremental compilation
+in the existing common check arguments. This is deliberate build policy;
+debug assertions, optimization levels, target selection, test execution,
+static denials and native failure payloads remain unchanged. Developer shells
+keep normal Cargo debugger settings. No production Rust, type, dependency or
+runtime contract changes. The two failed full checks are the pre-edit resource
+witnesses. Expected owner: flake.nix, under ten lines; evaluate and run the
+unchanged native gates. No source/check skip or failed gate is authorized.
+
+Creation ownership hypothesis: the actual actor's BirthMode chooses leaf or
+nominal launch; the nominal base owns the recursive future. ActorCreation's
+separate generic Birth key currently repeats that scope-owned equation and
+forces premature product normalization. Move the dispatch to the existing
+NoBirths/Births/RetirementBirths algebra, remove the public factory's redundant
+key parameter, and preserve each nominal implementation's exact actual
+Actor/Base/Birth constraints. This changes no actor effect or accepted request.
+Leaf launch calls the original kernel; nonempty launch calls the same nominal
+factory. The interpreter selects the mode from Scope::Actor::Birth, never from
+a value, flag, counter, address or caller hint. Private mode dispatch is not an
+application capability. No public type, policy, callback or stored value is
+added. Reuse the automatic leaf implementation, proxy factory and existing
+complete custody kernel; delete the competing blanket factory on every Base.
+
+Pre-edit regression: the declared-context trial's six generic-key E0277 errors,
+pure_parent and all existing recursive/refusal journeys. Retain the single
+context association only if the full factory contract accepts heterogeneous
+products without new Behavior bounds. Expected owners: creation and facade,
+under 100 net lines, one private dispatch trait, one fewer public generic.
+Control/custody/binding sums and interpreter effects remain unchanged; the
+three private dispatch cases are exactly the existing birth algebra and own
+no state. Wrong actor/base/birth, forged scopes/loans and nonlocal execution
+remain denied. Any recursive readiness cycle reopens this hypothesis.
+
+Birth-launch disposition: reopen. Removing the redundant key lets the source
+copy library compile, using the scope's declared retirement product for leaf
+launch. Adding the direct-child scopes then rejects both required caller
+classes: pure_parent still fails report ingress, and recursive declarations
+fail E0271 for conflicting computed actor-context associations. No extra
+associated context, parameter, projection, bound or structural alias repairs
+those errors. Both production owners are restored; rejected source/logs stay
+in /private/tmp/bombay-devx-birth-launch-rejected and
+/private/tmp/bombay-devx-birth-launch-*.log. Trial delta: +76/-21/net
+55 in two existing modules; one private dispatch trait/three cases,
+one fewer public factory generic, zero stored values/public types. Actor,
+application, binding and retirement sums and actual interpreter branches were
+unchanged. The competing dispatch and context concepts are removed together.
+The scalar association does not preserve distinct creator levels under the
+real birth equation; both pure authoring and recursive custody stay required.
+
+Compact-check evidence: the same full native check with development/test
+debug symbols and incremental artifacts disabled completes dependency/build
+phases and reaches the expected-red inferred-custody fixtures with over 5 GB
+remaining. The recursive fixture then compiles for over nine minutes at
+100% CPU, approximately 3.9 GB resident, without completing. The Nix client
+was interrupted (exit 1); that is an incomplete gate, not a pass. The first
+inferred counter fixture still fails on its missing custody API. No execution
+or static denial is disabled. The shell probe confirms dev_debug, test_debug
+and incremental remain unset in nix develop, preserving local debugger defaults.
+Five unchanged native publication gates (build, fmt, Clippy, doc, doctest)
+now pass together (native Nix build exits 0). Workspace release compilation
+takes 11m 38s; Clippy 12.95s and documentation 7.12s. This certifies those
+five gates with the compact artifact profile; it does not certify the
+incomplete full flake check or the inferred API. Build policy is committed
+in Bombay ec362f1.
+Logs: /private/tmp/bombay-devx-current-native-gates*.log,
+/private/tmp/bombay-devx-compact-native-gates.log,
+/private/tmp/bombay-devx-compact-publication-gates.log and
+/private/tmp/bombay-devx-check-profile-shell.log.
+
+Build-policy delta: flake.nix +4/-0 and README +4/-0; zero production Rust,
+test selection, public API, dependency or semantic state change. The native
+resource falsifier is removed, while the missing inferred API and recursive
+compile-cost failures remain open. The full programme is not verified.

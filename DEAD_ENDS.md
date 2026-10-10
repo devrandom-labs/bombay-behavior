@@ -263,3 +263,23 @@ through birth interpretation. No flags, extra bounds, erasure or specialization
 were added. The hypothesis is removed in full; the prior working nominal
 creation cut is restored. Logs: /tmp/bombay-devx-conditional-creation-proof.log
 and /tmp/bombay-devx-conditional-pure-parent.log.
+
+### Scalar context association loses the birth-product equation
+
+One private sealed context equality preserves a finite send constraint in an
+ordinary-Rust probe. The same association to CreatedActorCapabilities in the
+real CreationScope prematurely normalizes ActorCreation's generic Birth and
+requires Birth::Child to be Behavior. Closed heterogeneous child sums are
+valid and do not satisfy that restriction. All six E0277 diagnostics precede
+facade lowering. The association is removed; no suggested bound or extra
+context parameter is retained. Two overlapping association equations also
+fail E0284. The scalar probe does not prove the complete constructor interface.
+
+### Birth dispatch does not repair creator-context association
+
+Moving leaf/nonempty launch selection to the actual actor's birth algebra
+removes the factory's redundant generic key and lets the library compile.
+Direct-child scope guards still produce conflicting sealed context equations
+(E0271) in recursive declarations and ingress failures in pure ProxyParent.
+The actual caller requirements do not pass together. Both factory/dispatch
+changes are removed; no additional context generic, alias or bound is retained.
