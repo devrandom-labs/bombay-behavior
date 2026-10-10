@@ -334,3 +334,32 @@ child cases would remove valid external ChildCreationProduct + DispatchBirth
 implementations. Three executable existing-contract probes pass in pinned Nix
 at /private/tmp/bombay-empty-creation.EZUnHl. No owner production edit is retained;
 preserve these empty and open ownership ports in the next hypothesis.
+
+### Routed receiving metadata narrows valid standalone failure custody
+
+Replacing all inhabited DispatchBirth defaults with RoutedCreation: ActionItem
+preserves a sendable runtime's outside slots and makes the whole-choice consumer
+run, but ActionItem's accepted result must be Send. Existing standalone
+DispatchBirth only promises a Send future; its final result can be non-Send.
+A lawful current interpreter initializes a Send worker at final poll and returns
+an Rc-bearing error with both original allocations, current state, route, ID and
+replacement provenance. Debug/optimized tests pass; the new default excludes it
+with E0277. EndpointAddress also explicitly permits non-Send capabilities.
+Both source-copy edits are removed, zero actual repository production/API delta.
+Do not move runtime transport bounds onto standalone creation. Evidence:
+/private/tmp/bombay-local-child-creation.FRZITT and the rejected routed-creation
+patch/logs. The distinct receiving/owned-return timing obligations remain open.
+
+### Unconstrained creation dispatch output weakens static custody
+
+Owned RoutedCreation and a borrowed existing request/reply row are two real
+custody inputs. DispatchBirth<Input> with arbitrary associated Output does not
+preserve their fixed return law: a custom child product with Result=Never can
+discard an owned request and return u64. Candidate compiles; original exact
+settlement signature rejects it with E0271. Passing non-Send error, empty/custom,
+replay and cancellation tests cannot waive this static forgery. Both private
+production edits are removed. Formatted source-only +218/-81, zero actual API
+change. Keep the input-to-return equation closed in the next model; do not add
+caller bounds to excuse the trait. Independent evidence:
+/private/tmp/bombay-creation-reply.nx4amE and
+/private/tmp/bombay-devx-creation-row-forged-receipt.log.

@@ -840,6 +840,49 @@ A child task may not borrow or take its parent's binding row. Existing
 ChildBindingAt selects exact occurrence; structural routing must not acquire
 unrelated runtime source requirements.
 
+The routed-creation experiment is reopened. Derived interpreter law: the whole
+existing request reaches the runtime before selecting a child, preserving exact
+ID, route, provenance, actor allocation and independent later effects. Reuse
+DispatchBirth, batch reservation, existing request/reply rows and InterpretItem;
+no second dispatch protocol or logical send capability. The whole-choice
+consumer fails nine E0277 diagnostics before source edits. Scope was two private
+owner files, zero new states/modules/types; no actual production migration.
+
+Two source-only designs are removed. Making every default request an ActionItem
+adds Result: Send and excludes a lawful Send future producing a non-Send
+initialization error. Splitting actual owned-request and borrowed-row inputs on
+DispatchBirth preserves that caller, empty aliases, custom products and pending
+cancellation, but an unconstrained associated Output permits a custom product
+with Result=Never to drop its request and return u64. The original trait denies
+that program with E0271; the candidate accepts it. The exact input-to-return
+equation must remain statically closed. These laws are derived ownership laws,
+not actor-model mandates.
+
+Focused evidence: whole-choice allocation rejections plus independent report
+and replay pass debug/optimized; four owner tests cover standalone non-Send
+error, two empty birth aliases and a custom receiving-only product; cancellation
+retains both exact requests and suffix. An optimized cancellation inversion
+fails independently and restored source passes. A real Behavior::Sends declaration
+still denies routed creation with E0277 (missing InterpreterRequest). Generic
+low-level InterpretSends availability alone is not that static protocol proof.
+Sources/logs: /private/tmp/bombay-devx-{routed-creation,owned-creation}-consumer,
+/private/tmp/bombay-devx-creation-row-*.log, /private/tmp/bombay-local-child-creation.FRZITT,
+and the independent forged-receipt comparison /private/tmp/bombay-creation-reply.nx4amE.
+
+Aggregate checkpoint, removed row-input candidate: progress alternatives 3→3;
+creation custody 2→2; item settlements 4→4; child outcomes 4→4; creation settlements
+3→3. Original request/reply, current initialization error/actions and committed
+child remain the exact owned values; no arrival-history state is added. Two
+owner modules and 146 public declaration tokens remain; associated Output and
+Input change the public promise. Match-arm tokens 97→95, if tokens 19→19 across
+the two affected modules (diagnostics, not minimality proofs). Formatted private
+production +218/-81/net +137; zero actual production/API delta after removal.
+Residue scan: no semantic flags, erasure, new cardinality or nested authority;
+borrowed structural rows are interpreter-only. Cross-check: creation/lifecycle
+law, complete settlement law and normalized atomic actor documents. Disposition
+reopen because the static return equation is weakened; no factory, retirement,
+wrapper-order or recursive execution acceptance follows from these focused passes.
+
 Disposition: reopen; zero actual repository production states/modules/public
 types added by these reviews. Falsifiers are consolidated in [DEAD_ENDS](../../DEAD_ENDS.md).
 Probe sources/logs remain under /private/tmp/bombay-birth-source-proof.BUziey
@@ -899,6 +942,16 @@ Previous Darwin signing and disk failures are not waived. Native gates above
 actually succeed. Disk-starved attempts, interrupted compilations and stale
 mutated binaries are excluded from passing evidence. Completion/accessor
 inversions compile and fail independently; their original source is restored.
+
+Fresh Bombay `3c75768` full `nix flake check --show-trace --keep-going
+--max-jobs 1 --cores 2` is interrupted after 23m26s. Its recursive caller fixture
+uses 19m18s compilation without a terminal diagnostic and reaches 4.84 GB RSS;
+free disk falls to 1.2 GB. Completed task-owned targets are reclaimed without
+touching the other AI's checkout/builds. Only formatting has a verified valid
+Nix output; no full pass, signing fix or waiver is inferred. Cancellation ends
+both observed processes and leaves 2.7 GB free. Full gates remain open until
+the inferred recursive interface is implemented. Log:
+/private/tmp/bombay-devx-nested-full-nix.log.
 Current full Bombay gates remain open on inferred application compilation and
 the published owner macro's rustdoc path. They must be rerun after delivery
 and retention of the final inferred interface; historical native passes do
