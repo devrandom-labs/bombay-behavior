@@ -2185,9 +2185,10 @@ measurement for fe831e9, removing cfg(test) items before line comparison:
 these are distinct measurements. Actor/control/phase alternatives and runtime
 transition branches stay unchanged, modules add zero, public products add one.
 Both old lookup inversions are killed; all six owner crate-resolution tests
-pass. Owner full native verification is currently running under session 55587,
-with successful build/Clippy/doc/doctest phases observed; nextest and remaining
-gates are not yet certified. Actual Bombay remains registry-unpatched, and its
+pass. Owner full native verification completes with exit 0 under session 55587:
+all ten native aarch64-darwin gates pass, including nextest, package,
+Clippy, documentation, doctest, formatting, dependency audit and policy.
+Other systems were not executed by this native check. Actual Bombay remains registry-unpatched, and its
 new executable doc still needs distribution of the macro fix. Canonical
 inferred application fixtures, recursive factory and the other open checklist
 items remain required; no completion status is changed.
