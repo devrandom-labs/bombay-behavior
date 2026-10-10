@@ -45,11 +45,8 @@ fn behavior_crate() -> Result<TokenStream2> {
         // the target currently being compiled. The facade's library target is
         // `bombay`; sibling binaries and examples therefore reach its exports
         // through `::bombay`, not through their own `crate` root.
-        return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("bombay") {
-            Ok(quote!(crate::behavior))
-        } else {
-            Ok(quote!(::bombay::behavior))
-        };
+        // The facade's existing self alias also resolves in its rustdoc crate.
+        return Ok(quote!(::bombay::behavior));
     }
     if let Ok(found) = crate_name("bombay-behavior") {
         return Ok(crate_path(found));
@@ -73,11 +70,7 @@ fn actors_crate() -> Result<TokenStream2> {
         };
     }
     if std::env::var("CARGO_PKG_NAME").as_deref() == Ok("bombay-rs") {
-        return if std::env::var("CARGO_CRATE_NAME").as_deref() == Ok("bombay") {
-            Ok(quote!(crate))
-        } else {
-            Ok(quote!(::bombay))
-        };
+        return Ok(quote!(::bombay));
     }
     // The Bombay facade owns the Actors catalogue its expansion sites compile
     // against. A consumer may carry both the facade and a direct foundational
