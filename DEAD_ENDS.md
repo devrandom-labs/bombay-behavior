@@ -241,3 +241,14 @@ semantic boolean, or positional user syntax was added. The structural residue
 was the new bound repeated at many generic template declarations. The
 shutdown PRD, normalized atomic-actor documents, `BehaviorLayer` law, and
 `AGENTS.md` compiler-friction rule were cross-checked.
+
+## Empty direct-child send proof
+
+A source-copy empty trait over the closed direct-child tuple did not let a
+nominal actor factory infer its children's send/parent-report premises. Rust
+cannot recover an implementation's where clauses from a generic trait predicate.
+The restored pure ProxyParent witness still fails on actual event ingress.
+The trait and its bounds were removed; no production or catalogue migration was
+retained. Child-source compatibility must have an operational or associated
+contract that directly proves the original law, without fabricated ingress,
+callbacks, protocol equality or public runtime representation.

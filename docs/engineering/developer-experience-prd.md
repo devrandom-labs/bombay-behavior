@@ -672,7 +672,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Facade sender-independent regression retained in ec79d9f; reshaped source-copy schema also passes full outer-authoring and four original denials | Open: warning-clean inferred custody; full expansion/hygiene/private/generic corpus |
-| DX08 | Existing named Actions lanes retained | Open: unrelated templates, both orders, complete effects |
+| DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
 | DX11 | Existing preparation and completion custody retained | Open: source refusal, prepared prefix, shutdown and late completion |
@@ -1315,6 +1315,80 @@ and one unused test-only import), own-birth role access, the timer probe's wall
 sleep, full owner checks, generic standalone coverage and comparable costs still
 prevent retention. No visibility promotion or lint waiver is made.
 
+The publication checkpoint first targets the actual owner library with
+RUSTFLAGS=-D warnings; a consumer cargo check without targets is not evidence.
+The same sealed scope currently has a private-module Creator interface plus an
+empty CreationScope forwarding interface. There is one responsibility: an
+exclusive, valid creator occurrence loan. Consolidate their exact associated
+proofs into CreationScope and preserve a private sealing trait for unforgeable
+runtime ownership. No bound, value, return type, capability or actor transition
+changes; the five denial fixtures and complete downstream corpus are the existing
+focused regressions. This is removal of duplicate interface ownership, not
+publication of ApplicationCapabilities or child/task machinery. Source-copy
+owner is creation.rs, under 20 net lines, zero new public types. Control sums,
+subordinate data and transition branches remain unchanged; disposition awaits
+warning and complete owner checks.
+
+The single sealed scope passes the same 15 focused tests. Publication keeps
+the original private static proofs, matching existing Application runner
+interfaces that deliberately use private CommitActions bounds. Ordinary callers
+never receive a scope value; ActorCreation receives only a consuming ChildCreation
+loan, whose fields are private. Publicizing runtime/task representation would
+violate its owner. The next cut documents this intentional sealed proof boundary
+and uses narrow expect(private_bounds) on CreationScope and ChildCreation::establish,
+plus expect(private_interfaces) on the sealed scope's internal accessor. This
+reconciles Rust visibility lints; it neither weakens a Rust bound nor waives an
+acceptance gate. It explicitly supersedes the earlier blanket assertion that no
+lint expectation could be considered. Expectations are local and become errors
+if obsolete. A new pre-edit extract_scope denial must reject access to the
+creator borrow (E0616), independently of forged construction. Strict owner and
+consumer checks, rustdoc, all five existing denials and debug/release journeys
+remain required; no broad allow or visibility promotion is proposed.
+
+Full owner compilation restores 81 original test attributes, including four
+compound test conditions missed by the first restoration. Strict library and
+rustdoc pass; owner tests expose independent failures rather than a gate pass.
+RootProbe is a valid already-owned no-birth task without BehaviorBase; task
+projection must not require creation metadata. Preserve its existing
+ProjectedTask::project contract and total ProjectTerminal embedding. Scoped child
+retirement separately attaches its proven occurrence and complete child-local
+subtree. Both transfer the same original task/cancellation authority through one
+private consuming map_retirement implementation, with two genuine mappings
+(application-selected projection and occurrence-indexed child custody), neither
+a no-op. At the current source-copy cut, project is test-only because production
+uses child_retirement; this does not preserve the advanced application projection
+execution contract. That compatibility/migration obligation remains unresolved. The existing RootProbe projection and native child-projection-panic
+regressions are pre-edit failures, alongside the inferred child journeys. No
+public type, new state, capability or actor transition is proposed; owners are
+launch and creation, under 70 lines. Do not restore global recursive custody or
+weaken actual child/interpreter premises to make the advanced projection pass.
+
+Restored owner tests also falsify unconditional nominal factory derivation:
+a pure ProxyParent declaration compiles under the original facade but its
+candidate factory tries to prove grandchild reporting for an arbitrary decorated
+Actor::Event. Base/Birth equality does not prove event ingress. Do not equate the
+actual event with the Base event or invent a report-dropping callback. The required
+law is already the runtime's: every direct child's typed send lanes must be
+interpretable with the actual parent event and existing namespaces. State this
+non-recursive send proof at the creation scope, separately from recursive actor
+creation. Reuse the existing tuple declaration, InterpretSends and actual
+LocalParentReports; do not require full recursive CommitActions at the scope.
+The existing pure ProxyParent owner regression is pre-edit evidence, and the
+real supervisor/pool plus both wrapper orders remain the runtime witnesses.
+One private ChildEffects proof folds the closed direct-child tuple (empty and
+member cases); no runtime value, marker, callback, event, public type or actor
+transition is proposed. Expected owner is creation.rs, under 70 lines. The model
+reopens if proving it needs a new capability or per-template premise rather than
+the original child-send interpretation law.
+
+The ChildEffects empty proof trait is falsified: its tuple implementation's
+where clauses cannot be inferred in reverse from a generic product predicate,
+so the two ProxyParent event-ingress errors remain. It expresses no usable
+source capability at the generic method. Reopen and remove that source-copy
+trait and all its bounds, restoring the pre-experiment creation owner. Do not
+add associated labels or arbitrary ingress bounds to rescue it. The actual
+parent-source law remains an open factory/public-authoring gap.
+
 The user explicitly authorized the expanded selected-programme surface on
 2026-10-09. The cumulative task currently touches 22 repository paths, including
 five Timers release paths and four uncommitted Bombay regression paths.
@@ -1370,3 +1444,86 @@ Historical revision records stay dated. Exact verification:
 Disk and Darwin signing checks succeed without waivers. Other Bombay platforms
 and optional exhaustive gates were not executed in that run. Final inferred-API
 packages, downstream denials and complete journeys remain open under DX27.
+
+The fixed-sleep timer witness is not accepted evidence. Its replacement uses
+the existing OneShot generation law and typed ReportToParent lane in both
+shutdown/timer orders. This is a derived composition proof, not a clock change.
+The root retains the set of outstanding wrapper orders; only two distinct
+elapsed reports complete the reunion. Duplicate reports cannot discharge the
+other order. The reactions continue their children after reporting, so parent
+retirement must return both exact OwnerCancelled actors, report settlements,
+and payload allocations. Work awaits actual root termination; a timeout is
+only a failure guard. No sleep establishes readiness or completion. The probe
+uses Application::child with nominal roles, automatic NoBirths creation and
+existing generation-tagged TimerElapsed inputs. Production representation and
+control-state cardinality remain unchanged. This replaces the unaccepted timing
+claim; it does not close the recursive factory/event-ingress gap.
+
+The downstream timed-custody probe fails E0277 at
+`Actions::cont().with_send(ReportToParent::new(worker.base().order))` in the
+StopOnShutdown/OneShot order. The locked owner delegates SendInput only to a
+SendLayer's owned lane, although both lanes are typed send capabilities.
+This proves an owner-level DX08 gap independent of the creation candidate.
+The derived law is: appending one request to a uniquely typed composed lane
+transfers it exactly once, preserving all other sends, births and the verdict.
+If both lanes accept that input, inference must remain ambiguous; no runtime
+selection is permitted. Caller syntax stays `actions.with_send(request)`.
+
+The smallest owner hypothesis reuses SendInput, Own, Inside, SendLayer and
+ordinary products: `(Own, Path)` proves a wrapper-owned lane, `Inside<Path>`
+proves its inner lane. These disjoint proof shapes replace the existing
+unqualified owned-only delegation; no new type, trait, event or bound is added.
+InterpretSends, emitter paths, settlement ordering and custody are unchanged.
+Expected owner edits: sending.rs delegation/rustdoc and focused send-lane tests
+(+approximately 20 production lines); smallest downstream witness is the two
+real timer orders. No catalogue migration precedes proof. The pre-edit core
+regression checks owned and inner append, original Box allocation, two layers,
+and unchanged birth/verdict; repeated-capability inference retains a denial.
+
+Pre-edit aggregate checkpoint: this is an effect product, not an aggregate
+engine. Actor control-state sums, subordinate custody sums, transition branches
+and lifecycle authority are unchanged. SendLayer is still a two-field product;
+its two current values are the complete owned and inner request sequences.
+The current owner has one SendInput delegation with one emit call; the proposal
+has two disjoint delegations with one emit call each. Production modules and
+public spellings remain unchanged. Cross-check: Actions and SendsFor composition
+laws, Driver action order/custody, OneShot generation and initialization policy,
+and both shutdown wrapper policies. Post-edit measurement/inversion remains
+required before retention. No atomic-family state model is changed.
+
+Post-edit send-routing checkpoint: one owned-only delegation becomes two
+disjoint static delegations; SendLayer remains the same two-field product.
+Actor control sums, subordinate custody alternatives, transition branches and
+lifecycle authority are unchanged. Both sequences retain their complete current
+requests. No arrival history, repeated cause, semantic boolean, extra actor
+engine, erased protocol, or structural caller syntax is added. The exact new
+implementation is justified by the pre-edit typed consumer and core failures;
+its only new premise is the existing inner SendInput capability. Cross-checks
+above remain unchanged. Disposition: **pass for this bounded owner law**.
+
+Retained batch measurement: production +35/-2/net +33 (24 net lines are rustdoc);
+tests +231/-1/net +230; migration guide +9/-0. Zero new public types or methods,
+one changed trait-implementation proof shape, four code/guide paths. The complete
+programme surface remains authorized and larger; this measurement isolates the
+bounded batch rather than resetting the cumulative budget.
+
+Exact verification, pinned Nix: pre-edit core and downstream fail for missing
+inner routing; four core regressions pass debug/optimized, two Actors regressions
+pass debug, and two retained-Bombay facade/ActorExt tests pass debug/optimized.
+The real Application timer-acknowledgement and duplicate-reunion tests pass
+debug/optimized (no fixed sleep). A separate no-op-inner mutation compiles and
+kills all four core regressions at runtime. Independent binaries reject repeated
+lanes with E0283 and missing lanes with E0277. Source-copy workspace tests plus
+doctests report 1034 passed, zero failed/ignored before the two Actors tests were
+added; strict workspace/all-target Clippy passes at that cut. Actual feature-branch
+`nix flake check --max-jobs 1 -L` then passes all ten native checks with the full
+new test corpus, including Darwin signing, nextest (926 passed, zero skipped), strict Clippy,
+doctests, docs, formatting, audit/deny and packaging. Other platforms are unexecuted.
+
+No published dependency is silently substituted: downstream proofs use explicit
+local patches to the selected 0.23 owner plus this change. Bombay's retained
+manifest still selects published 0.23, so delivery/adoption of the owner change
+is open. This does not close inferred creation, topology, terminal projection,
+or whole-programme acceptance. Temporary source/log evidence lives under
+/tmp/bombay-devx-send-lanes-* and /tmp/bombay-devx-timed-custody-*; durable owner
+regressions are send_lanes.rs and wrapped_send_requests.rs.
