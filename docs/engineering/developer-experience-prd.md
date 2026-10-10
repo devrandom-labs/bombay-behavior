@@ -691,7 +691,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles reach acceptance execution with space remaining | Open: canonical caller/compiler/runtime measurements and final resource gates |
-| DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes native ten-gate/927-test and four-workspace package preflight | Open: owner CI/review, release/pin; package final inferred API and execute downstream denials and journeys |
+| DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Application result conservation experiment
@@ -2356,9 +2356,10 @@ are cross-checked. Disposition: pass for this bounded inspection law; full
 application inference and published dependency delivery remain open.
 
 Owner delivery head b0e9c93 passes a fresh exact-head native ten-gate check
-after the mutation-baseline correction. New-head CI run 38058209730 is live;
-its published API audit, Linux Nix and all eight mutation shards already pass.
-Its strict aggregate verdict is still pending and is not counted as passing.
+after the mutation-baseline correction. Exact-head CI run 38058209730 passes
+published API audit, Linux Nix, all eight mutation shards and the strict
+aggregate gate. CodeQL and dependency policy also pass. PR #89 is reviewable;
+it is not merged or published, and registry dependency adoption remains open.
 Two additional ordinary-Rust source-product probes fail E0391 for recursive
 implied clauses and E0277 for heterogeneous-tail elaboration. No suggested
 ingress bound or corresponding production source port is retained.
