@@ -318,3 +318,19 @@ would duplicate the existing birth sum. None supplies the joint pure-alias and
 recursive runtime law. No production model is retained or compiler-suggested
 ingress bound added. Keep the actual parent report, complete source custody and
 parent-owned bindings in the next hypothesis.
+
+A subsequent operational continuation over the existing birth sum can consume
+actual InterpreterRequests and preserve Core source settlement custody, without
+a duplicate communications sum. It does not yet establish fresh child execution.
+The immediate-source nominal method passes recursive execution but fails a
+nested pure Nursery declaration inside its body (E0277); adding another depth
+premise merely moves that restriction. Bombay's retained facade fixture proves
+owned staged creation and pure initialization must remain available.
+
+The proposed unconditional routed-child InterpretItem applicability also fails
+the no-op check: existing Births<Never> and RetirementBirths<Never> hosts need
+only batch reservation. A private dispatcher restricted to the three built-in
+child cases would remove valid external ChildCreationProduct + DispatchBirth
+implementations. Three executable existing-contract probes pass in pinned Nix
+at /private/tmp/bombay-empty-creation.EZUnHl. No owner production edit is retained;
+preserve these empty and open ownership ports in the next hypothesis.

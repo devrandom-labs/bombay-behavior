@@ -671,7 +671,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX04 | Lossless work/cleanup and borrowed state, custody and completion; all 24 outcomes retained; completion passes 299 debug/optimized tests and independent owner/consumer inversions | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
+| DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases and owned nested staged creation; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -763,6 +763,25 @@ zero production: both authoring tests and four original denials pass debug and
 optimized. The nonlocal facade regression (`ec79d9f`) likewise preserves pure
 construction without manufacturing local runtime capabilities.
 
+A deeper pure-authoring regression is retained before the next runtime edit:
+an ordinary actor may stage a child whose own birth alias contains a reporting
+actor, even when that child has no runnable report ingress. Pure initialization
+returns the complete staged request; it neither allocates nor certifies runtime
+installation. Derived ownership equation: pure parent -> Actions containing
+original child request/ID/provenance; owned extraction -> same child, still
+independently pure-initializable. Reuse existing actor facade, Births,
+CreationSequence, CreateChild, Creations and Behavior initialization. Extend the
+existing actor_facade_full compile-pass fixture, zero production/API changes;
+retain the four original denials. The immediate-source generic-method probe
+fails this nested declaration with E0277 inside the factory body. That failure
+must not become a bound or ingress requirement on ordinary actor authoring.
+The retained fixture adds 39 test lines, zero production lines/types. Both
+authoring tests and all four original denials pass in debug and release harnesses;
+trybuild's fixture compilation itself uses the development profile. An independent
+registry-backed consumer runs that exact fixture as an optimized executable
+(4.99 seconds). Logs: /private/tmp/bombay-devx-nested-authoring-{debug,optimized}.log
+and /private/tmp/bombay-devx-nested-authoring-consumer-optimized.log.
+
 The unretained source copy at /private/tmp/bombay-devx-custody-context now uses
 the retained ActorCustody/completion schema and the prior nominal retirement
 metadata experiment. Its separately patched consumer at
@@ -794,6 +813,20 @@ The authorized independent design reviews refine the falsifier:
   sends, heterogeneous/repeated types and exact rejected allocation. Removing
   the separate selected-port premise still fails E0277 despite the whole-product
   marker. Missing ingress also remains E0277. This is not the complete factory.
+- An operational continuation over the existing birth sum now interprets real
+  InterpreterRequests<ReportToParent<_>> and offers the exact retained source
+  settlements. Single/heterogeneous/repeated aliases pass debug/optimized with
+  warnings denied; missing parent ingress is E0277. No copied settlement kernel
+  or second communications sum is used. Fresh installation and cancellation
+  remain unproved.
+- Moving only immediate-child source premises to the nominal factory method
+  passes four recursive generations but rejects nested pure staging with E0277
+  inside the method body. Additional depth bounds would move that defect.
+- A proposed unconditional routed-child InterpretItem port rejects valid empty
+  Births<Never>/RetirementBirths<Never> interpreters needing only batch reservation.
+  Restricting dispatch to Behavior/ChildChoice/Never also removes an executable
+  custom ChildCreationProduct + DispatchBirth ownership port. Three focused
+  pinned-Nix tests establish those existing contracts before any owner edit.
 
 The next hypothesis must jointly prove pure aliases, recursive creation and
 operational selected-source interpretation/settlement offering. It must preserve
