@@ -691,7 +691,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles reach acceptance execution with space remaining | Open: canonical caller/compiler/runtime measurements and final resource gates |
-| DX27 | Timers 0.2 released/pinned; owner and Bombay gates, unpatched extracted/MSRV and renamed facade evidence pass | Open: package the final inferred API and execute its downstream denials and journeys |
+| DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes native ten-gate/927-test and four-workspace package preflight | Open: owner CI/review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Application result conservation experiment
@@ -2287,3 +2287,50 @@ zero; tests +26/-0, public API +0/-0. Isolation removes three candidate public
 creation ports and measures +35/-351/net -316 source lines across four files,
 relative to its previous unretained nominal-factory candidate. These deletions
 are not measured against retained Bombay and are not a delivered code reduction.
+
+Owner delivery: draft PR https://github.com/devrandom-labs/bombay-behavior/pull/89
+is isolated on codex/devx-owner-contracts at 8c5a1b9. Its seven-file diff is
+exactly the proven send-routing and macro-hygiene source/tests/law changes,
++335/-13 physical lines; no other programme model is included. It is labelled
+semver-breaking because explicit owned-lane SendInput paths change. Fresh
+exact-head native nix flake check exits 0: all ten gates, 927 tests passed and
+zero skipped. Four-workspace release preflight and extracted archives pass.
+The first invocation was deliberately interrupted after finding its two new
+tests unstaged; only the restarted staged invocation is passing evidence.
+Sources/logs were preserved while 1.4 GB of completed task build caches were
+removed. No disk/signing waiver was used. The draft is not merged or published;
+CI and review remain required. This source delivery uses the previously read
+bombay-behavior-release skill and does not close the application inference gate.
+
+Borrowed completion law (derived, DX04): ActorRetirement::completion() lends
+the original Completion only for the Completed alternative. Allocation,
+initialization, behavior, effects, cancellation and capability failures return
+absence, with the complete original retirement still owned by the caller.
+Stopped and Exhausted remain distinct; returned Completion is not a claim that
+child or late-joined capability cleanup has no failures. Ownership equation:
+&retirement -> Option<&original completion>, with retirement unchanged.
+
+Inspect/reuse the existing 24-alternative ActorRetirement, Engine Completion,
+from_local projection and original capability-retirement matrix. No new sum,
+product, bound, state, authority, dependency or interpreter path. Desired caller:
+match retirement.completion() while separately inspecting custody and retaining
+all failure values. Pre-edit downstream counter/initialization/allocation/task
+witnesses plus the five-cause projection matrix call the missing method;
+expected E0599 before implementation. Expected production +40, owner/downstream
+tests under +20, README/API/audit updates, one method and zero new types.
+Control sum 24 -> 24; custody fields 14 -> 14; modules unchanged; no historical
+state, repeated cause, false cardinality, nested authority, semantic boolean or
+structural caller syntax added. Existing from_local projection remains the
+sole authority; the accessor is exhaustive inspection only.
+
+Owner PR #89 CI passes published API audit, Linux Nix, all eight mutation
+shards, CodeQL and dependency policy; its first strict aggregate verdict fails
+on one stale renamed function floor and two unaccounted replacement functions.
+Downloaded immutable run 38057237529 reports prove both replacement emit-no-op
+mutants were caught after successful builds. Preserve the old viable floor of
+one under the owned path, add one for the new inner path, and remove only the
+nonexistent old function key. No floor is lowered and no mutant is waived.
+Rebasing all eight original artifact reports and running the pinned strict gate
+passes: 205 viable / 415 total candidates. The three-line baseline correction
+is applied to both owner feature and isolated delivery branches; new-head CI
+remains required. This verification metadata edit adds no production surface.
