@@ -667,7 +667,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Inferred/recursive regressions registered; Base/birth schema, automatic leaf factory and role custody pass 15 downstream debug/release tests, including supervisor/FIFO | Open: selected public representation, own-birth role access, deterministic readiness and complete owner gates |
+| DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; factory authoring remains red |
 | DX04 | Retained lossless work/cleanup access; source-copy role selection preserves exact borrowed and unmatched ownership | Open: retain complete inferred descendant consumption and audit actor retirement custody |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -689,7 +689,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX22 | Existing Entity/HTTP owners retained | Open: same Application spine, exact rejection and family/root failures |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
-| DX25 | Pre-edit missing-method regression, seven debug/release tests, killed cleanup inversion, 65 custody/runner tests | Open: inferred syntax and complete downstream corpus |
+| DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
 | DX26 | Counter baseline remains 144 physical main lines | Open: comparable caller/compiler/runtime measurements |
 | DX27 | Timers 0.2 released/pinned; owner and Bombay gates, unpatched extracted/MSRV and renamed facade evidence pass | Open: package the final inferred API and execute its downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
@@ -1626,3 +1626,77 @@ boolean or ordinary structural caller syntax. Cross-check: scoped retirement
 law, Driver custody, projection task failure, and existing normalized atomic
 lifecycle contracts. Disposition: **pass for focused test lowering**, with
 authoring/factory representation **reopen** and full gates incomplete.
+
+Born-child access substep: the existing Core-generated ChildRole<Parent> owns
+the exact child and Position. Scoped origin already preserves that position.
+The derived custody law is the same as declared Application roles: borrowed
+selection retains ownership; consuming selection returns the exact unmatched
+sum or transfers the original box and subtree. Desired syntax is
+`report.child_retirement(&ParentChild::Branch)` and
+`report.try_into_child_retirement(&NodeChild::Next)`. No actor identity or
+authority is inferred from the role.
+The smallest hypothesis adds one ChildRetirementSelection head implementation
+using existing DeclaredChildOccurrence as its disjoint proof and reuses the
+existing tail implementation. ChildRole's child/position equality supplies the
+relationship; no new marker, trait, data, bound on actors or runtime mapping is
+proposed. Expected owner: terminal.rs, under 40 lines, zero new public types.
+Pre-edit focused recursive/parent consumer must fail with missing selection.
+Control sums, retirement alternatives (24), custody phases and interpreter
+branches remain unchanged; two selection head laws exist for two real origin
+forms (Application role and born position). All scoped reports retain the same
+exact origin, original box and complete descendant product. Recheck unmatched
+ownership, static wrong-role denial and recursion before retention.
+
+The born-role Clippy run exposes six existing candidate publication defects:
+three complex exact settlement/creator signatures, the moved creation kernel's
+original too_many_lines annotation, and two missing rustdoc conventions.
+Restore the kernel's pre-existing narrowly justified annotation and document
+its complete ownership equations with local expect(type_complexity) on the
+three signatures. No alias, type, bound or visibility change is invented from
+the lint. Fix rustdoc backticks and the exact unchanged Err contract. This
+publication cut changes annotations/docs only, and does not waive model,
+semantic or full gate acceptance.
+
+The born-role selection remains an isolated candidate: a 27-line selection
+addition, zero new public types or interpreter branches. Both focused
+borrow/consume tests pass in debug and optimized builds; replacing the borrowed
+head selection with absence makes both fail. The foreign-parent role denial
+remains E0277. Existing retirement/control sums and owned data are unchanged.
+Aggregate checkpoint: NodeStartup stays Grow/Refuse (2/2); parent and sibling
+child custody stays Some/None (2/2); retirement alternatives stay 24/24.
+ChildChoice, Option and Result keep their existing two alternatives. Selection
+adds two methods implementing existing spellings, two matches/four arms, and
+27 production lines in one existing module; exports and public spellings add
+zero. Every surviving value owns its original origin, box and subtree; no
+arrival history, repeated cause, false cardinality, nested transition authority,
+semantic boolean or structural caller requirement is added. Cross-check the
+scoped-retirement law, original Driver custody and nominal child-role laws.
+Disposition: focused selection pass; combined factory model remains reopen.
+
+Canonical caller coverage now registers five pass fixtures and the original
+invalid-child denial. Recursive callers contain neither a terminal enum nor
+runner type arguments. The fixed-delay timer journey was removed from that
+fixture; its separate replacement waits for both actual elapsed reports and
+checks replay rejection and both original cancelled payload allocations. The
+pinned candidate application_children run passes all six cases (3.12 s cached
+execution). Only the candidate diagnostic snapshot was changed, to include the
+owned Namespaces parameter; both original missing-Behavior errors remain.
+
+All seven current consumer denials remain rejected: wrong role E0277, forged
+scope E0277, forged creation E0451, nonlocal application E0599, wrong birth
+E0271/E0277, extracted creator E0616 and foreign born role E0277. The separate
+pure_parent fixture still fails with exactly two E0277 report-ingress errors.
+Strict candidate library publication and Clippy pass. These checks do not
+certify the feature worktree or close the factory gap.
+
+The retained-library caller run passes its original fixture and rejects the
+new counter's missing custody API. Its recursive compile was interrupted after
+over three minutes of compilation (99.7% CPU, approximately 3.6 GB resident);
+the run ended 130 and is not counted as a gate pass. Source and diagnostic logs
+remain; only terminal task build caches were removed. The four new acceptance
+fixtures and registration are retained in Bombay cff086b: 986 test lines, zero
+production lines/types. The branch is intentionally red pending implementation.
+Evidence: /private/tmp/bombay-devx-event-ready-caller-fixtures.log,
+/private/tmp/bombay-devx-retained-caller-regressions.log,
+/private/tmp/bombay-devx-current-*-denial.log and
+/private/tmp/bombay-devx-current-pure-parent.log.
