@@ -671,7 +671,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX04 | Lossless result access and borrowed state; one 14-field ActorCustody product for 20 outcomes, all 24 outcomes retained; 357 debug/369 optimized tests and accessor inversion pass | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Pure actor authoring retained; ordinary and pool-worker rustdoc regressions expose and prove owner lookup fixes; renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
+| DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -2192,3 +2192,98 @@ Other systems were not executed by this native check. Actual Bombay remains regi
 new executable doc still needs distribution of the macro fix. Canonical
 inferred application fixtures, recursive factory and the other open checklist
 items remain required; no completion status is changed.
+
+Relational creation-source hypothesis (derived, source-copy only): declaring
+an actor does not certify a particular runtime context. A nominal creation
+factory requires each actual direct child's existing send interpretation and
+source custody for the actual creator's Event/Birth and shared Spaces. State
+that local relationship on Sends, keyed by Parent/Child/Spaces, before testing
+factory availability. Unlike the rejected scope-keyed CreationSources port,
+this contract does not require CreationScope as a well-formedness premise;
+that premise already required the proof the port was meant to supply.
+
+Ordinary syntax stays the existing facade, named birth roles and inferred
+Application. Exact rejection, prefix acceptance, binding, original actor and
+retirement stay in the unchanged creation kernel. Reuse InterpretSends,
+SendSettlements, SourceSettlementCustody, concrete ApplicationCapabilities,
+LocalParentReports, NestedBindings and the existing nominal future cut. No
+recursive CommitActions availability premise or scalar context equality is
+added. One private context alias is parameterized directly by its actual
+Parent/Child/Spaces; one public local-source port replaces access to that
+private representation. All three parameters have unrelated real actor,
+wrapper and hosting substitutions; none is a caller hint.
+
+Pre-edit witness: paired pure_parent/recursive consumer, logged in
+/private/tmp/bombay-devx-relational-sources-before.log. Expected source-copy
+owners: creation, facade and existing exports; under 140 net lines, one public
+trait, no new phase/state/value/runtime branch/visibility/dependency. Actor
+retirement (24), creation binding (3) and all outcome sums stay unchanged.
+Every surviving loan owns the original creator borrow and staged request.
+Reopen for any new independent capability, inferred provenance, placeholder,
+recursive proof cycle or second child-source implementation. Do not migrate
+other callers until both required consumers pass together.
+
+Relational source disposition: reopen. The named-child candidate passes 20
+consumer tests, but valid `births = Services` authoring (where Services is
+`Births<StableProxy<Worker, ImmediateActivation>>`) still fails twice with
+E0277. The exact caller passes against retained Bombay. A heterogeneous-tail
+ordinary-Rust probe also disproves the proposed recursive proof elaboration.
+All four candidate source edits are removed; rejected source and logs remain
+outside the repositories. No production API or catalogue migration is retained.
+Control states, subordinate alternatives, runtime branches and modules remain
+unchanged; retained production/public-surface delta is zero. The previous 20
+passes do not close the source/factory law.
+
+Caller-contract reinforcement (derived): pure facade declarations using existing
+birth-mode aliases remain valid for both one child and heterogeneous closed
+children, without inventing parent report ingress. Add both forms to the already
+registered full-facade fixture before any replacement factory. Reuse Births,
+ChildChoice, Never and the exact existing facade expansion. One test fixture,
+zero production lines/types/bounds; complete initialization has no sends or
+creations and Continue. The standalone alias witness fails with the rejected
+factory and passes with retained Bombay.
+
+Creation-spine isolation (derived, source-copy only): inferred terminal products
+do not require changing the typed creation operation. Reuse the original
+EstablishChild/CommitActions interpreter with child-local descendant custody;
+remove nominal ActorCreation, ChildCreation and CreationScope from this probe.
+The facade derives only static retirement metadata. Desired syntax remains
+Application::new(root).child(role, actor).run_with(work), with no terminal enum
+or runner arguments. Failure retains the complete root, work and child-local
+retirement products. Counter/component and both birth-mode alias witnesses
+precede this edit; named recursive execution remains a required separate proof,
+not a deferral or a leaf-only completion claim. Reuse the original source-copy
+creation kernel unchanged, preserving allocation-before-binding, initialization,
+accepted prefix and complete rejection equations. Expected four source files,
+negative production delta, three public ports removed, zero runtime states,
+branches, capabilities or dependencies added. Reopen if the existing kernel
+cannot execute the finite supervisor/pool tree without structural caller hints.
+
+Isolation result: eight counter/component/pure-authoring tests and seven
+namespace/supervision/FIFO/timer tests pass using the original creation
+interpreter. A valid empty birth-mode alias also passes (one test); its first
+probe omitted the existing mandatory settlement disposition and is not a
+regression. Recursive execution fails at six calls with E0275 through
+CommitActions -> InterpretCreations -> EstablishChild. Finite evidence cannot
+close recursive acceptance. No source-copy change is lowered to either owning
+repository. The nominal factory cut and pure birth-algebra compatibility must
+still be proved together. No runtime control state, alternative, branch or
+provenance changes occur in the isolation. This is a static-availability
+falsifier, not an interpreter failure or a passing recursive check.
+
+Registered caller reinforcement passes in retained Bombay: full-facade fixture
+now includes single and heterogeneous existing birth modes; both owner tests
+and all four original compile denials pass. Pinned formatting passes. No
+production edit, public type, bound or module is introduced. Release preflight
+on the exact retained Behavior source passes version/locked metadata across
+all four Cargo workspaces plus extracted package-consumer verification; actual
+versions remain Behavior/Actors 0.23.0 and macros 0.14.0, not new publications.
+GitHub has no open owner PR; main CI and Release completed successfully at
+d69f992b, which precedes these fixes and does not certify their delivery.
+
+Caller reinforcement optimized gate: the same two retained Bombay owner tests
+and four compile denials pass under --release. Fixture production delta is
+zero; tests +26/-0, public API +0/-0. Isolation removes three candidate public
+creation ports and measures +35/-351/net -316 source lines across four files,
+relative to its previous unretained nominal-factory candidate. These deletions
+are not measured against retained Bombay and are not a delivered code reduction.

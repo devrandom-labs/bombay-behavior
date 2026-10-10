@@ -293,3 +293,14 @@ making the valid pure definition compile. A separate context generic also
 fails E0284 in ordinary Rust. All combined production representations are
 removed. No actor event, context generic or capability was added to repair
 these failures; pure declaration and recursive execution remain jointly required.
+
+### Relational child-source proof covers declarations rather than the birth algebra
+
+Parent/Child/Spaces-keyed send supertraits make named-child pure declarations
+and recursive execution pass together, including 20 real consumer tests. The
+facade cannot enumerate children behind an existing birth-mode alias: that
+valid declaration still requires report ingress at definition time (two E0277
+diagnostics). Its retained-library counterpart passes. A head/tail product
+probe cannot derive a heterogeneous tail's source capability from an empty
+recursive predicate. All four source-copy edits are removed. No mandatory
+structural spelling, invented ingress, or arbitrary bound is retained.
