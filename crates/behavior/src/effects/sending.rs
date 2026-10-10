@@ -373,7 +373,31 @@ pub enum Own {}
 ///
 /// [`Own`] selects a named product's own semantic lane. [`SendLayer`] carries
 /// wrapper-owned and inner effects as explicit named fields; request routing
-/// remains a compile-time proof rather than a runtime lane lookup.
+/// remains a compile-time proof rather than a runtime lane lookup. A wrapper's
+/// owned lane uses `(Own, Path)` and its inner lane uses `Inside<Path>`. A unique
+/// input capability infers that proof through any number of wrappers. Repeated
+/// capabilities require an explicit static selection; inference never chooses
+/// one of two valid destinations.
+///
+/// ```
+/// let sends = behavior::SendLayer::new(vec![11_u32], Vec::<u8>::new());
+/// let actions: behavior::Actions<behavior::MailAddr, behavior::Never, _, behavior::NoBirths> =
+///     behavior::Actions::send(sends).with_send(7_u8).with_send(13_u32);
+/// assert_eq!(actions.sends.owned, [11, 13]);
+/// assert_eq!(actions.sends.inner, [7]);
+/// ```
+///
+/// ```compile_fail,E0283
+/// let mut sends = behavior::SendLayer::new(Vec::<u8>::new(), Vec::<u8>::new());
+/// behavior::SendEffects::send(&mut sends, 7_u8);
+/// ```
+///
+/// An input absent from both lanes remains unrepresentable:
+///
+/// ```compile_fail,E0277
+/// let mut sends = behavior::SendLayer::new(Vec::<u16>::new(), Vec::<u32>::new());
+/// behavior::SendEffects::send(&mut sends, 7_u8);
+/// ```
 pub trait SendInput<Input, Path> {
     fn emit(&mut self, input: Input);
 }
@@ -1455,12 +1479,21 @@ where
     }
 }
 
-impl<Input, Path, Owned, Inner> SendInput<Input, Path> for SendLayer<Owned, Inner>
+impl<Input, Path, Owned, Inner> SendInput<Input, (Own, Path)> for SendLayer<Owned, Inner>
 where
     Owned: SendInput<Input, Path>,
 {
     fn emit(&mut self, input: Input) {
         self.owned.emit(input);
+    }
+}
+
+impl<Input, Path, Owned, Inner> SendInput<Input, Inside<Path>> for SendLayer<Owned, Inner>
+where
+    Inner: SendInput<Input, Path>,
+{
+    fn emit(&mut self, input: Input) {
+        self.inner.emit(input);
     }
 }
 
@@ -2339,7 +2372,7 @@ mod tests {
     #[test]
     fn send_layer_emits_into_its_designated_owned_lane() {
         let mut effects = SendLayer::new(Vec::<u8>::new(), Vec::<u16>::new());
-        <SendLayer<Vec<u8>, Vec<u16>> as SendInput<u8, Own>>::emit(&mut effects, 7);
+        <SendLayer<Vec<u8>, Vec<u16>> as SendInput<u8, (Own, Own)>>::emit(&mut effects, 7);
         assert_eq!(effects.owned, [7]);
         assert!(effects.inner.is_empty());
     }
