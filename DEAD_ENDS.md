@@ -304,3 +304,17 @@ diagnostics). Its retained-library counterpart passes. A head/tail product
 probe cannot derive a heterogeneous tail's source capability from an empty
 recursive predicate. All four source-copy edits are removed. No mandatory
 structural spelling, invented ingress, or arbitrary bound is retained.
+
+### Selected source port does not follow from a whole-product marker
+
+Independent pinned Rust probes distinguish source-proof operations from empty
+proof predicates. A selected port on the existing head/tail binding product
+accepts the actual child sends for heterogeneous and repeated child types and
+preserves rejected allocation. The same factory with only a whole-product
+predicate fails E0277; projecting a tail source also fails E0308 when given the
+concrete send. Moving complete execution into associated/method scope proofs
+still produces E0275. A separate recursive communications sum can execute but
+would duplicate the existing birth sum. None supplies the joint pure-alias and
+recursive runtime law. No production model is retained or compiler-suggested
+ingress bound added. Keep the actual parent report, complete source custody and
+parent-owned bindings in the next hypothesis.

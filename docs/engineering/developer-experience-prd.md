@@ -667,7 +667,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; factory authoring remains red |
+| DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
 | DX04 | Lossless work/cleanup and borrowed state, custody and completion; all 24 outcomes retained; completion passes 299 debug/optimized tests and independent owner/consumer inversions | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -681,7 +681,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
 | DX16 | Receiving loans and child retirement inspected | Open: independently proved leaf custody/boilerplate reduction |
-| DX17 | No exports or bounds changed | Open: consumer/invariant audit and competing spelling deletion |
+| DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
 | DX20 | Existing ActorInterface/ExternalActor retained | Open: correlated replies, cancellation and slow/closed customers |
@@ -690,7 +690,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
-| DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles reach acceptance execution with space remaining | Open: canonical caller/compiler/runtime measurements and final resource gates |
+| DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 136 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
 | DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
@@ -2360,6 +2360,31 @@ after the mutation-baseline correction. Exact-head CI run 38058209730 passes
 published API audit, Linux Nix, all eight mutation shards and the strict
 aggregate gate. CodeQL and dependency policy also pass. PR #89 is reviewable;
 it is not merged or published, and registry dependency adoption remains open.
-Two additional ordinary-Rust source-product probes fail E0391 for recursive
-implied clauses and E0277 for heterogeneous-tail elaboration. No suggested
-ingress bound or corresponding production source port is retained.
+The authorized independent design reviews agree on the remaining law: a
+nominal creation future must cut recursive execution proof without imposing
+runtime ingress on pure actor authoring. Associated or method-bearing complete
+CommitActions availability still fails E0275. A projected tail proof compiles
+but rejects the actual concrete send value with E0308. A method-bearing source
+sum preserves heterogeneous exact rejection but duplicates the existing sum;
+it is not retained. A selected source port on the existing binding product
+accepts actual child sends, repeated child types and exact rejected allocation,
+but removing its separate selected-port premise fails E0277 even with the
+whole-product proof. Missing ingress also remains E0277. These compiler probes
+prove narrower laws, not complete interpreter acceptance. Disposition: reopen;
+zero actual repository production changes, new states, modules or public types.
+The source/settlement offering, actual LocalParentReports, create-before-send
+ordering and original parent binding custody remain required.
+
+The independent source-only custody rebase at
+/private/tmp/bombay-devx-custody-context now uses retained ActorCustody and
+completion inspection, preserving the prior retirement metadata experiment.
+Its separate consumer passes all 16 finite tests in debug and optimization:
+counter/component, namespaces, FIFO, supervisor, timer wrapper orders and
+pure existing/empty birth aliases. Cargo explicitly selects this source copy
+and owner source patches; actual Bombay remains registry-backed. A fresh
+recursive check still fails six E0275 diagnostics. No finite pass closes that
+gate or justifies lowering this source-only inferred API into production.
+Logs: /private/tmp/bombay-devx-custody-consumer-{finite,optimized,recursive}.log.
+Actual counter remains 136 main lines/218 total, with mandatory terminal enum
+and explicit run_with selection still open. No canonical ceremony win is
+claimed from unretained source copies.
