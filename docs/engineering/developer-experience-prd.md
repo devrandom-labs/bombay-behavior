@@ -56,7 +56,7 @@ such. No claim of an exhaustive proof of all executions is made.
 | Topology is declared repeatedly. | Application-topology main declares birth roles, concrete managed-child aliases, structural `ChildHead`/`ChildTail` failures, and a recursive terminal sum. | Derive structural products from the owning declaration without conflating repeated roles. |
 | Atomic construction inference is defeated by hosting and retirement. | Worker-pool names the seven-parameter `SearchPool`, three protocol aliases, `SearchSpaces`, and `SearchTerminal`; supervision repeats a longer proxy/worker tree. | Fix downstream consumers before adding more constructor sugar. |
 | Two application assembly surfaces remain. | `Application<Root, Members>` and `App<Root, Spaces, Families>`; pool, supervision and entity examples use `App`. | Make `Application` the sole ordinary composition spine. |
-| Runtime retirement repeats a large owned product. | `ActorRetirement` has 22 variants; five custody fields each occur in 20 variant bodies. | Audit the ownership equation; factor only genuinely coexisting custody, preserving distinct failure phases. |
+| Runtime retirement repeats a large owned product. | `ActorRetirement` has 24 variants; five custody fields each occur in 20 variant bodies. | Audit the ownership equation; factor only genuinely coexisting custody, preserving distinct failure phases. |
 | Partial interpretation custody is an actual contract. | `ActionItem`, `InterpretationProgress`, `SourceProgress`, Driver ports and `completed_application_receiving.rs`. | Replacing borrowed custody slots with a consuming async call requires proof, not aesthetics. |
 | Runtime configuration remains inaccessible in ordinary entry points. | `DEFAULT_USER_CAPACITY` feeds execution; external clients use `EXTERNAL_USER_CAPACITY = 1_024`. | Expose existing capacity policy coherently instead of requiring a custom host. |
 | `ActorExt` covers six wrappers. | `actors/actor_ext.rs`. | Extend only for actual same-actor decorations; do not turn every catalogue constructor into a method. |
@@ -234,7 +234,7 @@ not the solution for this requirement.
 **DX04 — Make terminal consumption proportional to the decision. P0, Bombay.**
 Provide borrowed domain inspection and consuming access to owned results without
 requiring every caller to destructure runtime fields. Audit `ActorRetirement`'s
-22 alternatives for a common coexisting custody product and phase-specific
+24 alternatives for a common coexisting custody product and phase-specific
 causes. Retain every distinction a future decision or exact return needs. Remove
 repeated cause labels and duplicated reconstruction only after proving their
 equations identical. No success-only `.unwrap()` adapter, generic erased error,
@@ -667,11 +667,11 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Existing Application declaration/composition inspected | Open: unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Existing global terminal projection traced through child launch/retirement | Open: transitive and recursive inferred custody; no leaf shortcut |
-| DX04 | Borrowed work/cleanup and lossless completed-work selection; seven focused debug/release tests | Open: inferred descendant consumption and actor retirement custody audit |
+| DX03 | Inferred/recursive regressions registered; source-copy factory/facade and role custody pass seven downstream debug/release tests | Open: selected public representation, own-birth role access, supervision/pools and complete owner gates |
+| DX04 | Retained lossless work/cleanup access; source-copy role selection preserves exact borrowed and unmatched ownership | Open: retain complete inferred descendant consumption and audit actor retirement custody |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Existing actor facade remains authoritative | Open: expansion/hygiene/private/generic corpus |
+| DX07 | Facade sender-independent regression retained in ec79d9f; original authoring and denials pass | Open: preserve this law through inferred custody; full expansion/hygiene/private/generic corpus |
 | DX08 | Existing named Actions lanes retained | Open: unrelated templates, both orders, complete effects |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -691,7 +691,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Pre-edit missing-method regression, seven debug/release tests, killed cleanup inversion, 65 custody/runner tests | Open: inferred syntax and complete downstream corpus |
 | DX26 | Counter baseline remains 144 physical main lines | Open: comparable caller/compiler/runtime measurements |
-| DX27 | Published locked owner source confirmed | Open: extracted/renamed consumers and final cross-repository gates |
+| DX27 | Timers 0.2 released/pinned; owner and Bombay gates, unpatched extracted/MSRV and renamed facade evidence pass | Open: package the final inferred API and execute its downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Application result conservation experiment
@@ -730,7 +730,7 @@ diagnostics. The added live startup-refusal witness retains a non-Send local
 work closure and exact rejected actor. No production edit existed at this cut.
 
 Pre-edit drift checkpoint: ApplicationOutcome has six alternatives;
-ApplicationWorkCustody has five; ActorRetirement has 22. These remain the
+ApplicationWorkCustody has five; ActorRetirement has 24. These remain the
 control/custody sums; this experiment adds no phase, result sum, actor dispatch,
 public type or module. Every alternative owns the existing cold, staged,
 prepared, uninvoked, completed or interrupted custody required for exact
@@ -764,7 +764,7 @@ was 1.3 GB; the baseline consumed approximately 753 MB. Do not delete unrelated
 caches or treat prior signing/disk failures as waived.
 
 Post-edit checkpoint: outcome/work-custody/retirement alternatives remain
-6/5/22; creation bindings remain Established/Rejected/StartupRejected. No
+6/5/24; creation bindings remain Established/Rejected/StartupRejected. No
 subordinate alternative or actor transition branch changes. The three
 inspections contain six match arms, with no dispatch or state mutation.
 The affected execution owner is 1887 -> 1944 physical lines, one module -> one;
@@ -827,12 +827,337 @@ affected semantic denials and complete ownership traces remain proved. Closing
 this PRD does not mean all networking, durability or optional platform work is
 implemented; their coverage mapping preserves those separate obligations.
 
-The next isolated counter consumer removes the runner's generic arguments and
-terminal enum. It fails with E0283: the terminal type remains unconstrained.
-This establishes a concrete Bombay inference gap; no Behavior change follows
-from it yet. An outside-workspace consumer additionally needs the workspace's
-immutable Timers patch: registry Timers 0.1.0 lacks the selected ScheduleError
-and token contract. The inference probe uses that exact patch to isolate
-E0283. DX27 remains open until the packaged dependency contract works without
-consumer repair. The initial documentation-only validation remains historical
-evidence in the appendix; it does not describe this implementation batch.
+### Inferred custody: reopened representation, active proof
+
+Two persistent caller regressions in Bombay's application_children harness remain
+expected-red: `application_inferred_custody.rs` originally fails E0283 at the unconstrained
+terminal type; its strengthened role-consumption form also fails E0432/E0282/E0599; `application_recursive_custody.rs` fails E0275 at recursive child
+interpretation. The latter now includes recursive retirement, distinct parent
+roles, original failed child/work return and real timer/shutdown wrapper orders.
+The prior declaration pass and invalid-child denial still pass. The current
+worktree has no complete-gate pass; retained-commit checks are distinguished below.
+
+The custody law is derived, not an Agha guarantee: a parent owns each direct
+child's complete retirement, and that retirement owns its descendants. Its
+ownership equation is `Child(origin, ActorRetirement<Child, ChildDescendants,
+ChildFailures>)`. Boxed concrete retirement gives recursive storage a finite
+representation without erasure. Fresh allocation, binding before dependent
+sends, initialization, explicit provenance, accepted prefixes and cancellation
+custody retain their existing laws. Target syntax omits runner arguments and
+terminal enums; role inspection must borrow exact reports, and consuming
+selection must return every unmatched value.
+
+Before production edits, the registered heterogeneous regression proved the
+inference gap. The plain-Rust metadata prototype reused actual Core occurrence
+products: a nominal schema supports self-recursive stored reports and Send;
+the blanket equivalent fails E0275. A separate consumer rejects a private
+projection alias. The actor's own ChildOccurrenceShape removes a redundant
+shape marker; no new macro is selected. Reuse ChildOrigin/ChildRole,
+ActorRetirement, ordered bindings, receiving loans and native projection tasks.
+Removing a task may not erase its distinct failure cause.
+
+DEAD_ENDS disposition: `reopen`. The first child-local candidate compiled and
+ran the heterogeneous counter (check 1.38 s; build/run 4.42 s), but recursive
+interpretation did not finish after 210 s. A diagnostic-only depth-64 probe
+exposes `EstablishChild -> DispatchBirth -> InterpretCreations -> CommitActions
+-> EstablishChild`; shallower limits stop at finite Send proofs. Raising the
+limit is not a solution. The original implementation with its explicit terminal
+sum has the same cycle. All eight candidate production files (+167/-29,
+net +138) and three public declarations were removed; no caller was migrated.
+
+Pre/post aggregate checkpoint: retirement retains 24 alternatives and creation
+bindings retain three. No control-state, transition alternative, effect lane,
+module or lifecycle authority changed. Baseline owner lines were terminal 2596,
+children 632, creation 1177, launch 4796, application execution 1944,
+composition 457, ActorExt 79 and exports 108. The surviving values remain exact
+creation/task custody and ordered receiving destinations. Residue scan found
+no new semantic booleans, arrival labels, inferred provenance or erased actor
+types. Missing complete recursive interpretation and structural consumption veto
+retention; green leaf compilation cannot supply that evidence. Cross-checks are
+locked Behavior creation/lifecycle contracts and Bombay Driver, capability and
+module ownership documents. This falsifier stays here instead of recreating a
+historical ledger.
+
+The next lower-order law is a nominal creation-interpreter proof: the actor's
+birth schema may establish a recursive edge without recursively re-proving its
+whole interpreter. The creation request/receipt/rejection equation is unchanged.
+An isolated ordinary-Rust source copy deletes the single blanket
+NestedChildBindings indirection, uses the direct occurrence product, and keeps
+one original establishment function. Port lookup uses the existing nominal
+Base; the decorated actor remains the owned input. Actual OneShot,
+StopOnShutdown and Stash owners preserve Birth/Base, so no second birth-mode
+interpreter is needed. Leaf sends and source custody retain their exact existing
+requirements, including the old static parent report tag at task handoff.
+
+The child-local combination additionally requires the decoration law explicitly:
+a decoration preserving the nominal Base and exact Birth owns the same
+descendant/failure schema as that Base. Generic runtime ports must state that
+equality rather than accepting a second arbitrary metadata implementation.
+This is derived schema preservation, not a new capability or actor-model law.
+
+That source copy passes four debug and optimized journeys: recursive
+cancellation retirement, distinct parent/transitive roles, initialization refusal
+retaining the original boxed child and boxed work output, and real OneShot/
+StopOnShutdown policy in both orders. Timer children actually retire Completed;
+elapsed time alone is not counted as firing. Debug build is 4.80 s and optimized
+build 13.36 s after formatting; execution is 0.03 s. Restoring the recursive interpreter requirement in another source
+copy makes the same tests fail compilation with E0275; targets are independent.
+The establishment body is identical after receiver renaming and optional
+rustfmt call commas: three matches, zero `if` branches, 356 to 363 physical
+lines. It adds no task, actor transition authority or protocol.
+
+An additional plain-Rust interface probe rejects implicit inheritance of method
+constraints: an implementation cannot use a trait method’s Clone bound without
+restating it (E0599). That mechanism cannot hide the creation requirements.
+No production interface is justified by this compiler diagnostic. All successful runtime copies remain outside the feature worktree.
+
+The combined child-local source copy now passes all four journeys without a
+terminal enum or run_with arguments (debug build 3.46 s / execution 0.03 s;
+optimized build 27.34 s / execution 0.02 s). Restoring the recursive interpreter
+bound in an independent copy rejects the same corpus with E0275. Its copy-only
+production diff is +620/-418/net +202 over nine substantive paths plus a module
+newline; the private 439-line consumer includes the explicit nominal port.
+Retirement alternatives remain 24, creation bindings remain three, and the
+establishment operation/effect order remains unchanged. None is retained.
+
+A required authoring checkpoint falsifies its metadata interface: the facade
+already supports an inferred non-Bombay sender address without a local host.
+The original source passes the full initialization/transition regression; the
+candidate fails E0271 because its metadata trait requires MailAddr. A concrete
+false where-Self bound cannot make this conditional (E0277). Do not branch on
+sender syntax, invent a marker or require an empty runtime policy. Bombay test
+commit ec79d9f retains this source-preservation witness (+39/-8 test lines,
+zero production/public API). Two outer-authoring tests and all four existing
+denials pass; a separate optimized executable runs the same fixture successfully
+(build 6.37 s, exact locked owner versions match). The release outer harness also
+passes, but trybuild's generated fixture build remains dev; it is not counted as
+optimized fixture execution.
+
+The next isolated model separates typed retirement data from local realization.
+Law (derived): retained user inputs and host rejection/report data use the
+behavior's exact associated address; standard Application interpretation still
+requires Bombay MailAddr. No execution, endpoint or lifecycle capability is
+added to a non-local actor. Desired syntax is the unchanged pure facade and
+unannotated local Application. Reuse the existing generic LocalActivationRejection,
+User and Termination products; keep local projection/constructor bounds and all
+runtime denials. The sender witness must pass together with the four runtime
+journeys, and a non-local Application must remain a compile denial. This is a
+source-copy hypothesis, not permission to relax interpreter bounds or retain
+unmeasured production surface.
+The source copy passes the four runtime journeys and executes the original
+sender-independent fixture. Non-local Application remains rejected at run_with
+(E0599 on its unsatisfied local address bound). Standard creation/projection
+bounds remain fixed to MailAddr; only owned protocol data names its associated
+address. Public/family preservation and full owner checks are still open.
+
+The next port hypothesis packages the old non-recursive requirements through a
+sealed creation scope's associated types. A ChildCreation value owns exactly the
+routed request and a temporary mutable loan of its creator's capabilities; its
+private construction proves the selected child occurrence. The nominal Base
+supplies the recursive interpreter proof, retaining the decorated actor as input.
+The loan may establish only that request and cannot issue another lifecycle or
+transport capability. Its ownership equation is (creator loan, RoutedCreation)
+-> original ItemSettlement; no additional actor, effect or task is introduced.
+The desired handwritten proof names the nominal actor and this creation loan,
+not ApplicationCapabilities, child-binding paths or source slots. Reuse the
+original establishment operation and all old leaf-send/source constraints;
+delete the seven-parameter private nominal factory declaration only if the
+ordinary-Rust caller and complete journeys prove the new port. This hypothesis
+is isolated before any production retention or facade expansion.
+The plain-Rust loan port now passes the four journeys in a separate crate using
+only public factory/scope/loan names (debug build 3.50 s, execution 0.04 s).
+All old scoped send/creation custody premises are reused. The sealed scope
+carries the creator's exact event/birth tags and the actor's existing products;
+the direct occurrence product replaces a redundant opaque child-bindings label.
+Eighteen private-bound/interface warnings expose a publication question that
+remains open; no visibility promotion or lint waiver is retained. The next
+source-copy facade experiment derives only this already-proven declaration and
+returns the loan's original future, avoiding another async capture of unused
+actor type parameters.
+The first expansion fails the pure sender witness by equating the actual
+actor's protocol with its Base protocol. Reopen that constraint: the interpreter
+operates on the actual actor and its concrete protocol; the Base selects the
+birth schema. Base, exact Birth and custody-schema equality are required;
+Base::Protocol equality is not read by the original establishment operation.
+Dropping that experiment-only equation leaves the actual scoped actor and
+Application fixed to MailAddr, and must preserve the non-local runtime denial.
+This is removal of an unproven constraint, not a new protocol conversion.
+
+A fresh enum-root source count corrects the earlier 22 figure: both inspected
+c3afb30 and current ec79d9f contain 24 retirement alternatives, including the
+native task-failure and legacy Panicked/Cancelled alternatives. No variant was
+added in this work. All aggregate pre/post counts use the verified 24. The facade expansion with
+only Base/Birth/custody equations executes the original pure sender fixture
+(build 34.28 s), with private-interface warnings still open. That cost is
+unaccepted until compared on a controlled warm and clean build; no programme
+completion is inferred from these probes.
+ Pure sender, generic/renamed and complete runtime callers
+must all pass; deriving a factory may not impose new authoring bounds.
+
+
+
+This remains lower-order evidence, not a selected public representation. The
+current external factory/facade proof infers child-local custody without a
+terminal enum; own-birth consumption still exposes structural choices. Public
+metadata/port privacy, deterministic readiness, standalone supervision/pools
+and their independent failure traces must be proved together before migration.
+Caller ceremony, aggregate measurements and required denials remain gates.
+
+The next terminal-consumption law is derived affine projection of application
+roles: borrowing a direct child report never consumes it; selecting one declared
+role transfers its exact origin and complete boxed retirement, or returns the
+complete original unmatched sum. Desired syntax is
+`report.child_retirement(&Audit)` and
+`report.try_into_child_retirement(&Audit)` with inferred position. Role selection
+is static, including two children of the same actor type. It grants no lifecycle
+or sender authority. Reuse the existing ChildChoice sum, ChildOrigin, boxed
+ActorRetirement and role declarations; delete caller Head/Tail navigation.
+An external counter regression is written before the source-copy implementation:
+actual reply, joined root retirement, three distinct child roles, borrowed and
+owned preservation of a move-only audit allocation, and complete unmatched
+return before selecting a different role. Production hypothesis is one sealed
+extension trait with head/tail implementations in terminal.rs and its exports;
+no new state/product, macro, task or interpreter branch. Expected delta is under
+100 production lines and one public trait. Retirement alternatives remain 24,
+creation bindings three; surviving data are exactly the original origin and
+retirement. The direct sum remains the single representation. Own-birth role
+projection, full publication, independent inversion and generic families remain
+required before retention or migration.
+
+The counter role-consumption regression first fails E0432/E0599 on the missing
+selection interface. Its source-copy implementation adds one sealed trait and
+head/tail implementations, with no new custody product or control state. The
+external caller now executes the real counter reply, joins all three children,
+borrows the audit state through existing BehaviorBase, and recovers the exact
+original audit allocation. Borrowed origins/retirement pointers agree with
+consuming selection; both unmatched counter reports preserve their original
+pointers before successful selection by distinct roles. The stronger caller is
+preserved in the owning inferred-custody fixture; it remains expected-red in the
+feature worktree because the candidate is not retained.
+
+Exact source-copy checks: the external counter corpus passes three tests,
+including its two real Counter pure-transition tests; the recursive corpus
+passes four. All seven pass debug (build 4.16 s, execution 0.03 s) and optimized
+(build 13.21 s, execution 0.02 s). Four separately checked invalid callers fail
+as required: wrong role E0277, forged scope E0277, forged creation loan E0451,
+and non-local Application E0599. An independent source and target copy changes
+only borrowed head selection to report absence: the ownership regression fails
+its borrowed/consumed origin and pointer equation, while both Counter pure tests
+still pass (build 7.62 s). This kills the selection inversion; it is not a full
+owner-gate result. The source-copy outer-authoring suite also passes both tests
+and all four existing compile denials (13.00 s) with the retained full sender
+fixture. Its first invocation failed only because /tmp and /private/tmp produced
+duplicate path-package IDs; the canonical-path rerun passes. Eighteen private
+publication warnings remain, so this is not a warning-clean gate.
+
+Current copy checkpoint: control states remain outcome/work/retirement 6/5/24;
+creation-binding alternatives remain three and the establishment operation is
+unchanged. Selection adds four matches/eight alternatives over the existing
+sum; none selects an actor transition. All surviving subordinate values are
+exact origin, complete retirement, mutable creation loan or original staged
+request. No new semantic booleans, arrival history, duplicate causes, inferred
+provenance, false single-child policy or nested actor engine occurs. The copy's physical Rust source diff in substantively changed owners against
+retained ec79d9f is +942/-525/net +417
+over eleven substantive source paths; that includes source-copy test disabling
+and its private test module declaration. Nineteen additional tracked source
+paths differ only in diagnostic test configuration. A private probe module and
+temporary examples are also outside the worktree. These are not retained-production
+measurements. Exported new types/traits number seven, versus zero retained.
+Visibility-bearing declarations in those paths are 132 -> 147, including
+private-module declarations. Actor creation/lifecycle, Driver, capability and
+module laws remain the cross-checks. Disposition: focused role selection passes;
+the combined public representation remains unaccepted until publication,
+own-birth role access, real families and complete owner gates pass.
+
+The next ordinary-Rust port experiment states nominal creation proof without
+creator-context trait parameters. Law (derived): the Base owns its birth
+interpreter proof; a valid scoped request supplies the parent/position and the
+actual decorated actor. The same Base/Birth/custody equations remain mandatory,
+while protocol identity is not inferred from Base. Target advanced component
+syntax is a generic parent accepting `B: ActorCreation` and issuing its real
+birth; ordinary callers still only construct actor values. A generic Nursery
+is intended to accept recursive Node and real Counter as distinct child
+substitutions; the first Counter witness exercises the prior two-parameter port. Reuse the same
+sealed scope, affine loan and establishment function; move context parameters
+to the factory method and delete them from the trait. No new type, interpreter,
+phase or effect is proposed. This is a source-copy hypothesis, not a retained
+API; the original sender and seven runtime journeys remain required together.
+The first lowering incorrectly makes Base/Birth/custody equality part of every
+creation scope. Reopen that placement: these are the nominal factory's selected
+input equation, not requirements on unrelated scope data. Keep the scope's old
+leaf premises and state the exact equations at EstablishChild's factory call.
+The compiler's suggested new Base::Birth/Send bounds are not added.
+After moving the unchanged input equation to the factory call, the library
+compiles, but the generic parent still fails on twenty missing runtime leaf
+properties (Send, protocol/source custody and creation interpretation). The
+nominal proof alone does not establish that generic child's valid scope. This
+hypothesis is reopened without adding those compiler-suggested bounds; both
+source-copy production files are restored to the last seven-test representation.
+The generic Counter witness and exact failing patch remain outside production;
+a second child substitution was not migrated after the first falsifier.
+The restored external corpus passes all seven tests again (6.22 s build,
+0.03 s execution). The feature branch still has no inferred-custody production
+changes; only the stronger expected-red caller fixture is kept there.
+
+Timer qualification: the combined runtime probe observes both children actually
+Completed, but it still uses a 20 ms wall-clock delay before root shutdown.
+Source confirms relative scheduling and expiry use std::Instant while waiting
+uses Tokio. These observed runs do not satisfy deterministic timer evidence;
+remove that timing dependency before retaining this corpus. No clock semantics
+are changed speculatively from this observation.
+
+The user explicitly authorized the expanded selected-programme surface on
+2026-10-09. The cumulative task currently touches 21 repository paths, including
+five Timers release paths and three uncommitted Bombay regression paths.
+Retained Rust production growth remains +56; new public types remain zero and
+new public methods remain three. Work stays on feature branches and Bombay's
+isolated docs-devx worktree. Authorization does not waive model, provenance,
+composition or aggregate-drift gates.
+
+### Timers delivery prerequisite: resolved
+
+The pre-edit extracted Bombay package failed E0432/E0599: registry Timers 0.1.0
+lacks ScheduleError and returns Token instead of Result. The workspace-only
+immutable patch selected checked owner 13e884d, while registry 0.1.0 identified
+owner 4e515ed. Engine 0.2.2 and macros 0.1.2 identify 5ce81b6 and match their
+workspace source byte-for-byte. Packaging without verification did not pass
+release acceptance. Preserve the checked scheduler; do not hide exhaustion.
+
+This change is delivery policy, with no Rust semantic/API change. Before edits,
+the extracted failure established the prerequisite and the owning release was
+prepared in a separate worktree. Timers commit 3f85315 changes five manifest,
+lock, changelog, guide and Nix-version paths (+18/-8 metadata lines), zero Rust
+production/test lines and zero public declarations. Clean pinned
+`cargo package --locked -p bombay-timers` verifies its 11-file archive
+(55.2 KiB, 16.5 KiB compressed). All eight native 1.96.0 Nix checks pass:
+build, fmt, Clippy, nextest, doctest, doc, audit and deny. Nextest reports eight
+passed, zero skipped; optimized tests pass six unit and two semantic cases.
+
+[Release PR #8](https://github.com/devrandom-labs/bombay-timers/pull/8) passes
+both required CI runs, with a signed head and zero required approving reviews,
+and merges as 9369d1f. The release workflow passes and registry 0.2.0 is
+published with MSRV 1.96. Its downloaded source is identical to the selected
+checked scheduler. Superseded 0.1.1 bot PR #7 is closed with its branch preserved.
+
+Bombay dependency commit 9ce1afd selects registry 0.2.0 and removes the workspace
+patch. Five manifest/lock and existing contract records change (+17/-11 metadata
+lines); Rust code, tests and public API do not change in this delivery batch.
+Historical revision records stay dated. Exact verification:
+
+- `cargo package --locked --allow-dirty -p bombay-rs` verifies the 211-file archive.
+- Unpatched extracted `cargo check --locked` passes (6.30 s); `--all-features`
+  passes (6.48 s). The same all-feature archive checks with pinned 1.96.0
+  (6.62 s), matching Bombay's declared MSRV.
+- A separate renamed, facade-only consumer runs the existing generic/hygiene/
+  typed-products regression against the extracted archive: one passed,
+  build 10.47 s. The workspace renamed library alone is empty and is not counted.
+- The 65 existing custody/runner tests pass with registry Timers 0.2.0.
+- `nix flake check git+file:///Users/joel/orca/workspaces/bombay/docs-devx?rev=9ce1afd947a3b82f8019ade9c7a8dc8b672145df --max-jobs 1 -L`
+  passes all 21 native gates. Repeating the same command at
+  `ec79d9f8a85813053a3fadd173e7de67354a56e0` also passes all 21. These
+  immutable-commit runs exclude the current expected-red fixtures and all
+  source-copy candidates; they certify only the retained commits.
+
+Disk and Darwin signing checks succeed without waivers. Other Bombay platforms
+and optional exhaustive gates were not executed in that run. Final inferred-API
+packages, downstream denials and complete journeys remain open under DX27.
