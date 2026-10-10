@@ -283,3 +283,13 @@ Direct-child scope guards still produce conflicting sealed context equations
 (E0271) in recursive declarations and ingress failures in pure ProxyParent.
 The actual caller requirements do not pass together. Both factory/dispatch
 changes are removed; no additional context generic, alias or bound is retained.
+
+### Direct-child creator equations and source supertraits remain insufficient
+
+The complete Parent/Event/Birth/Spaces equation removes recursive context
+mismatch diagnostics, but pure actor declaration still requires runtime report
+ingress. A CreationSources supertrait port reduces those diagnostics without
+making the valid pure definition compile. A separate context generic also
+fails E0284 in ordinary Rust. All combined production representations are
+removed. No actor event, context generic or capability was added to repair
+these failures; pure declaration and recursive execution remain jointly required.

@@ -668,10 +668,10 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
 | DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; factory authoring remains red |
-| DX04 | Lossless work/cleanup access; borrowed actor state covers all 24 retirement alternatives; completion/refusal/native-error custody tests and inversion pass | Open: retain inferred descendants; common custody/phase-cause audit and command/effect recovery |
+| DX04 | Lossless result access and borrowed state; one 14-field ActorCustody product for 20 outcomes, all 24 outcomes retained; 357 debug/369 optimized tests and accessor inversion pass | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Sender-independent regression retained; a1b7e46 preserves pure birth/report authoring and all four original denials; candidate fails this focused facade case | Open: resolve factory availability while preserving recursive creation; complete expansion/hygiene/private/generic corpus |
+| DX07 | Pure actor authoring retained; ordinary and pool-worker rustdoc regressions expose and prove owner lookup fixes; renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -1905,3 +1905,289 @@ Build-policy delta: flake.nix +4/-0 and README +4/-0; zero production Rust,
 test selection, public API, dependency or semantic state change. The native
 resource falsifier is removed, while the missing inferred API and recursive
 compile-cost failures remain open. The full programme is not verified.
+
+Complete creator relationship hypothesis (derived, source-copy only): a direct
+child scope is owned by the actual decorated actor that requested it, uses that
+actor's event/birth protocol and the same allocation spaces, and selects the
+exact declared child. These relationships are simultaneous; a child-only
+association does not state the creator equation. The existing scope's Parent,
+ParentEvent, ParentBirth, Spaces and Actor associated types own them. The
+factory remains a nominal future cut; availability requires local child
+interpretation, rather than recursive full CommitActions availability.
+
+Caller syntax remains the existing actor declaration and inferred Application;
+no parent label, structural alias or policy is added. Ownership equation:
+creator of child = actual scoped actor; child namespace spaces = creator
+spaces; parent reports enter that actual actor's Event under its actual Birth.
+Re-use the existing sealed context, birth dispatch and complete creation kernel;
+delete the separate redundant Birth factory key only if the required paired
+witnesses pass. First regressions are the already failing pure_parent and
+recursive tests (including full startup rejection and retirement). Run them
+before retaining any production or migrating a second caller. Both must pass
+together; suggested unrelated bounds remain forbidden.
+
+Expected source-copy delta: two owners, under 100 net lines, no new public type,
+one fewer public factory generic. Add the complete creator equation to the
+existing direct-child scope guard. Actor control, binding (3), retirement (24),
+subordinate custody sums, runtime branches and stored values remain unchanged.
+Every surviving scope owns the exclusive creator borrow; every retirement
+retains its original origin, actor and subtree. Check provenance against the
+fresh-creation/binding law, Driver custody and both creation/report interpreter
+paths. The prior scalar association and child-only guard are falsifiers, not
+accepted evidence for this complete equation.
+
+Complete-creator result: reopen. The paired consumer command exits 101:
+recursive context E0271 errors are gone, but pure_parent still emits seven
+E0277 report-ingress/EstablishChild errors. A definition-only caller cannot
+be made conditional by the child-scope equality alone. No runtime pass is
+claimed from the concurrently compiled recursive target. The two-owner trial
+is not retained; the same control/binding/custody state sums and complete
+kernel remain. Log: /private/tmp/bombay-devx-complete-creator-consumers.log.
+
+Local-source availability probe: before another factory lowering, test ordinary
+Rust's associated-type bound elaboration with a pure parent and a reporting
+child. The law is conditional local execution, never mandatory executable
+capability for declaration. An execution guard must explicitly carry the
+existing InterpretSends and SourceSettlementCustody proofs for the actual
+child's Sends on its created context; it cannot rely on recovering a where
+clause from an empty tag or a concrete Actor equality. This is exactly the
+existing scope's local send contract, not an additional effect, parent event,
+policy, stored value or recursive CommitActions promise. If ordinary Rust
+accepts the micro-probe, a source-copy factory experiment may spell those
+existing local send proofs in its generated where clauses. Ordinary syntax
+and all paired recursive/refusal/static-denial witnesses remain unchanged.
+Two owners, under 140 net lines, zero new public type; no catalogue migration.
+Any additional independent capability or recursive availability premise
+reopens the design. State/control/custody and interpreter branches stay fixed.
+
+Ordinary-Rust results: conditional_sources compiles. A supertrait containing
+an associated send bound carries the usable proof; a blanket implementation's
+where clause does not. conditional_context fails E0284 when another generic
+repeats the sealed context equation. No context generic is added to production.
+
+Creation-source port hypothesis: expose the existing local send interpretation
+contract as one trait on Sends, with InterpretSends and SendSettlements /
+SourceSettlementCustody as supertrait-associated bounds. Unlike the rejected
+empty tag, its inherited operations and associated custody are the proof.
+The owning creation module computes the exact child context privately.
+CreationScope uses this port for its actor's Sends; nominal factories require
+it for each actual direct child's Sends. This owns one interpreter seam,
+substituted by NoSends, domain Sends and real ProxyEffects; it owns no runtime
+state or actor policy. It replaces the two existing inline scope send bounds,
+not the concrete interpreter or effect algebra. Generated guards preserve the
+complete creator equation already recorded. No caller names a context, proof,
+role path, callback or policy. Reuse the exact creation kernel and nominal
+future cut. Pre-edit pure_parent, recursive and conditional_context failures
+are the witnesses. Both real consumers must pass together before broadening.
+Two owners plus export, under 180 net source-copy lines, one public trait and
+one fewer factory generic; zero new actor state, custody alternatives,
+interpreter branch, stored value or dependency. Cross-check same creation,
+source-admission, prefix/rejection and Driver custody laws. Reopen rather than
+add any unrelated bound, extra context generic or recursive readiness promise.
+
+Creation-source port disposition: reopen. The library compiles, but the paired
+consumer exits 101 with five E0277 errors in pure_parent. Associated supertrait
+source proofs do not resolve the real scoped ingress/worker establishment
+premises. No recursive runtime pass is claimed. The trait, export, dispatch,
+association and generated guards are removed together and the prior nominal
+source copy restored. No additional source/context/trait bound is accepted.
+Logs and rejected owners: /private/tmp/bombay-devx-creation-sources-*.
+
+Runner projection substep (DX05, derived Rust ownership): ordinary Application
+already owns Members::Actor and Members::StagingFailure through its existing
+ComposeApplication contract. These are not caller choices. Remove those two
+independent generic slots from run_with, deriving its identical result and its
+execute_with call from that one owner. Existing explicit terminal selection
+and child-failure parameters remain until inferred custody is accepted; this
+substep does not claim the final ordinary API or close DX03/DX05.
+Desired intermediate syntax: Application::new(counter.stop_on_shutdown())
+.run_with::<Never, _, _, _>(real_counter_work). The actual counter reply,
+shutdown, joined retirement and independent work output stay unchanged.
+Startup refusal returns the exact original actor and uninvoked non-Send work.
+The two existing application_outcome caller tests are changed before production
+and must fail on the prior six-slot interface. Reuse the private composition
+contract and unchanged execute_with / execute_application_with kernel. No new
+trait, bound, type, alias, lifecycle operation, disposal policy or visibility.
+Expected semantic batch: one production owner, existing caller test, fewer than
+15 net production lines; remove two public function generics, zero public
+Types. Public result types remain exactly the same after substituting the
+existing associated types. Any visibility/privacy defect reopens this substep,
+rather than exporting composition machinery. Validate independently at the
+real external integration-test crate before migrating other callers.
+
+Aggregate checkpoint before lowering: outcome/work/retirement sums stay
+6/5/24; actor and staging authority remain ComposeApplication; no subordinate
+state is added. All current owned values and transitions survive verbatim.
+Branch/module/effect counts remain unchanged. Residue scan requires no second
+cause, arrival history, semantic boolean or actor engine. Cross-check cold
+application/rejection ownership, caller-local work and Driver custody.
+
+Runner projection disposition: reopen. The pre-edit two callers fail E0107
+as intended. The four-slot source compiles internally, but both external
+callers reject the private ComposeApplication::Actor at await; three private
+interface warnings also expose Actor and StagingFailure. No visibility is
+widened and no alias/result facade is invented. Production and both caller
+edits are restored. Logs: /private/tmp/bombay-devx-runner-inference-{before,after}.log;
+rejected patch: /private/tmp/bombay-devx-runner-inference-rejected.patch.
+
+Retirement custody product substep (DX04, derived conservation law): source
+inspection establishes that exactly 20 ActorRetirement alternatives own the
+same 14-field product: behavior, unread control/user, descendants, child
+failures, capability failures, additional Driver failures, received
+interpretation/source, source index, acquired ingress, retirement failures,
+terminal report and unread owner cancellation. Allocation refusal owns just
+its original actor and allocation cause; ActorTaskFailed/Panicked/Cancelled
+have no actor custody. Phase-specific initialization/active effects, source
+progress, settlements, completion, primary errors and panic payloads remain
+in their original alternatives. They are not equal to the common product.
+
+Replace those 20 repeated field lists with ActorCustody, a named owned product;
+retain all 24 alternatives and their phase-specific fields. Add borrowed
+custody() on the existing retirement; consuming callers match its original
+variant and move that same product. behavior() keeps its current semantics,
+including allocation refusal. No outcome classification discharges a cause.
+Target caller: inspect retirement.custody().user without matching every phase,
+then consume Completed { custody, completion, .. } or the exact failed variant.
+Smallest pre-edit witnesses extend the actual counter and startup-refusal
+journeys to borrow the original product, preserve actor/allocation pointers,
+and consume those same fields. The existing complete retirement owner tests
+cover all 24 variants and original executor errors. No local-source/factory
+prototype is part of this change.
+
+Reuse current LocalResidual conversion and every existing retirement branch;
+delete repeated common field declarations/reconstructions only. Expected
+production owners: terminal plus its exact constructing/consuming interpreters,
+under ten source files, net source reduction, one new public product. Stage
+with the focused caller and smallest interpreter proof, then migrate callers
+mechanically only after debug/optimized and inversion proofs pass. Generic
+parameters are exactly the current BehaviorState/Root/ChildFailures, each
+already instantiated by unrelated real actors and child topologies. No new
+bound, event, effect, task, state, phase, flag, dependency or visibility.
+
+Aggregate checkpoint before: terminal alternatives 24; common custody fields
+14 repeated 20 times; branch/control sums unchanged. Each common value is
+required for exact owned recovery or a future caller decision; each remaining
+phase value owns its original incomplete effects/source or primary cause.
+The owned product coexists with those causes and is never another transition
+authority. Validate exact pointer recovery, accepted effect prefixes, source
+cancellation and all cold/active paths against Driver and lifecycle custody
+laws before retention. Preserve static authority denials. Missing field,
+phase confusion or duplicated cause reopens the experiment.
+
+Custody product focused checkpoint: actual counter and initialization-refusal
+callers fail before production with two E0599 missing custody accessor errors.
+After the product lowering all nine application_outcome tests pass in debug
+and optimized builds, zero failures/ignored. An independent accessor inversion
+reports no available product; exactly those two real journeys fail and seven
+other tests pass. Original source is restored. Physical focused delta is
++633/-923/net -290 across three source owners and the existing caller test;
+one public product, one borrowed method, zero new generic bound or visibility.
+Terminal alternatives remain 24, common field declarations reduce from
+14*20 to one 14-field product plus 20 product fields. Every phase-specific
+value and branch is unchanged. The original ActorRetirement discriminant
+remains the sole owner of the primary cause. Disposition: focused law pass.
+
+Mechanical custody migration may now adapt the remaining owner tests, real
+consumers, examples and rustdoc to that proven named product. It adds no new
+semantic symbol, generic, callback, policy or route. Existing assertions,
+independent failure traces, panic values, source lanes and static denials must
+remain verbatim apart from grouping owned fields. Run full owner unit tests,
+the real receiving/cancellation/outcome consumers, warning-clean all-target
+compilation and docs; canonical inferred-API fixtures remain a separate open
+gate. Logs: /private/tmp/bombay-devx-common-custody-{before,after,release,inversion}.log.
+
+Facade rustdoc hygiene substep (DX07, derived static namespace law): the
+executable custody rustdoc fails E0433/E0425 because actor generation selects
+crate::behavior and crate::MailAddr when CARGO_CRATE_NAME equals bombay, even
+though rustdoc compiles in its own crate root. Bombay already declares
+extern crate self as bombay. The canonical ::bombay path resolves both that
+owning alias and rustdoc's actual external dependency. Preserve renamed
+external dependencies through the existing proc_macro_crate lookup.
+Before production, /private/tmp/bombay-devx-common-custody-doctest.log contains
+the failing actual actor/accessor snippet. Reuse the existing self alias;
+delete the CARGO_CRATE_NAME branch from the owner resolver. One macro source
+file, net source reduction, no new public symbol, alias, type, trait, bound,
+event, effect, semantic state or visibility. Re-run executable rustdoc, full
+facade denials, and real renamed downstream. No snippet-only imports or hidden
+public re-exports are accepted. Actor/control/custody sums and generated
+Behavior semantics stay unchanged; only canonical static crate resolution
+changes. Failed rustdoc remains a real gate failure until fixed.
+
+Owner-level hygiene gap: with the valid complete Actions signature and Bombay's
+own resolver corrected, the same executable rustdoc still fails E0433 in
+Behavior's generated crate::behavior path. This is a concrete downstream
+consumer failure on locked macros 0.14.0, whose owning behavior_crate branch
+matches current source. The failure is /private/tmp/bombay-devx-facade-doctest-after.log;
+the restored valid pre-Bombay-fix witness is facade-doctest-before.log.
+The initial short snippet omitted the already-required complete Actions return;
+that authoring error was corrected before the retained hygiene proof. No
+signature restriction was relaxed.
+
+For Behavior's Bombay-package branch, use ::bombay::behavior consistently,
+reusing Bombay's existing self alias. Delete the CARGO_CRATE_NAME guess; package
+identity does not identify rustdoc's current target root. One existing macro
+function, net reduction, no public symbol or actor semantics. The actual
+consumer witness precedes this owner edit. Test via an explicitly patched
+source copy because actual Bombay still locks the published old macro; do not
+claim distribution from that source-only pass. Independent renamed/direct
+paths and all owner gates remain required before delivery. No production
+Cargo patch, snippet-only alias or hidden import is retained.
+
+The owning facade crate-resolution fixture now registers a real rustdoc test:
+Counter performs the complete pure transition, and a pool Worker declares the
+same actual assignment/completion contract as the existing worker fixture.
+Counter's restored old owner lookup fails, and the corrected behavior lookup
+passes. The Worker snippet separately probes the shared Actors lookup before
+editing its Bombay-package branch. Its canonical path is ::bombay through the
+same existing alias; the actor-library own-package branch is unchanged without
+its own witness. No semantic worker policy or second actor surface is added.
+Both fixture snippets use fully qualified imports and existing complete Actions
+contracts. This is a separate static lookup regression, not evidence for the
+open factory/recursive application model.
+
+Retirement migration checkpoint: 357 debug tests and 369 optimized tests pass,
+including the owner, actual result receiving/cancellation, exact child custody,
+real supervisor/FIFO recovery, facade and lifecycle denials. All 24 outcomes,
+20 common products, every original phase-specific field/type and allocation
+refusal equation compare unchanged against the baseline. Common fields are
+stored once, and neither cause nor authority is inferred from product presence.
+Clippy across the workspace/all targets/all features passes after preserving
+one long complete ownership witness with a narrowly justified annotation.
+The live counter passes and shrinks 147 -> 135 physical lines; the owner terminal
+file shrinks 2630 -> 2323. Physical source delta (includes owner tests) is
++980/-1205/net -225; external tests/examples +1254/-857/net +397; docs +27.
+One public product and one accessor; zero new trait/bound/actor state/runtime
+branch/dependency. The counter retirement object measures 688 -> 696 bytes
+on pinned Rust 1.99, an 8-byte alignment cost; no new allocation is introduced.
+Residual scan finds no new arrival history, repeated cause, false cardinality,
+semantic boolean, nested transition authority or structural user requirement.
+Disposition: custody representation pass; publication/distribution still open.
+
+Macro hygiene checkpoint: both valid owning doctest snippets fail with the old
+library-root guess, individually for behavior and atomic paths. The corrected
+owner passes six unit and six crate-resolution tests, including real doctest
+execution. The paired Bombay source copy with only the explicit owner macro
+patch passes its executable custody rustdoc; the actual renamed downstream
+passes its real actor/ActorSpaces/TerminalProjection check. Actual Bombay's
+Cargo manifest/lock remain unpatched. Published macros 0.14.0 still block that
+new doctest, so source-only proof cannot close DX27 or full Bombay gates.
+The native five-gate attempt captured the pre-fix failing doc snapshot and was
+interrupted deliberately; exit 1 is not a pass. Owner full flake check first
+fails formatting of the new fixture test; formatting is corrected and the same
+full gate is restarted. No Darwin/disk failure is waived. Completed task build
+caches are removed with source/logs preserved, restoring 7.5 GB free.
+
+Retained commits: Bombay fe831e9 owns the custody product and mechanical field
+migration; a431c2a owns facade rustdoc lookup. Behavior 2ea569a owns both actor
+and worker lookup fixes and their registered owning regressions. Production
+measurement for fe831e9, removing cfg(test) items before line comparison:
++570/-876/net -306. The physical source count above includes owner tests;
+these are distinct measurements. Actor/control/phase alternatives and runtime
+transition branches stay unchanged, modules add zero, public products add one.
+Both old lookup inversions are killed; all six owner crate-resolution tests
+pass. Owner full native verification is currently running under session 55587,
+with successful build/Clippy/doc/doctest phases observed; nextest and remaining
+gates are not yet certified. Actual Bombay remains registry-unpatched, and its
+new executable doc still needs distribution of the macro fix. Canonical
+inferred application fixtures, recursive factory and the other open checklist
+items remain required; no completion status is changed.
