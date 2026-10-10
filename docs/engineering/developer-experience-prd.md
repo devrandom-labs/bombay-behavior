@@ -1511,7 +1511,11 @@ Exact verification, pinned Nix: pre-edit core and downstream fail for missing
 inner routing; four core regressions pass debug/optimized, two Actors regressions
 pass debug, and two retained-Bombay facade/ActorExt tests pass debug/optimized.
 The real Application timer-acknowledgement and duplicate-reunion tests pass
-debug/optimized (no fixed sleep). A separate no-op-inner mutation compiles and
+debug/optimized (no fixed sleep). Inferred noncapturing reactions also pass both
+builds (2.03 s debug / 5.15 s optimized build, execution under 0.01 s):
+`.with_one_shot(id, delay, |actor| Actions::cont().with_send(report))`.
+These replace both hand-written reaction functions and their return types in
+the source-copy witness; no application helper or structural send path is used. A separate no-op-inner mutation compiles and
 kills all four core regressions at runtime. Independent binaries reject repeated
 lanes with E0283 and missing lanes with E0277. Source-copy workspace tests plus
 doctests report 1034 passed, zero failed/ignored before the two Actors tests were
