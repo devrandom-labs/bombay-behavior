@@ -671,7 +671,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX04 | Retained lossless work/cleanup access; source-copy role selection preserves exact borrowed and unmatched ownership | Open: retain complete inferred descendant consumption and audit actor retirement custody |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Facade sender-independent regression retained in ec79d9f; reshaped source-copy schema also passes full outer-authoring and four original denials | Open: warning-clean inferred custody; full expansion/hygiene/private/generic corpus |
+| DX07 | Sender-independent regression retained; a1b7e46 preserves pure birth/report authoring and all four original denials; candidate fails this focused facade case | Open: resolve factory availability while preserving recursive creation; complete expansion/hygiene/private/generic corpus |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -1531,3 +1531,98 @@ is open. This does not close inferred creation, topology, terminal projection,
 or whole-programme acceptance. Temporary source/log evidence lives under
 /tmp/bombay-devx-send-lanes-* and /tmp/bombay-devx-timed-custody-*; durable owner
 regressions are send_lanes.rs and wrapped_send_requests.rs.
+
+The current owner compilation remains red after selecting committed Behavior
+e09ccfa explicitly in the source copy. Four internal projection records still
+use a global recursive terminal parameter for NoBirths actors. Their law is
+unchanged: projection transfers the complete exact child retirement; projection
+panic remains an independently reported native failure; shutdown and other
+capability lanes retain all custody. A NoBirths child's descendants are Never,
+not the parent's selected projection type. Migrate only these focused law tests
+to the proven ChildRetirementAt occurrence port and child-local Never custody,
+without changing their transition, callback, assertion, actor-task or failure
+trace. Existing RootProbe ProjectTerminal coverage stays. This is test lowering,
+not a new API or broad catalogue migration; expected production delta is zero.
+Control-state sums, subordinate alternatives, branch counts and public spellings
+are unchanged; four projection records keep the exact same owned actor, origin,
+settlements and native causes. The pre-edit regressions are the restored
+projection-panic, two shutdown targets, capability reunion and cancellation
+corpus. The factory event-ingress falsifier remains separate and must stay red.
+
+The focused projection migrations reduce owner compilation from fifteen errors
+to two, both at the pure ProxyParent facade declaration. Preserve that exact
+declaration in an independent downstream pure_parent compile/initialization
+fixture; it must pass against retained Bombay and remains red against the
+candidate. For the unrelated interpreter-only ProxyOperation proof, express
+its existing pure parent through the exact owning Behavior macro and an
+uninhabited receive, with identical protocol/event/birth/settlement contracts.
+This relocates authoring coverage to its consumer seam; it does not clear or
+retain the broken factory, and the complete candidate gate must still include
+the expected-pass failing authoring fixture. It permits executing every restored
+projection, shutdown and custody assertion without test cfg suppression.
+
+The isolated pure_parent fixture passes retained Bombay and fails the candidate
+with two E0277 report-ingress errors. All 294 restored owner tests now execute
+and pass, zero ignored, after the focused projection migration and relocating
+that authoring case; this is not a complete gate because pure_parent remains
+red and the older fixed-sleep probe remains unaccepted.
+
+The next bounded hypothesis makes factory availability conditional on the
+existing complete interpretation premise. Pure actor definition must not prove
+that a local runtime can execute every declared effect. A sealed consuming
+ExecutableCreation port moves the existing ChildCreation::establish promise
+from an inherent private-bounded method to an explicit conditional interface.
+The facade derives ActorCreation only when its exact loan implements that port;
+ordinary syntax, actor effects and interpreter code stay unchanged. This is a
+derived authoring/interpretation separation, with no new effect or runtime
+state. The port replaces the existing method rather than adding another
+execution path. Expected edits: creation, facade expansion and re-exports; one
+public trait, under 50 net lines. Reuse the exact full CommitActions premise.
+The pre-edit focused regressions are pure_parent (red) plus recursive and
+heterogeneous journeys (green); both must pass together. In particular, a
+recursive trait cycle falsifies this hypothesis rather than justifying extra
+bounds, flags, erasure, or specialization.
+Pre-edit control sums, custody alternatives and interpreter branches are
+unchanged; no new stored value is proposed. The only surviving loan retains
+the original actor request and exclusive creator borrow. Scope sealing and
+all forged-creation/scope/borrow denials remain required. Disposition awaits
+those witnesses, measurements and both complete code/consumer checks.
+
+Conditional-execution disposition: **reopen**. Pure parent passes, while all
+four recursive journeys fail E0275 at the complete interpretation/creation
+constraint cycle. Experiment delta across four files: +32/-27/net 5, one
+additional public trait; actor control states, custody alternatives, stored
+values, transition branches and production modules remain unchanged. The added
+trait only re-expresses the same execution prerequisite and cannot break its
+recursive proof graph. That competing interface and its predicates are removed
+entirely; the pre-experiment source is restored. The falsifier is in the existing
+DEAD_ENDS.md. Both pure authoring and recursive runtime remain acceptance
+requirements. Focused test projection migrations are independent and remain in
+the source copy; no candidate production is retained in Bombay's feature tree.
+
+The restored cut passes 294 owner tests in debug (5.39 s execution) and
+optimized (5.34 s), zero failures/ignored, plus the selected 17 downstream
+tests. This includes the independent projection-panic, source cancellation,
+activation/preparation reunion, exact child custody and both shutdown-target
+traces. The fixed-sleep recursive timer probe still has no acceptance credit.
+The complete facade corpus remains red for the intended pair of E0277
+ProxyOutcome/ProxyDiagnostic ingress failures after canonical /private/tmp
+paths resolve the initial Cargo lock collision. No pass is inferred from that
+collision. Pure definition is added to the existing actor_facade_full fixture
+in the actual feature worktree: retained Bombay's outer_authoring tests pass
+(two tests and the four original compile denials, 3.63 s). Test-only delta is
++19/-0, production and public API zero. Candidate production stays unretained.
+
+Projection migration checkpoint: actor control-state sums, subordinate failure
+alternatives, transition branches, production lines, modules and public
+spellings are unchanged. The three single-child projection records still own
+exact origin plus complete child retirement; the two-alternative shutdown sum
+still distinguishes its two actual event targets. Their NoBirths subtrees now
+use Never, deleting a false recursive terminal equation without discarding an
+inhabited value. Existing callback bodies, panic payloads, received action/source
+custody and allocation assertions are preserved. Residue scan finds no new
+arrival history, repeated cause, false cardinality, nested authority, semantic
+boolean or ordinary structural caller syntax. Cross-check: scoped retirement
+law, Driver custody, projection task failure, and existing normalized atomic
+lifecycle contracts. Disposition: **pass for focused test lowering**, with
+authoring/factory representation **reopen** and full gates incomplete.

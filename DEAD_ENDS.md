@@ -252,3 +252,14 @@ The trait and its bounds were removed; no production or catalogue migration was
 retained. Child-source compatibility must have an operational or associated
 contract that directly proves the original law, without fabricated ingress,
 callbacks, protocol equality or public runtime representation.
+
+### Conditional creation execution closes the wrong recursion
+
+Moving ChildCreation::establish's complete CommitActions premise into a sealed
+ExecutableCreation interface lets a pure parent definition compile, but making
+its ActorCreation availability depend on that interface produces E0275 for all
+four existing recursive journeys. The constraint recursively asks for itself
+through birth interpretation. No flags, extra bounds, erasure or specialization
+were added. The hypothesis is removed in full; the prior working nominal
+creation cut is restored. Logs: /tmp/bombay-devx-conditional-creation-proof.log
+and /tmp/bombay-devx-conditional-pure-parent.log.
