@@ -668,7 +668,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
 | DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; factory authoring remains red |
-| DX04 | Lossless result access and borrowed state; one 14-field ActorCustody product for 20 outcomes, all 24 outcomes retained; 357 debug/369 optimized tests and accessor inversion pass | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
+| DX04 | Lossless work/cleanup and borrowed state, custody and completion; all 24 outcomes retained; completion passes 299 debug/optimized tests and independent owner/consumer inversions | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
@@ -2334,3 +2334,31 @@ Rebasing all eight original artifact reports and running the pinned strict gate
 passes: 205 viable / 415 total candidates. The three-line baseline correction
 is applied to both owner feature and isolated delivery branches; new-head CI
 remains required. This verification metadata edit adds no production surface.
+
+Borrowed completion checkpoint: the missing method produces six focused E0599
+diagnostics before production. The implementation passes 290 owner plus nine
+real downstream tests in debug and optimized builds. The source projection
+matrix distinguishes Stopped/Exhausted and four non-normal causes while
+preserving later joined native failures, original allocations, unread owner
+requests, messages and descendants. The counter checks that the returned
+completion borrows the actual field. Returning None for normal completion
+fails independently in the owner (289 pass/one fail) and real consumer (eight
+pass/one fail) under optimization. The exact original source is restored.
+Workspace/all-targets/all-features Clippy and pinned formatting pass; the
+updated actual counter executes successfully. Production +36/-0, tests
++39/-3 (includes one example line), docs +8/-0; zero new public types, one
+accessor. Actor control alternatives remain 24, custody fields 14, existing
+subordinate sums/modules/runtime transition branches unchanged; only the
+exhaustive borrowed inspection is added. No new state, history, repeated cause,
+cardinality assumption, authority, semantic boolean or structural caller hint.
+Driver/retirement custody law and the existing primary/late failure projection
+are cross-checked. Disposition: pass for this bounded inspection law; full
+application inference and published dependency delivery remain open.
+
+Owner delivery head b0e9c93 passes a fresh exact-head native ten-gate check
+after the mutation-baseline correction. New-head CI run 38058209730 is live;
+its published API audit, Linux Nix and all eight mutation shards already pass.
+Its strict aggregate verdict is still pending and is not counted as passing.
+Two additional ordinary-Rust source-product probes fail E0391 for recursive
+implied clauses and E0277 for heterogeneous-tail elaboration. No suggested
+ingress bound or corresponding production source port is retained.
