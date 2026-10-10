@@ -665,13 +665,13 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | Existing Application declaration/composition inspected | Open: unify App, all seven journeys, cold recovery |
+| DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Inferred/recursive regressions registered; source-copy factory/facade and role custody pass seven downstream debug/release tests | Open: selected public representation, own-birth role access, supervision/pools and complete owner gates |
+| DX03 | Inferred/recursive regressions registered; Base/birth schema, automatic leaf factory and role custody pass 15 downstream debug/release tests, including supervisor/FIFO | Open: selected public representation, own-birth role access, deterministic readiness and complete owner gates |
 | DX04 | Retained lossless work/cleanup access; source-copy role selection preserves exact borrowed and unmatched ownership | Open: retain complete inferred descendant consumption and audit actor retirement custody |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Facade sender-independent regression retained in ec79d9f; original authoring and denials pass | Open: preserve this law through inferred custody; full expansion/hygiene/private/generic corpus |
+| DX07 | Facade sender-independent regression retained in ec79d9f; reshaped source-copy schema also passes full outer-authoring and four original denials | Open: warning-clean inferred custody; full expansion/hygiene/private/generic corpus |
 | DX08 | Existing named Actions lanes retained | Open: unrelated templates, both orders, complete effects |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -1106,9 +1106,218 @@ uses Tokio. These observed runs do not satisfy deterministic timer evidence;
 remove that timing dependency before retaining this corpus. No clock semantics
 are changed speculatively from this observation.
 
+The next family witness copies the real supervision example's worker,
+activation source, recovery policy and work trace into the external consumer,
+changing only assembly/terminal plumbing to inferred Application. It exercises
+actual first activation, capability admission, worker stop, successful replacement
+activation, shutdown and both retained worker generations. Existing explicit
+policy/type declarations stay to isolate runtime composition from constructor
+migration. This is a pre-edit compile/transition witness; no new supervision,
+observation or lifecycle law is proposed. The runtime must consume the owning
+FixedSupervisor -> StableProxy -> Worker birth tree with complete custody.
+No family implementation changes exist at this cut.
+
+The supervision caller fails on missing StableProxy custody/factory ports and
+the two genuine logical reply protocols (FixedSnapshot and CapabilityResult).
+ReplyRoute owns both logical and established alternatives, so its existing
+Hosts obligations must remain. Core already projects logical requirements;
+that projection preserves occurrences rather than deduplicating namespace owners.
+The custody substep implements the existing child-local equation once for
+StableProxy in Bombay: its direct child is exactly StopOnShutdown<Worker>.
+The factory substep requires the actual proxy's worker creation scope and the
+worker Base's nominal proof at that scope, rather than inventing twenty leaf
+bounds. These are existing runtime responsibilities, not actor-model laws or
+new supervisor policy. Target remains the real constructor and Application;
+no additional caller input is selected. Source-copy changes are limited to
+terminal and creation owners, under 100 lines, zero new public types. Control
+states/retirement/creation bindings and the establishment operation remain
+unchanged; cross-check the exact locked StableProxy birth and Driver custody.
+Complete hosting, failure/restart evidence and both downstream families remain
+required before retention.
+The child-scope-only factory is falsified: it does not state the proxy's full
+interpretation/source-custody contract. Reuse the exact complete CommitActions
+premise already required by the original establishment function at this generic
+standalone owner. The documented birth equation is Births<StopOnShutdown<W>>;
+this factory does not introduce a self-creation edge. Nominal domain recursion
+still uses the proven facade port. Do not add the eighteen individual leaf
+bounds suggested by the diagnostic.
+The next lowering keeps the creation loan's original future and explicitly
+publishes its existing Send promise. The async loan method currently makes the
+caller re-prove opaque auto-trait properties after proxy metadata normalization.
+Ownership equation and leaf/CommitActions premises are unchanged: return the
+original establishment future directly from a function, with the loan lifetime
+and Send stated at the owning seam. This removes one forwarding async state
+machine; no Worker/Plan bounds or capabilities are added. The failing real
+proxy factory is the pre-edit witness, and all prior authoring/denial/ownership
+journeys remain required.
+That future removes the opaque Send leakage; the remaining obligation is the
+existing task-handoff lifetime of the nominal origin tag and its complete
+descendant data. StructuralOrigins already requires a static owner when it
+constructs ChildOrigin; the original receiving/retirement seam transports
+static descendant data. State those same two premises on the proxy factory's
+Self and Self::Descendants, rather than adding Worker/Plan lifetime bounds.
+No borrowed actor/value is newly admitted or rejected at the local task seam.
+The source-copy proxy metadata/factory and direct loan future now compile.
+The real supervision caller is rejected only for its existing logical status
+and capability reply bindings; no proxy custody/factory errors remain. This
+is evidence of a separate hosting/interface decision, not proof of a complete
+supervision journey. The user has been asked which static reply interface the
+canonical local path should expose; no logical branch or requirement is removed.
+
+The canonical Application owner must also own explicitly supplied logical
+bindings: this is a deliberate composition policy already supported by App,
+not another actor law. A with_hosts consumer first restores the real supervisor's
+three required root/status/capability namespaces (no unused worker namespace)
+while preserving inferred terminal custody and the restart/shutdown trace.
+This is the advanced explicit-binding proof, not automatic namespace inference
+or ordinary-catalogue migration. Reuse Hosts, ActorSpace and the same
+execute_application_with kernel; do not forward through App or add a lifecycle
+engine. Proposed source-copy change makes the owned Spaces product an inferred
+Application parameter and adds one consuming binding method, no public wrapper
+type. Default construction retains the standard root namespace. Cold rejection
+must return the whole declaration including its exact namespaces and callable.
+Expected owners: application/mod.rs and execution.rs, under 50 net production
+lines; root/work/retirement alternatives and all control transitions unchanged.
+This substep is required by DX01 independently of the selected ordinary reply
+interface; it does not waive DX02's inferred topology criterion.
+Default namespace allocation must remain deferred: cloning/copying an ordinary
+cold declaration must not share a root registration scope. Represent absence of
+supplied namespaces as the existing unit product and one supplied namespace
+product as a one-element tuple; caller syntax never names either representation.
+A private declaration trait has those two real alternatives, allocating the
+standard root namespace or transferring the supplied product. No public marker,
+wrapper or eager namespace allocation is proposed. The whole cold declaration
+owns the original namespace product on rejection, and supplied shared scopes
+retain their existing deliberate sharing semantics.
+Staging rejection must extend the existing owned root/work/partial product with
+its original namespace declaration; it cannot drop configured namespaces while
+returning the other inputs. Supplying hosts is available on the empty namespace
+declaration, so a second call cannot silently discard the first binding product.
+Child declarations remain available before and after supplying hosts.
+
+The explicit-binding witness exposes a publication falsifier: the public
+prepared-input product mentions a private associated namespace type. Reopen
+that signature, without exporting the declaration trait. The existing runtime
+Spaces parameter owns the concrete hosting product in both real substitutions
+(fresh root ActorSpace and supplied SupervisorSpaces); bind that same parameter
+at the Application execution seam and return it directly, leaving the private
+allocation choice private. No new type, capability, default or visibility is
+proposed. The prior external supervision caller is the failing publication
+regression. Namespace custody also applies when work is absent: a focused cold
+staging refusal must return the original namespace scope with root, rejected
+child and native cause, just as supplied work returns its namespace declaration.
+Write that refusal regression before correcting the absent-work product. The
+single execution kernel and 6/5/24 outcome/work/retirement alternatives remain
+unchanged; no new transition authority or arrival state is introduced.
+
+The real FIFO worker witness fails before production on missing
+RetirementCustody for the existing pool_worker expansion. A second worker macro
+or manual application metadata is rejected. The actor-indexed blanket no-birth
+probe conflicts with wrapper implementations and is discarded. A plain Rust
+Base/birth schema probe compiles: the actual BirthMode selects the retirement
+schema, the nominal Base owns recursive declarations, and NoBirths has empty
+descendants/failures for every Base. A boxed recursive child report remains
+finite without erasure. This derived static law separates declaration ownership
+from the actual decorated actor's protocol and complete retirement data.
+The source-copy lowering reshapes the existing custody trait into that schema;
+reports use Actor::Base and Actor::Birth, while preserving their actual Actor.
+Delete all wrapper metadata forwarding and facade-generated leaf metadata.
+The existing no-birth establishment path becomes the automatic factory port;
+recursive nominal declarations retain their proven explicit factory expansion.
+Reuse BehaviorBase, BirthMode, ChildOccurrenceProduct, ActorRetirement and the
+original establishment operation. No Core change, second macro, placeholder,
+new public type or actor transition is proposed. Two internal associated-product
+aliases may name exact actor descendants and child failures; neither is a new
+protocol or storage wrapper. Expected owners are terminal, children, creation,
+ActorExt and facade expansion, under 200 net lines. Control states stay 6/5/24,
+creation bindings stay three; current values remain exact origin, actor, complete
+subtree, source custody and staged request. The pre-edit FIFO failure and all
+counter/recursive/supervision/refusal journeys must pass together, with denials,
+inversions and warning-clean publication before retention. Scope is the candidate
+model, not catalogue migration.
+
+The Base/birth metadata probe succeeds, including a concrete boxed recursive
+retirement; the first full lowering exposes a separate overlapping factory
+implementation for generic StableProxy. The previous local nominal coherence
+probe did not cover that foreign generic owner. Do not merge metadata with a
+generic factory method: generic worker hosting is a real context-dependent
+interpreter obligation. Preserve the two responsibilities. The next factory
+signature selects by the same actual BirthMode as the metadata schema, with
+CreationScope statically equating that mode to its actual Actor::Birth. NoBirths
+and the proxy's Births<StopOnShutdown<W>> are distinct meaningful substitutions;
+no extra capability, marker/default, policy or runtime branch is introduced.
+The real failing FIFO consumer and the existing proxy factory are the pre-edit
+witness. Retain each factory's existing complete CommitActions premise and the
+original future. Extend the same schema equation to launch's original actor
+bound; its old BehaviorSettlements/Ph/Protocol and task handoff premises remain.
+No individual compiler-suggested leaf bound is added. This is another unretained
+candidate cut, with publication and all independent journeys still required.
+
+A handwritten Journal component provides a concrete no-birth consumer with
+ordinary JournalState as BehaviorBase::Base. Its real child-creation/retirement
+journey fails CreateSelectedChild before the edit: the automatic leaf factory
+requires its Base to be a Behavior with Base = Self. The original establishment
+operation interprets the actual scoped Actor; it reads Base only as the nominal
+origin/schema key. Remove those two factory-Base premises, while retaining the
+actual Actor's NoBirths/Base equation, complete CreationScope and CommitActions
+proof. This is removal of a model-invalid constraint demonstrated by an unrelated
+component, not weakening the actual actor or interpreter. Metadata, protocol,
+Send, freshness and authority premises remain. The test must recover the exact
+owned journal allocation through the existing BehaviorBase borrow after joining.
+
+Current source-copy result: all 15 downstream tests pass in debug (4.61 s
+build, 0.04 s execution) and optimized (16.88 s build, 0.03 s execution).
+These include four duplicated executions of the two real Counter pure tests,
+one pure supervisor initialization test and ten runtime/refusal journeys;
+15 is an executed-test count, not 15 independent laws. The Journal component
+now recovers its original allocation and a real counter reply without requiring
+its Base to implement Behavior. The supervisor retains both worker generations;
+the FIFO worker completes and drains using its unchanged owning pool_worker
+source. Both explicit-binding proofs retain their genuine logical namespaces:
+this does not close automatic topology inference. The five standalone denials
+fail at the required laws: wrong role/forged scope E0277, forged loan E0451,
+non-local application E0599 and mismatched birth declaration E0271. The source
+copy's full outer-authoring suite passes both tests and four original denials
+(3.72 s execution). A separate namespace-inversion copy removes only absent-work
+namespace custody; the refusal fixture fails E0308 on the missing original scope.
+
+The actual feature worktree preserves the new component caller alongside the
+inferred/recursive fixtures. Its pinned application_children run fails exactly
+three of five cases (14.25 s): the three desired inferred callers remain red;
+the original declared-child pass and invalid-child denial pass. Candidate
+production remains outside the feature worktree. This is an explicit incomplete
+stage, not a repository-gate pass.
+
+Current physical source measurement against retained ec79d9f: twelve substantive
+Rust paths are +1386/-592/net +794; nineteen more differ only in diagnostic test
+configuration. Source-copy tests are disabled in some owners, so these are not
+retained-production or full-gate measurements. Seven new public types/traits
+remain unretained; this cut reshapes two interfaces and adds two crate-private
+associated-product aliases, no new public type. Base/birth lowering removes both
+wrapper metadata implementations and generated leaf metadata. Against the
+immediate six-owner pre-cut snapshot, physical lines/matches/visibility-bearing
+declarations are terminal 2767/15/23 -> 2887/15/25; children 644/7/14 -> 650/7/14;
+creation 1362/11/6 -> 1485/11/6; ActorExt 96/0/1 -> 78/0/1; facade 548/9/3 ->
+577/9/3; launch 4799/53/25 -> 4808/53/25. Counts include formatting and tests.
+
+Aggregate checkpoint: outcome/work/retirement control alternatives remain
+6/5/24; creation bindings remain three, ChildChoice remains two and the original
+establishment operation and transition branches are unchanged. Every surviving
+report owns the original origin, actual actor and complete subtree; every loan
+owns its original request and exclusive creator borrow. The new schema stores
+no state. No new actor dispatcher, arrival history, duplicated cause, semantic
+boolean, inferred birth provenance or single-worker policy is introduced.
+Cross-checks remain locked creation/lifecycle, Driver, capability and module
+laws, plus the owning normalized supervisor/pool laws. Disposition: focused
+Base/birth and namespace laws pass; the combined public representation remains
+unaccepted. Nineteen compiler warnings (eighteen private-proof/interface issues
+and one unused test-only import), own-birth role access, the timer probe's wall
+sleep, full owner checks, generic standalone coverage and comparable costs still
+prevent retention. No visibility promotion or lint waiver is made.
+
 The user explicitly authorized the expanded selected-programme surface on
-2026-10-09. The cumulative task currently touches 21 repository paths, including
-five Timers release paths and three uncommitted Bombay regression paths.
+2026-10-09. The cumulative task currently touches 22 repository paths, including
+five Timers release paths and four uncommitted Bombay regression paths.
 Retained Rust production growth remains +56; new public types remain zero and
 new public methods remain three. Work stays on feature branches and Bombay's
 isolated docs-devx worktree. Authorization does not waive model, provenance,
