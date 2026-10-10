@@ -668,7 +668,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
 | DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; factory authoring remains red |
-| DX04 | Retained lossless work/cleanup access; source-copy role selection preserves exact borrowed and unmatched ownership | Open: retain complete inferred descendant consumption and audit actor retirement custody |
+| DX04 | Lossless work/cleanup access; borrowed actor state covers all 24 retirement alternatives; completion/refusal/native-error custody tests and inversion pass | Open: retain inferred descendants; common custody/phase-cause audit and command/effect recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Sender-independent regression retained; a1b7e46 preserves pure birth/report authoring and all four original denials; candidate fails this focused facade case | Open: resolve factory availability while preserving recursive creation; complete expansion/hygiene/private/generic corpus |
@@ -774,7 +774,7 @@ from Completed. The same residue scan and laws above pass; no atomic policy or
 normalized-family contract changed. Disposition: **pass for this bounded
 custody law**, with full programme and inferred topology still open.
 
-Complete current task delta from the initial documentation commits: Bombay
+Application-result batch delta from the initial documentation commits: Bombay
 production (including executable example): +64/-8/net +56; tests +310/-0;
 public types +0/-0, public methods +3/-0. Six Bombay paths plus this owning PRD
 and its evidence appendix are changed; no source/dependency change in Behavior.
@@ -1700,3 +1700,81 @@ Evidence: /private/tmp/bombay-devx-event-ready-caller-fixtures.log,
 /private/tmp/bombay-devx-retained-caller-regressions.log,
 /private/tmp/bombay-devx-current-*-denial.log and
 /private/tmp/bombay-devx-current-pure-parent.log.
+
+Borrowed retirement state substep (DX04): this is a derived Rust ownership
+law, not a new actor lifecycle policy. `retirement.behavior()` borrows the exact
+retained actor in all 21 state-owning alternatives, including rejection and
+failed execution. It returns None only for ActorTaskFailed, Panicked and
+Cancelled, which already contain no behavior. Some does not certify success.
+No cause, effect, command, descendant, initialization or receiving slot is
+consumed, reconstructed or classified by this inspection. The complete original
+retirement remains available for the caller's subsequent decision.
+
+Before production, extend the real counter completion and startup-refusal
+regressions with borrowed inspection followed by original owned consumption.
+Add allocation-refusal and unavailable-state regressions retaining the original
+boxed audit and native JoinError. The pre-edit witness must fail E0599 for the
+missing method. Reuse ActorRetirement's existing exhaustive sum and field; no
+new type, generic, bound, interpreter, dependency or semantic state is needed.
+Expected files: terminal.rs, application_outcome.rs, existing migration
+guide and the focused counter example. That example inspects retained state
+before consuming the original terminal projection. Expected production
+increase including the example: under 40 lines; one public method, zero
+public types. Stage-1 scope only; the recursive factory gap remains separate.
+
+Pre-edit aggregate checkpoint: 24 retirement alternatives, 21 with state and
+three without; actor and application control sums unchanged. Surviving state
+is the exact original actor needed for later inspection/owned return. Option
+expresses exactly one borrowed actor or absence. The implementation will have
+one exhaustive selection with two bodies; no transition authority or state
+mutation. Existing Driver custody and application-result conservation laws
+remain authoritative. Retention requires debug/optimized downstream tests,
+independent absence inversion, strict library lint and exact measurements.
+
+Borrowed-state retention result: the pre-edit application_outcome compile
+fails with six E0599 errors for the missing inspection. After implementation,
+all nine focused cases pass in debug (1.54 s build) and optimized (10.69 s
+build), each 0.00 s reported execution. Replacing Some(behavior) with None
+compiles and fails the allocation rejection, real counter completion and real
+startup rejection witnesses; six other cases pass. The exact native task error
+and both unavailable variants remain owned after inspection.
+
+Pinned-shell preservation command: `cargo test --locked -p bombay-rs --lib
+--test application_outcome --test completed_application_receiving
+--test application_terminal_custody --test run_with`: 290 + 9 + 38 + 4 + 16
+= 357 passed, zero failed/ignored. Optimized application_outcome: 9 passed.
+Strict Clippy on the library/changed integration target and all counter targets,
+RUSTDOCFLAGS='-D warnings' library docs, whole-workspace formatting and the live
+bombay-example-counter run pass. Commands use Bombay's pinned Nix shell,
+CARGO_INCREMENTAL=0, debug information disabled and task-owned target
+/private/tmp/bombay-devx-retirement-state-target. Source, test and failure logs
+live at /private/tmp/bombay-devx-retirement-state-*.log. The corrected example
+package name is bombay-example-counter; the initial wrong-name invocation is
+not counted as execution evidence.
+
+Post-edit checkpoint: retirement alternatives 24/24; state-owning alternatives
+21/21 and state-unavailable alternatives 3/3; application/work phases 6/6 and
+5/5. No subordinate owned state, cause, effect, wrapper, interpreter, protocol
+or transition changes. One exhaustive borrowed selection has two bodies and
+24 patterns; every state reference points into the same original retirement.
+No history, duplicated cause, false cardinality, nested authority, semantic
+boolean or new structural caller syntax survives. Existing Driver custody and
+application-result conservation laws still apply. Disposition: pass for this
+inspection, with the common custody/product audit and factory model still open.
+
+Retained Bombay commit: a9b88dc. Batch delta: production including the counter
++38/-0/net +38; tests
++74/-1/net +73; one existing production module, zero new public types, one
+public method. Terminal owner: 2596 -> 2630 lines; application_outcome:
+310 -> 383. Four Bombay paths change (source, test, guide, example), plus this
+PRD. Cumulative retained/worktree delta from initial documentation commits:
+Bombay production +102/-8/net +94, tests +1427/-8/net +1419; Behavior production
++36/-3/net +33, tests +230/-0/net +230. Retained public types add zero; Bombay
+adds four public methods in total. The source-copy inference model is excluded
+from those feature-tree totals and remains unaccepted.
+
+This is not a new complete-flake result. The feature branch still contains
+expected-red inferred-custody acceptance tests, and the candidate still fails
+pure parent authoring. No signing, disk, MSRV, package or final programme gate
+is waived by these focused passes. Idle task-owned candidate build caches were
+removed to recover space; candidate sources, evidence and other AI work remain.
