@@ -821,14 +821,18 @@ The authorized independent design reviews refine the falsifier:
   remain unproved.
 - Moving only immediate-child source premises to the nominal factory method
   passes four recursive generations but rejects nested pure staging with E0277
-  inside the method body. Additional depth bounds would move that defect.
+  inside the method body. Calling the nominal factory after actual Core source
+  interpretation also fails E0277 for the child's own birth-source premise in
+  debug and optimized builds (core_source_continuation/descendant_{debug,optimized}.log).
+  Additional depth bounds would move that defect.
 - A proposed unconditional routed-child InterpretItem port rejects valid empty
   Births<Never>/RetirementBirths<Never> interpreters needing only batch reservation.
   Restricting dispatch to Behavior/ChildChoice/Never also removes an executable
   custom ChildCreationProduct + DispatchBirth ownership port. Three focused
   pinned-Nix tests establish those existing contracts before any owner edit.
 
-The next hypothesis must jointly prove pure aliases, recursive creation and
+The next hypothesis must provide runtime-owned full child execution with finite,
+nonrecursive applicability, jointly proving pure aliases, recursive creation and
 operational selected-source interpretation/settlement offering. It must preserve
 actual LocalParentReports, create-before-send order, SourceSettlementCustody
 identity, original receiving loans and parent-owned binding maps/ProjectedTask.
