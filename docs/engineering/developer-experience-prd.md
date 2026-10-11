@@ -669,7 +669,9 @@ No dependency was added. The bounded comparisons are:
 | [`enum-as-inner` 0.7.0](https://docs.rs/enum-as-inner/0.7.0/enum_as_inner/) | Checked consuming access returns Err(original), but the derive also generates unchecked unsafe accessors. It expands the public surface and does not select recursive custody. No adoption. |
 | [`auto_enums` 0.8.10](https://docs.rs/auto_enums/0.8.10/auto_enums/) | Generates closed Future/Iterator delegation. It does not discharge child-host capability requirements; no repeated owner implementation has been shown to justify another macro dependency. |
 | [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. Potentially useful for independently repeated total inclusions, but no measured replacement justifies another generated public accessor path; thiserror remains the error owner. |
-| [`async-recursion` 1.1.1](https://docs.rs/async-recursion/1.1.1/async_recursion/) | Boxes erased futures; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
+| [`async-recursion` 1.2.0](https://crates.io/crates/async-recursion/1.2.0) | Fresh registry/source recheck: src/expand.rs still emits Pin<Box<dyn Future>>; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
+| [`bon` 3.10.2](https://docs.rs/bon/3.10.2/bon/) | Awesome Rust lists its checked builders. Named field construction does not establish recursive child custody or interpreter eligibility; adding a required-field typestate builder would conflict with the selected owning constructors and ordinary Application spine. No adoption. |
+| [`lru`](https://docs.rs/lru/latest/lru/struct.LruCache.html) / [`priority-queue`](https://github.com/garro95/priority-queue) | Catalogue source check: Cache deliberately supports Eq keys and exposes a recency slice; lru requires Hash and would change that contract. PriorityQueue already uses BinaryHeap for immutable priorities and checked FIFO ties; priority changes are not its law. Reconsider only with a measured scale or mutable-priority requirement. Neither addresses Application assembly. |
 
 Published-source comparisons and pinned 1.99 debug/optimized falsifiers are in
 /private/tmp/bombay-devx-crate-review/. These are library evaluations, not
@@ -1131,7 +1133,8 @@ The fresh released-dependency failure selects a bounded delivery action:
 prepare the already-retained Core/Actors custody changes after owner PR #89,
 without changing their semantics. Reuse the recorded conditional occurrence,
 Unavailable receipt, pool rejection and ingress inverse laws and their original
-falsifiers. Expected extraction: 29 tracked code/test/contract-document paths,
+falsifiers. Expected extraction: 29 tracked code/test/contract-document paths (actual 31,
+including the two ingress files from the later inverse batch),
 zero new production beyond the retained +251-line owner batch; one new public
 trait relative to #89, unchanged source relative to the retained feature branch.
 Exclude the large DevX research documents from the delivery branch and link the
@@ -1139,6 +1142,34 @@ single owning checklist. Create a separate stacked draft for review, verify exac
 source equivalence, pinned gates and packaged consumers before requesting any
 merge/publication authorization. Existing #89 and both working feature branches
 remain intact. This is delivery preparation, not inferred-assembly acceptance.
+
+Delivery review identified missing direct owner coverage for the retained inverse.
+Derived law: recover(child_input(original)) returns the original complete proxy
+control; any owned outer lane or foreign inner proxy event returns the exact
+original event. Focused tests use the actual StableProxy/ProxyControl/ProxyEvent,
+original boxed worker and activation data, and two EventLayer orders. Reuse the
+existing RuntimeAddr, OwnedActivation and protocol visibility in the proxy's
+owning unit tests; no placeholder actor, source, plan, executor or public accessor.
+Expected test-only +150 lines in one existing cfg(test) module; production,
+control-state, transition-branch, public API and dependency deltas zero.
+An independent inversion will stop inner recovery and must fail the focused
+round trip in both profiles; restore exact production bytes before fresh gates.
+Do not retain an inverse representation or constructor merely for these tests.
+The three owner regressions pass in pinned debug and optimized builds.
+Stopping inner recovery independently fails the intended ownership assertion in
+both profiles; the production bytes were restored exactly. Actual test delta is
++138/-5 (net +133); all production/API/state/module/dependency deltas are zero.
+Delivery head 7a85639 exactly matches the feature branch crates. Its fresh
+pinned native Nix check exits 0: all ten gates pass, 959 nextest tests pass with
+zero skipped, and 112 doctests pass. Release preflight passes all four Cargo
+workspace locks, README versions and the packaged archive consumer. No signing
+or disk exception is needed. Production is unchanged from extracted 322c3db;
+its real Bombay packaged-consumer run has 562 passed, one failed and one skipped
+(563 executed, 61 binaries). The sole failure is the four still-unimplemented
+inferred-assembly fixtures; workspace/all-target Clippy and the downstream
+doctest pass. The attempted nextest --all-targets command failed test listing
+on the custom benchmark and is not counted as a passing check. Registry-based
+Bombay full gates and publication remain open.
 
 Initial source revisions remain the inventory baseline in the appendix.
 Current actual Bombay selects registry Behavior/Actors 0.23.0, macros 0.14.0,
