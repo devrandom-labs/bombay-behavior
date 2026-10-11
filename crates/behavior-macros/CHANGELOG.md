@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.0...bombay-behavior-macros-v0.14.1) - 2026-10-11
+
+### Other
+
+- Preserve typed sends and facade macro paths through composition ([#89](https://github.com/devrandom-labs/bombay-behavior/pull/89))
+
 ## [0.14.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.13.1...bombay-behavior-macros-v0.14.0) - 2026-10-08
 
 ### Fixed
