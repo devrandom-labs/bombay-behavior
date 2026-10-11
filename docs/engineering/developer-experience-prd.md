@@ -667,7 +667,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Five candidate caller fixtures and original invalid-child denial pass; nominal born-role borrow/consume preserves original recursive boxes and unmatched siblings | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
+| DX03 | Five candidate caller fixtures and original invalid-child denial pass; private actual three-generation Self-child creation and complete typed retirement pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
 | DX04 | Lossless work/cleanup and borrowed state, custody and completion; all 24 outcomes retained; completion passes 299 debug/optimized tests and independent owner/consumer inversions | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -680,7 +680,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Receiving loans and child retirement inspected | Open: independently proved leaf custody/boilerplate reduction |
+| DX16 | Closed dispatch input equation denies four static forgeries; original pending-startup runtime custody regression fails debug/optimized | Open: preserve startup join before await; complete retirement and final package gates |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -689,7 +689,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX22 | Existing Entity/HTTP owners retained | Open: same Application spine, exact rejection and family/root failures |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
-| DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inferred counter/recursive/component fixtures; timer readiness uses actual reports and duplicate rejection | Open: retain inferred API; complete downstream corpus and owner gates |
+| DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup-cancellation witness fails debug/optimized against locked registry dependencies | Open: repair startup custody, retain inferred API and complete downstream corpus/gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 136 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
 | DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
@@ -840,48 +840,190 @@ A child task may not borrow or take its parent's binding row. Existing
 ChildBindingAt selects exact occurrence; structural routing must not acquire
 unrelated runtime source requirements.
 
-The routed-creation experiment is reopened. Derived interpreter law: the whole
-existing request reaches the runtime before selecting a child, preserving exact
-ID, route, provenance, actor allocation and independent later effects. Reuse
-DispatchBirth, batch reservation, existing request/reply rows and InterpretItem;
-no second dispatch protocol or logical send capability. The whole-choice
-consumer fails nine E0277 diagnostics before source edits. Scope was two private
-owner files, zero new states/modules/types; no actual production migration.
+The whole-routed-request witness isolates a concrete owner gap: nine E0277
+failures prevent the runtime from receiving the complete request before child
+selection. Derived law: dispatch preserves the exact child allocation, ID,
+route, provenance, settlement and independent later effects. Desired syntax is
+Actor::dispatch_birth(request, host), or the existing mutable request/reply row
+for receiving interpretation. Reuse ChildCreationProduct, DispatchBirth,
+CreateSelectedChild, batch reservation, InterpretItem and actual EstablishChild;
+no second selection algorithm or actor send capability.
 
-Two source-only designs are removed. Making every default request an ActionItem
-adds Result: Send and excludes a lawful Send future producing a non-Send
-initialization error. Splitting actual owned-request and borrowed-row inputs on
-DispatchBirth preserves that caller, empty aliases, custom products and pending
-cancellation, but an unconstrained associated Output permits a custom product
-with Result=Never to drop its request and return u64. The original trait denies
-that program with E0271; the candidate accepts it. The exact input-to-return
-equation must remain statically closed. These laws are derived ownership laws,
-not actor-model mandates.
+Pre-edit provenance: an owned RoutedCreation must return the existing exact
+ItemSettlement; a loan of its original row returns unit and deposits that same
+settlement. ActionItem's transferable-result contract cannot govern standalone
+owned dispatch, which lawfully returns non-Send initialization errors. The next
+candidate seals the complete address/child/input/settlement equation for those
+two native forms, with no Send metadata bounds, state, traversal or caller
+Output choice. Four private owner files, one sealed metadata trait and about
++150 production lines were expected. A private runtime receiving adapter reuses
+owned dispatch and full EstablishChild eligibility; the existing combined
+activation/preparation test interpreter forwards that same loan. Its four
+E0277/E0599 failures are the pre-edit witness for the test-only forwarding.
+Expected runtime scope: one production adapter (+40), one test adapter (+40),
+zero types/states. Full recursive admission is a separate obligation.
 
-Focused evidence: whole-choice allocation rejections plus independent report
-and replay pass debug/optimized; four owner tests cover standalone non-Send
-error, two empty birth aliases and a custom receiving-only product; cancellation
-retains both exact requests and suffix. An optimized cancellation inversion
-fails independently and restored source passes. A real Behavior::Sends declaration
-still denies routed creation with E0277 (missing InterpreterRequest). Generic
-low-level InterpretSends availability alone is not that static protocol proof.
-Sources/logs: /private/tmp/bombay-devx-{routed-creation,owned-creation}-consumer,
-/private/tmp/bombay-devx-creation-row-*.log, /private/tmp/bombay-local-child-creation.FRZITT,
-and the independent forged-receipt comparison /private/tmp/bombay-creation-reply.nx4amE.
+Rejected source-only models, removed before continuing:
 
-Aggregate checkpoint, removed row-input candidate: progress alternatives 3→3;
-creation custody 2→2; item settlements 4→4; child outcomes 4→4; creation settlements
-3→3. Original request/reply, current initialization error/actions and committed
-child remain the exact owned values; no arrival-history state is added. Two
-owner modules and 146 public declaration tokens remain; associated Output and
-Input change the public promise. Match-arm tokens 97→95, if tokens 19→19 across
-the two affected modules (diagnostics, not minimality proofs). Formatted private
-production +218/-81/net +137; zero actual production/API delta after removal.
-Residue scan: no semantic flags, erasure, new cardinality or nested authority;
-borrowed structural rows are interpreter-only. Cross-check: creation/lifecycle
-law, complete settlement law and normalized atomic actor documents. Disposition
-reopen because the static return equation is weakened; no factory, retirement,
-wrapper-order or recursive execution acceptance follows from these focused passes.
+- Requiring ActionItem for all owned dispatch excludes a lawful Send future
+  yielding a non-Send initialization error.
+- Unconstrained DispatchBirth::Output accepts a custom product whose Result is
+  Never but whose dispatch drops its request and returns u64; original E0271.
+  Formatted private production +218/-81/net +137, zero actual retained delta.
+- Sealing input shape alone permits an external mapping of native
+  RoutedCreation<Addr, Child> to OtherChild and u64. Seal membership must carry
+  the exact address and child. Four private edits removed; no actual API change.
+
+Current correlated-seal evidence (saved copy, now removed): four forged receipt, arbitrary input,
+external projection and cross-child programs fail for their intended law. Four
+external owner regressions and nine owning creation tests pass debug/optimized.
+The heterogeneous allocation-rejection/later-report journey and completed-action
+replay pass optimized; cancellation retains original rows in both modes, its
+independent optimized inversion fails and restored source passes. An actual
+Behavior::Sends declaration denies creation with E0277 (missing InterpreterRequest);
+low-level InterpretSends availability is not that protocol proof. Runtime
+projection-panic/later-sibling, joined-child/two-capability retirement and both
+shutdown orders pass debug/optimized. Strict owner library Clippy and formatting
+pass. The adapter nevertheless fails actual pending-startup cancellation in
+both modes under Bombay pinned Rust 1.99: request/reply are empty, joined
+children/failures empty and the original definition is destroyed. The same
+regression through ORIGINAL Births::InterpretCreations also compiles and fails
+debug/optimized, with no new port or owner API. Thus this is a current runtime
+consumer gap, not merely a candidate defect. The native forwarding adapter
+is reopened; no production interface is retained.
+Workspace all-targets checking fails 29 existing-host/old-dispatch diagnostics;
+no new fallback, bound or catalogue migration has been added.
+
+Aggregate checkpoint, correlated private copy: progress 3→3, creation custody
+2→2, item settlements 4→4, child outcomes 4→4 and creation settlements 3→3.
+Each surviving alternative owns the original request, current reply,
+initialization failure/actions or committed child needed for exact settlement.
+Owner production +253/-84/net +169; owning tests +20/-8/net +12; public API
++1 sealed metadata trait/-0 types; four existing modules. Runtime production
++36/-2/net +34, tests +39/-0/net +39, +0 types/modules. Owner transition-arm
+tokens 95→93, conditionals 19→19; two production modules 3727→3896 lines.
+The old local settlement poll is deleted; selection/allocation remain their
+existing owners. Residue scan finds no new arrival history, duplicated cause,
+false cardinality, nested actor authority, semantic flags, erasure or structural
+application syntax. Creation/lifecycle, complete-settlement and normalized
+atomic-family laws are cross-checked; their policies are unchanged. Disposition:
+reopen for the runtime bridge; the static receiving equation is independently
+proven but not retained. Pending-startup custody and the full recursive/pure-
+authoring proof remain open. Evidence:
+/private/tmp/bombay-devx-{routed-creation,owned-creation}-consumer,
+/private/tmp/bombay-devx-creation-input-*.log, /private/tmp/bombay-local-child-creation.FRZITT,
+and /private/tmp/bombay-creation-reply.nx4amE. Counts exclude external consumers.
+The four private owner/two runtime edits are restored from actual worktrees;
+source patches remain creation-input-{correlated-owner,rejected-runtime}.patch
+under /private/tmp/bombay-devx-. No unproved production representation survives.
+
+Before retaining the original consumer regression: scope one Bombay owning
+creation test module, expected test-only +163/-5, zero production/state/module/API delta.
+The test requires exactly one original definition, its allocation/content and
+available ID/kind/route through request, exact reply or joined retirement;
+unrelated replies/children cannot satisfy it. This is deliberately red evidence
+for DX03/DX16/DX21/DX25, not acceptance. Reuse the current batch, child bindings,
+startup cancellation and parent retirement; no new bound or runtime operation.
+Current control sum CreationBinding is Established | Rejected | StartupRejected;
+all three remain, as do existing progress/result alternatives and one transition
+authority. Residue scan: no new history, semantic flags, inferred provenance,
+false cardinality, nested actor or caller structural syntax. Cross-check:
+creation/lifecycle custody and Driver retirement laws. Exact private original
+source/patch/logs: /private/tmp/bombay-original-creation-cancellation.znm6zpay.
+The next production model must put original startup authority/receipt/control/
+join in parent-owned custody BEFORE the first await, reuse spawn_local_execution
+and ordered child retirement, and prove complete rejection/replay/retirement.
+It must not report a birth/restart before fresh startup and binding commit.
+
+Retained original regression (`d3b1363`) measurement: Bombay tests +205/-5/net +200,
+coordination +13/-0; production/public types/modules +0/-0. Actual unpatched
+locked registry debug and optimized executions both fail the intended exact
+custody assertion (one test, 290 filtered). Strict `cargo clippy --locked -p
+bombay-rs --lib --tests -- -D warnings` and `cargo fmt --all -- --check` pass.
+Commands run in pinned Bombay Nix; logs original-cancellation-actual-*.log under
+/private/tmp/bombay-devx-. This adds evidence, not a passing completion claim. The final witness reads the
+route from actual batch reservation before polling child startup; it predicts no
+nonce. Its name is pending_creation_cancellation_retains_child_custody.
+
+The cancellation fixture's root must preserve custody without the neighboring
+intentional projector-panic policy. Before adding it: one private test terminal
+product owns exact origin plus full recursive retirement and implements the
+existing total ProjectTerminal inclusion. It introduces no runtime policy,
+placeholder, production type or state. This isolates cleanup from unrelated
+projection failure and permits the exact positive ownership oracle after repair.
+The public origin currently exposes address/nonce rather than ID/kind; this
+regression checks available provenance and does not certify the complete joined-
+retirement provenance criterion.
+
+Next bounded storage hypothesis, before any owner edit: a parent pending startup
+row must contain actual startup receipt, control, cancellation authority and raw
+join/receiving outcome. Early Root::project loses the child/error required by the
+existing initialization rejection; ProjectTerminal has no inverse. The current
+universal ChildOccurrenceShape::Member promises only Behavior, so it cannot
+store the needed BehaviorSettlements/MailAddr/nested-failure product. Derived
+law: each interpreter's accepted storage imposes the actual payload contract;
+pure actor/occurrence declarations remain independent of runtime admission.
+Desired application syntax is unchanged. A conditional shape-owned member
+projection may preserve the existing closed occurrence walk without inventing
+another traversal. Nested failure metadata must remain the existing direct
+failure product, independent of complete task applicability, so Self birth
+metadata does not recurse through a runtime proof. Before editing: execute the
+original-GAT storage compile veto, then check a no-birth actual startup payload,
+Self direct failure metadata and foreign-node denial. Expected source-only Core
+scope creation plus curated exports, one member projection replacing the GAT,
+no new state/module; runtime raw storage still requires its complete sum and
+cancellation/rejection proof before production lowering. A duplicate occurrence
+walk, transitive proof, widened capability or diagnostic-only alias reopens it.
+
+Conditional storage microproof result: same sealed Core occurrence walk,
+private +29/-21/net +8 across six existing files, +1 trait, no states/modules;
+five old shape implementations preserve their original universal eligibility.
+Actual local retirement task payload and direct Self child-failure metadata pass
+warning-clean debug/optimized. Nonlocal pure structural mapping still passes;
+local task mapping fails E0271, foreign node fails sealed E0277. The restricted
+original GAT fails E0271/E0277 with requirements missing from its owning trait.
+This proves storage eligibility only; no startup, ACK, allocation, source or
+recursive execution acceptance follows. Source/checkpoint:
+/private/tmp/bombay-pending-storage.0zBK6I. The measured patch is unformatted;
+retention requires final measurements and all original owning fixtures/docs.
+
+Before the next bounded PRIVATE runtime experiment: reuse the existing owned
+DispatchBirth/settle_child kernel; the rejected +169 receiving redesign is not
+needed if the interpreter preserves its own startup. Put startup receipt,
+control and exact raw OwnedTask plus acquired outcome in the parent binding
+before await. Proposed one control sum: Starting | RetiringStartup | Established
+| Rejected | StartupRejected (3→5); Starting owns the original startup receipt
+and raw task, RetiringStartup owns that task/received outcome after startup
+closure. Established retains its existing projected join; both rejection
+alternatives retain existing exact owned errors/cleanup facts. No extra child
+engine or arrival-history labels. The direct failure product depends on declared
+children, not full runtime binding applicability, and is the single failure
+shape used by raw storage and retirement. Reuse spawn_local_execution,
+OwnedTask receiving and ProjectedTask only AFTER successful startup; Root's
+one-way projection cannot implement initialization rejection. The unchanged
+ApplicationCapabilities owner decides binding/ACK and exact Core settlement.
+Expected copy scope Core port/exports and existing shape implementations, plus
+runtime children/creation/launch (about +200/-70 runtime lines, zero public
+runtime types); no catalogue actor or source-factory change. Original pending-
+cancellation witness is pre-edit regression; exact initialization rejection,
+both shutdown orders, later siblings, replay and collision return remain
+required. New arbitrary bounds, transitive failure proofs, early establishment,
+producer-owned joins or missing current-value custody reopen this candidate.
+
+The restored nominal runtime executes actual Node→Node→Node and returns typed
+child custody debug/optimized, through unchanged fresh allocation/init/binding,
+concrete Child=Self and NoSends. No fixed-depth type bound or application terminal
+recursion is used. NoSends cannot prove create-before-dependent-send or rejected
+report custody. The finite own-birth source premise on CreationScope::Actor still
+rejects valid pure Nursery→Parent: Parent's own ProxyOutcome/ProxyDiagnostic
+ingress becomes an independent execution premise. No concrete continuation was
+supplied; remove this duplicate source port (+97/-0 private lines, one alias/two
+traits/one function/three product implementations, zero state/caller spellings).
+The bounded method-only variant fails library normalization before reaching the
+body; its representation exposure/+104 private lines are removed without adding
+bounds or wrappers. This is an incomplete proof, not semantic impossibility.
+Both checkpoints reopen; actual production delta is zero. Evidence:
+/private/tmp/bombay-devx-{actual-scope-sources,method-source-scope,self-child-consumer}.
 
 Disposition: reopen; zero actual repository production states/modules/public
 types added by these reviews. Falsifiers are consolidated in [DEAD_ENDS](../../DEAD_ENDS.md).

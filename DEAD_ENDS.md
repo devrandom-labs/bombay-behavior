@@ -363,3 +363,41 @@ change. Keep the input-to-return equation closed in the next model; do not add
 caller bounds to excuse the trait. Independent evidence:
 /private/tmp/bombay-creation-reply.nx4amE and
 /private/tmp/bombay-devx-creation-row-forged-receipt.log.
+
+### Native creation input seal omits the child relationship
+
+Sealing only the owned-request/borrowed-row shape still permits an external
+CreationInput<Addr, OtherChild> implementation for an already-sealed native
+RoutedCreation<Addr, Child>. It can choose u64 and dispatch the wrong child's
+original request although both declared results are Never. Pinned Nix accepts
+the cross-child forgery. The complete address/child/input/settlement relationship
+must be sealed, not only the storage shape. Four private owner edits are removed;
+no actual production or API change. Evidence:
+/private/tmp/bombay-creation-reply.nx4amE/cross_child/src/main.rs.
+
+### Finite own-birth source admission on every creator scope
+
+Requiring the actor's finite own-birth source premise through CreationScope::Actor
+preserves actual three-generation Self/NoSends execution but rejects valid pure
+Nursery→Parent declarations. Parent's own ProxyOutcome/ProxyDiagnostic ingress
+becomes another execution obligation in Nursery's generated factory body.
+The proposed operational port had no concrete continuation; it does not prove
+source execution or full establishment. Removed 97 private lines and their
+alias/traits/function; actual production unchanged. Evidence:
+/private/tmp/bombay-devx-actual-scope-sources/pure-own-source.log.
+The method-only variant fails library normalization before reaching the body;
+its public naming surface is also removed. It is an incomplete proof rather
+than a semantic falsifier: /private/tmp/bombay-devx-method-source-scope/method-library.log.
+
+### Receiving creation delegates ownership to an unrecorded startup future
+
+The new native receiving adapter preserves final reply-before-disposal ordering
+but loses the original child when a Pending startup attempt is disposed. The
+same real witness through ORIGINAL Births::InterpretCreations compiles and fails
+in debug/optimized: request/reply absent, joined children/failures empty, original
+weak ownership zero. Startup cancellation requests cleanup while disposal drops
+the sole unrecorded join. Receiving syntax cannot cure the interpreter's custody
+transfer. Reject the forwarding adapter; put startup authority and join into
+parent-owned storage before awaiting. No actual production change. Evidence:
+/private/tmp/bombay-original-creation-cancellation.znm6zpay and
+/private/tmp/bombay-devx-creation-input-runtime-cancel-{debug,optimized}.log.
