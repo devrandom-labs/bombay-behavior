@@ -118,6 +118,10 @@ pure fold panic, without claiming a typed initialization error or actions.
 `HostRejected` returns the current child, uninterpreted initialization
 actions, and exact reason. These are semantic creation rejections, not
 interpreter corruption, and none reconstructs the pre-initialization child.
+`Unavailable { id, kind }` reports that native execution destroyed the accepted
+definition before commitment. It retains exact correlation and provenance,
+while the interpreter owns the original native failure and allocated origin
+until retirement. It grants no installed authority or restart success.
 Rejection or corruption before ownership transfer instead returns the complete
 original `CreateChild` through `ItemSettlement`.
 

@@ -261,7 +261,7 @@ where
                 }
                 exhausted
             }
-            WorkerCustody::Returned {
+            WorkerCustody::Rejected {
                 role,
                 rejection,
                 activation,
@@ -269,7 +269,7 @@ where
             } => {
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(KeyedDiagnostic::from(
-                        protocol::KeyedDiagnosticCause::WorkerReturned {
+                        protocol::KeyedDiagnosticCause::WorkerCreationRejected {
                             role,
                             rejection,
                             activation,

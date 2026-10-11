@@ -2,8 +2,8 @@ use core::marker::PhantomData;
 
 use behavior_actors::StopOnShutdown;
 use behavior_core::{
-    Actions, Behavior, BehaviorActed, BirthMode, Births, ChildHead, ChildOccurrenceShape,
-    ChildOccurrences, MailAddr, Never, NoBirths, NoSends, User,
+    Actions, Behavior, BehaviorActed, BirthMode, Births, ChildHead, ChildOccurrenceMember,
+    ChildOccurrenceShape, ChildOccurrences, MailAddr, Never, NoBirths, NoSends, User,
 };
 
 struct Empty;
@@ -12,7 +12,11 @@ struct TestOccurrences;
 
 impl ChildOccurrenceShape for TestOccurrences {
     type Empty = Empty;
-    type Member<Occurrence, Child: Behavior, Tail> = Slot<Occurrence, Child, Tail>;
+}
+impl<Occurrence, Child: Behavior, Tail> ChildOccurrenceMember<Occurrence, Child, Tail>
+    for TestOccurrences
+{
+    type Member = Slot<Occurrence, Child, Tail>;
 }
 
 trait Same<T> {}

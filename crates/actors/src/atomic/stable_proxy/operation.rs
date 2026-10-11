@@ -577,13 +577,14 @@ mod tests {
     use std::sync::{Arc, Mutex, mpsc};
 
     use behavior::{
-        ActiveTurn, Address, BehaviorActed, ClassifySettlement, CreationSequence,
-        EstablishedDelivery, EstablishedRecipient, ExactDeliveryReason, Here, InterpretItem,
-        InterpretSends, Interpretation, InterpreterFault, InterpreterRequests, MessageProtocol,
-        NoBirths, NoSends, Protocol, SendLayer, SettledItem, SettlementStatus, User,
+        Actions, ActiveTurn, Address, BehaviorActed, ChildInputIngress, ClassifySettlement,
+        CreationSequence, EstablishedDelivery, EstablishedRecipient, EventLayer,
+        ExactDeliveryReason, Here, InterpretItem, InterpretSends, Interpretation, InterpreterFault,
+        InterpreterRequests, MessageProtocol, NoBirths, NoSends, Protocol, SendLayer, SettledItem,
+        SettlementStatus, User,
     };
 
-    use super::super::ProxyCommand;
+    use super::super::{ProxyCommand, ProxyEvent};
     use super::*;
     use crate::atomic::pool::assignment::{
         AcceptedJobSequence, AssignWorker, AssignedJob, Assignment, AssignmentReceipt,
@@ -2832,5 +2833,137 @@ mod tests {
         assert_eq!(Rc::as_ptr(&submission.worker.0), original);
         assert_eq!(submission.worker.0.as_slice(), &[31, 37]);
         drop(authority);
+    }
+
+    struct MailWorker {
+        message: Box<str>,
+    }
+
+    impl Protocol for MailWorker {
+        type Addr = RuntimeAddr;
+        type Msg = Box<str>;
+    }
+
+    impl Behavior for MailWorker {
+        type Protocol = Self;
+        type Event = User<RuntimeAddr, Box<str>>;
+        type Sends = NoSends;
+        type Ph = Never;
+        type Error = Never;
+        type Birth = NoBirths;
+
+        fn transition(&mut self, _: ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+            self.message = event.message;
+            Ok(Actions::cont())
+        }
+    }
+
+    type ActivatedMailProxy = StableProxy<MailWorker, OwnedActivation>;
+    type MailOwnerControl = ProxyControl<MailWorker, OwnedActivation>;
+    type MailProxyEvent = ProxyEvent<MailWorker, OwnedActivation>;
+    type MailWithOuterNotice = EventLayer<Box<str>, EventLayer<u64, MailProxyEvent>>;
+    type MailWithInnerNotice = EventLayer<u64, EventLayer<Box<str>, MailProxyEvent>>;
+
+    fn parent_input_round_trip<Event>()
+    where
+        Event: ChildInputIngress<ActivatedMailProxy, MailOwnerControl>,
+    {
+        let message = Box::<str>::from("original worker");
+        let message_allocation = message.as_ptr();
+        let activation = Box::<str>::from("original activation");
+        let activation_allocation = activation.as_ptr();
+        let input = ProxyControl::start_with(MailWorker { message }, OwnedActivation(activation));
+        let event = Event::child_input(input);
+        let Ok(returned) = Event::recover_child_input(event) else {
+            panic!("the parent input must return through its exact port");
+        };
+        let ProxyCommand::Start(submission) = returned.command else {
+            panic!("the original start command must survive");
+        };
+        assert_eq!(submission.worker.message.as_ptr(), message_allocation);
+        assert_eq!(&*submission.worker.message, "original worker");
+        assert_eq!(submission.activation.0.as_ptr(), activation_allocation);
+        assert_eq!(&*submission.activation.0, "original activation");
+    }
+
+    #[test]
+    fn private_parent_input_recovery_preserves_worker_and_activation() {
+        parent_input_round_trip::<MailProxyEvent>();
+        parent_input_round_trip::<MailWithOuterNotice>();
+        parent_input_round_trip::<MailWithInnerNotice>();
+    }
+
+    #[test]
+    fn private_parent_input_recovery_returns_each_owned_layer() {
+        let notice = Box::<str>::from("outer notice");
+        let allocation = notice.as_ptr();
+        let event = MailWithOuterNotice::Owned(notice);
+        let Err(EventLayer::Owned(returned)) = <MailWithOuterNotice as ChildInputIngress<
+            ActivatedMailProxy,
+            MailOwnerControl,
+        >>::recover_child_input(event) else {
+            panic!("the outer notice must return in its original lane");
+        };
+        assert_eq!(returned.as_ptr(), allocation);
+        assert_eq!(&*returned, "outer notice");
+
+        let event = MailWithOuterNotice::Inner(EventLayer::Owned(37));
+        let Err(EventLayer::Inner(EventLayer::Owned(returned))) =
+            <MailWithOuterNotice as ChildInputIngress<ActivatedMailProxy, MailOwnerControl>>::recover_child_input(event)
+        else {
+            panic!("the inner notice must return in its original lane");
+        };
+        assert_eq!(returned, 37);
+
+        let event = MailWithInnerNotice::Owned(41);
+        let Err(EventLayer::Owned(returned)) = <MailWithInnerNotice as ChildInputIngress<
+            ActivatedMailProxy,
+            MailOwnerControl,
+        >>::recover_child_input(event) else {
+            panic!("the reordered outer notice must return in its original lane");
+        };
+        assert_eq!(returned, 41);
+
+        let notice = Box::<str>::from("inner notice");
+        let allocation = notice.as_ptr();
+        let event = MailWithInnerNotice::Inner(EventLayer::Owned(notice));
+        let Err(EventLayer::Inner(EventLayer::Owned(returned))) =
+            <MailWithInnerNotice as ChildInputIngress<ActivatedMailProxy, MailOwnerControl>>::recover_child_input(event)
+        else {
+            panic!("the reordered inner notice must return in its original lane");
+        };
+        assert_eq!(returned.as_ptr(), allocation);
+        assert_eq!(&*returned, "inner notice");
+    }
+
+    #[test]
+    fn private_parent_input_recovery_returns_foreign_inner_proxy_events() {
+        let message = Box::<str>::from("foreign service");
+        let allocation = message.as_ptr();
+        let event = MailWithOuterNotice::Inner(EventLayer::Inner(MailProxyEvent::Service(
+            User::new(RuntimeAddr(43), message),
+        )));
+        let Err(EventLayer::Inner(EventLayer::Inner(MailProxyEvent::Service(returned)))) =
+            <MailWithOuterNotice as ChildInputIngress<ActivatedMailProxy, MailOwnerControl>>::recover_child_input(event)
+        else {
+            panic!("the foreign service must return in the original proxy lane");
+        };
+        assert_eq!(returned.from, RuntimeAddr(43));
+        assert_eq!(returned.message.as_ptr(), allocation);
+        assert_eq!(&*returned.message, "foreign service");
+
+        let message = Box::<str>::from("reordered foreign service");
+        let allocation = message.as_ptr();
+        let event = MailWithInnerNotice::Inner(EventLayer::Inner(MailProxyEvent::Service(
+            User::new(RuntimeAddr(47), message),
+        )));
+        let Err(EventLayer::Inner(EventLayer::Inner(MailProxyEvent::Service(returned)))) =
+            <MailWithInnerNotice as ChildInputIngress<ActivatedMailProxy, MailOwnerControl>>::recover_child_input(event)
+        else {
+            panic!("the reordered foreign service must return in its original proxy lane");
+        };
+        assert_eq!(returned.from, RuntimeAddr(47));
+        assert_eq!(returned.message.as_ptr(), allocation);
+        assert_eq!(&*returned.message, "reordered foreign service");
     }
 }

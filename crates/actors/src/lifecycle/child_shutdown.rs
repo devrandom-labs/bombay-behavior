@@ -3,9 +3,10 @@
 use core::marker::PhantomData;
 
 use behavior::{
-    Actions, Address, Behavior, BirthMode, ChildChoice, ChildHead, ChildOccurrenceProduct,
-    ChildOccurrenceShape, ChildOccurrences, ChildTail, CreationId, CreationKind, EventLayer,
-    InterpreterRequests, Never, ResolveChildOccurrence, SendEffects, SendLayer, Step,
+    Actions, Address, Behavior, BirthMode, ChildChoice, ChildHead, ChildOccurrenceMember,
+    ChildOccurrenceProduct, ChildOccurrenceShape, ChildOccurrences, ChildTail, CreationId,
+    CreationKind, EventLayer, InterpreterRequests, Never, ResolveChildOccurrence, SendEffects,
+    SendLayer, Step,
 };
 
 use super::shutdown_coordinator::heterogeneous;
@@ -738,7 +739,11 @@ pub struct NoChildren;
 
 impl ChildOccurrenceShape for AvailableChildren {
     type Empty = NoChildren;
-    type Member<Occurrence, Child: Behavior, Tail> = Unassigned<Child, Tail>;
+}
+impl<Occurrence, Child: Behavior, Tail> ChildOccurrenceMember<Occurrence, Child, Tail>
+    for AvailableChildren
+{
+    type Member = Unassigned<Child, Tail>;
 }
 
 /// Statically consume the child at one structural position.
@@ -776,7 +781,11 @@ pub struct ShutdownTargets<B: Behavior>(PhantomData<fn() -> B>);
 
 impl<B: Behavior> ChildOccurrenceShape for ShutdownTargets<B> {
     type Empty = NoShutdownTargets<behavior::BehaviorAddr<B>>;
-    type Member<Occurrence, Child: Behavior, Tail> = ShutdownChoice<Child, Tail>;
+}
+impl<B: Behavior, Occurrence, Child: Behavior, Tail> ChildOccurrenceMember<Occurrence, Child, Tail>
+    for ShutdownTargets<B>
+{
+    type Member = ShutdownChoice<Child, Tail>;
 }
 
 /// Complete shutdown target sum derived from an application's direct births.
@@ -885,7 +894,11 @@ struct PlannedChild<Position, Child, Tail>(PhantomData<fn() -> (Position, Child,
 
 impl ChildOccurrenceShape for PlanningChildren {
     type Empty = PlannedEnd;
-    type Member<Occurrence, Child: Behavior, Tail> = PlannedChild<Occurrence, Child, Tail>;
+}
+impl<Occurrence, Child: Behavior, Tail> ChildOccurrenceMember<Occurrence, Child, Tail>
+    for PlanningChildren
+{
+    type Member = PlannedChild<Occurrence, Child, Tail>;
 }
 
 trait PlanChildren<Node, A: Address, Event, Sends> {

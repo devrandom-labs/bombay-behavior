@@ -4,8 +4,9 @@ use core::ops::ControlFlow;
 
 use behavior::{
     Behavior, BehaviorAddr, BehaviorBase, ChildCreationOutcome, ChildCreationSettled, ChildHead,
-    CreateChild, CreationKind, EndpointAddress, EstablishedActor, EstablishedRecipient, Here,
-    Ingress, InjectEvent, ItemSettlement, SettledItem,
+    ChildNamespaceExhausted, CreateChild, CreationKind, CreationSettlement, Creations,
+    CreationsSettled, EndpointAddress, EstablishedActor, EstablishedRecipient, Here, Ingress,
+    InjectEvent, InterpreterFault, ItemSettlement, SettledItem,
 };
 
 use crate::{
@@ -29,6 +30,47 @@ use super::super::{
     WorkerSubmission,
 };
 use super::assignment::{AssignedJob, AssignmentShutdown};
+
+#[derive(Clone, Copy)]
+pub(in crate::atomic) enum CreationBatchRejection {
+    NamespaceExhausted,
+    InterpreterCorrupt(InterpreterFault),
+}
+
+impl CreationBatchRejection {
+    pub(in crate::atomic) fn worker<W>(self, worker: W) -> WorkerCreationRejection<W>
+    where
+        W: Behavior,
+    {
+        match self {
+            Self::NamespaceExhausted => WorkerCreationRejection::NamespaceExhausted { worker },
+            Self::InterpreterCorrupt(fault) => {
+                WorkerCreationRejection::InterpreterCorrupt { worker, fault }
+            }
+        }
+    }
+
+    pub(in crate::atomic) fn settlement<W>(
+        self,
+        creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
+    ) -> CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>
+    where
+        W: Behavior + BehaviorBase,
+        BehaviorAddr<W>: EndpointAddress,
+        StopOnShutdown<W>:
+            Behavior<Protocol = W::Protocol, Error = W::Error, Ph = W::Ph, Birth = W::Birth>,
+    {
+        match self {
+            Self::NamespaceExhausted => CreationsSettled::new(CreationSettlement::Rejected {
+                creations,
+                reason: ChildNamespaceExhausted,
+            }),
+            Self::InterpreterCorrupt(fault) => {
+                CreationsSettled::new(CreationSettlement::Corrupt { creations, fault })
+            }
+        }
+    }
+}
 
 #[expect(
     dead_code,
@@ -677,7 +719,7 @@ where
         worker: CurrentWorker<W>,
         activation: P,
     },
-    Returned {
+    Rejected {
         role: RoleName<Role>,
         rejection: WorkerCreationRejection<W>,
         activation: P,
@@ -886,7 +928,7 @@ where
                     }),
                 }
             }
-            WorkerCreationOutcome::Rejected(rejection) => Ok(WorkerCustody::Returned {
+            WorkerCreationOutcome::Rejected(rejection) => Ok(WorkerCustody::Rejected {
                 role,
                 rejection,
                 activation: worker.activation,
@@ -924,7 +966,7 @@ where
                 rejection,
             ));
         }
-        Ok(WorkerCustody::Returned {
+        Ok(WorkerCustody::Rejected {
             role,
             rejection,
             activation: worker.activation,
@@ -1500,7 +1542,7 @@ where
         member: Member<Role, W, P, Job, WorkerResult, Customer>,
         request: InitializeWorker<W, P>,
     },
-    Returned {
+    Rejected {
         member: Member<Role, W, P, Job, WorkerResult, Customer>,
         role: RoleName<Role>,
         rejection: WorkerCreationRejection<W>,
@@ -1828,7 +1870,7 @@ where
                     Self::begin_initialization(role, recoveries, starting, actor);
                 WorkerCreationAdmission::Initializing { member, request }
             }
-            WorkerCreationOutcome::Rejected(rejection) => WorkerCreationAdmission::Returned {
+            WorkerCreationOutcome::Rejected(rejection) => WorkerCreationAdmission::Rejected {
                 member: Self {
                     role: role.clone(),
                     recoveries,
@@ -1839,73 +1881,6 @@ where
                 activation: starting.activation,
                 stopped: starting.stopped,
             },
-        }
-    }
-
-    pub(in crate::atomic) fn admit_successful_creation(
-        self,
-        creation: ChildCreationSettled<StopOnShutdown<W>, ChildHead>,
-    ) -> Result<
-        (Self, InitializeWorker<W, P>),
-        (Self, ChildCreationSettled<StopOnShutdown<W>, ChildHead>),
-    > {
-        let Self {
-            role,
-            recoveries,
-            state,
-        } = self;
-        let MemberState::Creating(starting) = state else {
-            return Err((
-                Self {
-                    role,
-                    recoveries,
-                    state,
-                },
-                creation,
-            ));
-        };
-        let settlement = creation.into_settlement();
-        match settlement {
-            SettledItem::Attempted(ItemSettlement::Accepted(created)) => {
-                match &created {
-                    ChildCreationOutcome::Established(_) => {}
-                    _ => {
-                        return Err((
-                            Self {
-                                role,
-                                recoveries,
-                                state: MemberState::Creating(starting),
-                            },
-                            ChildCreationSettled::new(SettledItem::Attempted(
-                                ItemSettlement::Accepted(created),
-                            )),
-                        ));
-                    }
-                }
-                match created.into_actor() {
-                    Ok(actor) => Ok(Self::begin_initialization(
-                        role, recoveries, starting, actor,
-                    )),
-                    Err(created) => Err((
-                        Self {
-                            role,
-                            recoveries,
-                            state: MemberState::Creating(starting),
-                        },
-                        ChildCreationSettled::new(SettledItem::Attempted(
-                            ItemSettlement::Accepted(created),
-                        )),
-                    )),
-                }
-            }
-            settlement => Err((
-                Self {
-                    role,
-                    recoveries,
-                    state: MemberState::Creating(starting),
-                },
-                ChildCreationSettled::new(settlement),
-            )),
         }
     }
 
@@ -2358,6 +2333,7 @@ where
     match settlement {
         SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
             ChildCreationOutcome::Established(child) => Some((child.id(), child.kind())),
+            ChildCreationOutcome::Unavailable { id, kind } => Some((*id, *kind)),
             ChildCreationOutcome::InitializationRejected { creation, .. }
             | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {

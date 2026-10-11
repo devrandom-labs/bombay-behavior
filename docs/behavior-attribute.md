@@ -118,8 +118,10 @@ A route is routing intent only. It is not an actor identity, proof of
 freshness, or successful installation fact.
 
 Generated and handwritten child products share the same sealed occurrence
-product. A static runtime may implement `ChildOccurrenceShape` once to project
-any `SystemChildren` into its own occurrence-preserving direct-child storage.
+product. A static runtime implements `ChildOccurrenceShape` for empty storage
+and `ChildOccurrenceMember` for each child its storage admits. This projects
+`SystemChildren` into occurrence-preserving direct-child storage without
+imposing runtime admission on a pure actor declaration.
 The macro emits no runtime storage or shape implementation, and equal child
 types at two named roles still receive distinct structural positions.
 
