@@ -260,6 +260,8 @@
     "crates/behavior/src/effects/actions.rs::<impl UserEvent for CreationEvent<A, C, M>>::into_user",
     "crates/behavior/src/effects/actions.rs::<impl UserEvent for CreationEvent<A, C, M>>::user",
     "crates/behavior/src/effects/actions.rs::RetirementCreationSettlement<Settlement>::into_settlement",
-    "crates/behavior/src/effects/sending.rs::ActionItem::retain_accepted"
+    "crates/behavior/src/effects/sending.rs::ActionItem::retain_accepted",
+    "crates/behavior/src/user_event.rs::<impl ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>>::child_input",
+    "crates/behavior/src/user_event.rs::<impl ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>>::recover_child_input"
   ]
 }
