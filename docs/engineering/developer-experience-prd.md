@@ -1127,6 +1127,19 @@ against the final retained API. Missing or deleted symbols do not certify them.
 
 ### Dependency delivery and exact gates
 
+The fresh released-dependency failure selects a bounded delivery action:
+prepare the already-retained Core/Actors custody changes after owner PR #89,
+without changing their semantics. Reuse the recorded conditional occurrence,
+Unavailable receipt, pool rejection and ingress inverse laws and their original
+falsifiers. Expected extraction: 29 tracked code/test/contract-document paths,
+zero new production beyond the retained +251-line owner batch; one new public
+trait relative to #89, unchanged source relative to the retained feature branch.
+Exclude the large DevX research documents from the delivery branch and link the
+single owning checklist. Create a separate stacked draft for review, verify exact
+source equivalence, pinned gates and packaged consumers before requesting any
+merge/publication authorization. Existing #89 and both working feature branches
+remain intact. This is delivery preparation, not inferred-assembly acceptance.
+
 Initial source revisions remain the inventory baseline in the appendix.
 Current actual Bombay selects registry Behavior/Actors 0.23.0, macros 0.14.0,
 Address 0.3.0, Communication 0.1.3 and Timers 0.2.0, with no Behavior/Timers
