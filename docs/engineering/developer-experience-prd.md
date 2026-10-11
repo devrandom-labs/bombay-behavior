@@ -1134,7 +1134,8 @@ prepare the already-retained Core/Actors custody changes after owner PR #89,
 without changing their semantics. Reuse the recorded conditional occurrence,
 Unavailable receipt, pool rejection and ingress inverse laws and their original
 falsifiers. Expected extraction: 29 tracked code/test/contract-document paths (actual 31,
-including the two ingress files from the later inverse batch),
+including the two ingress files from the later inverse batch; 32 with the
+subsequent direct owner-test path),
 zero new production beyond the retained +251-line owner batch; one new public
 trait relative to #89, unchanged source relative to the retained feature branch.
 Exclude the large DevX research documents from the delivery branch and link the
@@ -1169,7 +1170,11 @@ its real Bombay packaged-consumer run has 562 passed, one failed and one skipped
 inferred-assembly fixtures; workspace/all-target Clippy and the downstream
 doctest pass. The attempted nextest --all-targets command failed test listing
 on the custom benchmark and is not counted as a passing check. Registry-based
-Bombay full gates and publication remain open.
+Bombay full gates and publication remain open. The extracted delivery is stacked
+draft [PR #90](https://github.com/devrandom-labs/bombay-behavior/pull/90), labeled
+semver-breaking, after #89. Exact-head CI was dispatched on its feature branch
+because ordinary pull-request CI filters for main; its results are pending.
+
 
 Initial source revisions remain the inventory baseline in the appendix.
 Current actual Bombay selects registry Behavior/Actors 0.23.0, macros 0.14.0,
