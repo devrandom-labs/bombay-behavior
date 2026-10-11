@@ -11,11 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(behavior)* [**breaking**] preserve unavailable creation and rejected input custody ([#90](https://github.com/devrandom-labs/bombay-behavior/pull/90))
+- **Breaking:** replace `ChildOccurrenceShape::Member` with conditional
+  `ChildOccurrenceMember`, preserving pure creation declarations independently
+  of interpreter storage requirements.
+- **Breaking:** require `ChildInputIngress::recover_child_input` to return the
+  original private input or the complete unchanged foreign event.
+- **Breaking:** add `ChildCreationOutcome::Unavailable { id, kind }` when
+  accepted creation custody was destroyed, preserving explicit provenance.
 
-### Other
+### Fixed
 
-- Preserve typed sends and facade macro paths through composition ([#89](https://github.com/devrandom-labs/bombay-behavior/pull/89))
+- **Breaking:** owned `SendLayer` `SendInput` paths use `(Own, Path)`;
+  unique inferred requests still route through composed effect lanes.
+- route composed send requests through typed lanes
 
 ## [0.23.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.22.0...bombay-behavior-v0.23.0) - 2026-10-08
 
