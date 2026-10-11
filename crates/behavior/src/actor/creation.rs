@@ -703,7 +703,9 @@ where
 /// claiming an error or successful actions. Rejection while establishing the
 /// host returns the current child and the still-uninterpreted initialization
 /// actions. No variant reconstructs a pre-initialization value or silently
-/// discards an affine action.
+/// discards an affine action. If interpreter execution loses the definition,
+/// only its exact ID and explicit creation kind remain in an unavailable receipt;
+/// the interpreter retains its native cause without claiming an installed actor.
 ///
 /// A failed child installation returns current work and no installed actor:
 ///
@@ -725,6 +727,14 @@ where
 {
     /// Fresh child creation committed successfully.
     Established(CommittedChild<C, Occurrence>),
+    /// The interpreter consumed the request but cannot return the child definition.
+    /// No actor was committed; executor-specific failure remains in host custody.
+    Unavailable {
+        /// Exact creator-local correlation of the consumed request.
+        id: CreationId,
+        /// Explicit provenance of the consumed request.
+        kind: CreationKind,
+    },
     /// The child's pure initialization transition rejected before host commit.
     InitializationRejected {
         /// Current child value with its creator correlation and private route.
@@ -1729,8 +1739,11 @@ where
 ///
 /// impl behavior::ChildOccurrenceShape for RuntimeStorage {
 ///     type Empty = NoChildBindings;
-///     type Member<Occurrence, Child: behavior::Behavior, Tail> =
-///         ChildBinding<Occurrence, Child, Tail>;
+/// }
+/// impl<Occurrence, Child: behavior::Behavior, Tail>
+///     behavior::ChildOccurrenceMember<Occurrence, Child, Tail> for RuntimeStorage
+/// {
+///     type Member = ChildBinding<Occurrence, Child, Tail>;
 /// }
 ///
 /// type ChildBindings<Node> = behavior::ChildOccurrences<Node, RuntimeStorage>;
@@ -1738,9 +1751,90 @@ where
 pub trait ChildOccurrenceShape {
     /// Representation of the empty [`Never`] node.
     type Empty;
+}
 
-    /// Representation of one concrete child followed by the remaining product.
-    type Member<Occurrence, Child: Behavior, Tail>;
+/// Shape-owned eligibility and representation of one exact child occurrence.
+///
+/// An interpreter may require the payload contracts its storage actually owns.
+/// Those requirements govern this projection, not pure actor declarations.
+///
+/// Eligibility is required independently at each inhabited occurrence. A shape
+/// admitting only the tail cannot supply the head:
+///
+/// ```compile_fail,E0277
+/// struct NoChildren;
+/// struct OccurrenceSlot<Position, Child, Tail> {
+///     child: Child,
+///     tail: Tail,
+///     position: std::marker::PhantomData<fn() -> Position>,
+/// }
+/// struct Worker { payload: u32 }
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
+/// }
+/// impl behavior::Behavior for Worker {
+///     type Protocol = Self;
+///     type Event = behavior::User<behavior::MailAddr, behavior::Never>;
+///     type Sends = behavior::NoSends;
+///     type Birth = behavior::NoBirths;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event)
+///         -> behavior::BehaviorActed<Self> {
+///         match event.message {}
+///     }
+/// }
+/// type Workers = behavior::ChildChoice<Worker, behavior::ChildChoice<Worker, behavior::Never>>;
+/// struct MissingHead;
+/// impl behavior::ChildOccurrenceShape for MissingHead {
+///     type Empty = NoChildren;
+/// }
+/// impl<Child: behavior::Behavior, Tail> behavior::ChildOccurrenceMember<behavior::ChildTail<behavior::ChildHead>, Child, Tail> for MissingHead {
+///     type Member = OccurrenceSlot<behavior::ChildTail<behavior::ChildHead>, Child, Tail>;
+/// }
+/// let _: std::marker::PhantomData<behavior::ChildOccurrences<Workers, MissingHead>> = std::marker::PhantomData;
+/// ```
+///
+/// A shape admitting only the head cannot supply the tail:
+///
+/// ```compile_fail,E0277
+/// struct NoChildren;
+/// struct OccurrenceSlot<Position, Child, Tail> {
+///     child: Child,
+///     tail: Tail,
+///     position: std::marker::PhantomData<fn() -> Position>,
+/// }
+/// struct Worker { payload: u32 }
+/// impl behavior::Protocol for Worker {
+///     type Addr = behavior::MailAddr;
+///     type Msg = behavior::Never;
+/// }
+/// impl behavior::Behavior for Worker {
+///     type Protocol = Self;
+///     type Event = behavior::User<behavior::MailAddr, behavior::Never>;
+///     type Sends = behavior::NoSends;
+///     type Birth = behavior::NoBirths;
+///     type Ph = behavior::Never;
+///     type Error = behavior::Never;
+///     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event)
+///         -> behavior::BehaviorActed<Self> {
+///         match event.message {}
+///     }
+/// }
+/// type Workers = behavior::ChildChoice<Worker, behavior::ChildChoice<Worker, behavior::Never>>;
+/// struct MissingTail;
+/// impl behavior::ChildOccurrenceShape for MissingTail {
+///     type Empty = NoChildren;
+/// }
+/// impl<Child: behavior::Behavior, Tail> behavior::ChildOccurrenceMember<behavior::ChildHead, Child, Tail> for MissingTail {
+///     type Member = OccurrenceSlot<behavior::ChildHead, Child, Tail>;
+/// }
+/// let _: std::marker::PhantomData<behavior::ChildOccurrences<Workers, MissingTail>> = std::marker::PhantomData;
+/// ```
+pub trait ChildOccurrenceMember<Occurrence, Child: Behavior, Tail>: ChildOccurrenceShape {
+    /// Storage for this child, its static occurrence, and the remaining product.
+    type Member;
 }
 
 /// Sealed occurrence product of a closed direct-child birth node.
@@ -1757,11 +1851,15 @@ pub trait ChildOccurrenceShape {
 ///
 /// Foreign types cannot extend the closed node algebra:
 ///
-/// ```compile_fail
+/// ```compile_fail,E0277
 /// struct RuntimeShape;
 /// impl behavior::ChildOccurrenceShape for RuntimeShape {
 ///     type Empty = ();
-///     type Member<Occurrence, Child: behavior::Behavior, Tail> = ();
+/// }
+/// impl<Occurrence, Child: behavior::Behavior, Tail>
+///     behavior::ChildOccurrenceMember<Occurrence, Child, Tail> for RuntimeShape
+/// {
+///     type Member = ();
 /// }
 ///
 /// struct ForeignNode;
@@ -1797,24 +1895,34 @@ where
 
 impl<Occurrence, Shape, Child> ChildOccurrenceProductAt<Occurrence, Shape> for Child
 where
-    Shape: ChildOccurrenceShape,
+    Shape: ChildOccurrenceShape
+        + ChildOccurrenceMember<Occurrence, Child, <Shape as ChildOccurrenceShape>::Empty>,
     Child: Behavior,
 {
-    type Product = Shape::Member<Occurrence, Child, Shape::Empty>;
+    type Product = <Shape as ChildOccurrenceMember<
+        Occurrence,
+        Child,
+        <Shape as ChildOccurrenceShape>::Empty,
+    >>::Member;
 }
 
 impl<Occurrence, Shape, Head, Tail> ChildOccurrenceProductAt<Occurrence, Shape>
     for ChildChoice<Head, Tail>
 where
-    Shape: ChildOccurrenceShape,
+    Shape: ChildOccurrenceShape
+        + ChildOccurrenceMember<
+            Occurrence,
+            Head,
+            <Tail as ChildOccurrenceProductAt<ChildTail<Occurrence>, Shape>>::Product,
+        >,
     Head: Behavior,
     Tail: ChildOccurrenceProductAt<ChildTail<Occurrence>, Shape>,
 {
-    type Product = Shape::Member<
+    type Product = <Shape as ChildOccurrenceMember<
         Occurrence,
         Head,
         <Tail as ChildOccurrenceProductAt<ChildTail<Occurrence>, Shape>>::Product,
-    >;
+    >>::Member;
 }
 
 impl<Occurrence, Shape> ChildOccurrenceProductAt<Occurrence, Shape> for Never

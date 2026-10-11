@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use std::mem;
 
 use behavior::{
-    Actions, Address, Behavior, BehaviorAddr, BehaviorBase, EndpointAddress, InjectEvent,
+    Actions, Address, Behavior, BehaviorAddr, BehaviorBase, ChildCreationSettled, CreateChild,
+    CreationSettlement, Creations, CreationsSettled, EndpointAddress, InjectEvent,
     InterpreterRequests, Protocol, SendEffects,
 };
 
@@ -14,8 +15,9 @@ use crate::{DiagnosticRoute, ScheduleAfter, ShutdownRequested, StopOnShutdown};
 use super::super::pool::assignment::CustomerJob;
 use super::super::pool::worker as direct_worker;
 use super::super::pool::worker::{
-    Member, MemberState, PreparedReplacement, WorkerPreparationError, WorkerPreparationStartFault,
-    WorkerRecoveryPreparation, WorkerReplacementError, WorkerReplacementRelease,
+    CreationBatchRejection, Member, MemberState, PreparedReplacement, WorkerCreationAdmission,
+    WorkerPreparationError, WorkerPreparationStartFault, WorkerRecoveryPreparation,
+    WorkerReplacementError, WorkerReplacementRelease,
 };
 use super::super::pool::{
     Assignment, CompletesAssignments, Interruption, PoolFailureReaction, PoolRecoveryState,
@@ -35,7 +37,8 @@ use super::protocol;
 use super::role::RoleCell;
 use super::{
     CustomerDelivery, CustomerRoute, KeyedActions, KeyedAssignedReturnReason, KeyedDiagnostic,
-    KeyedOperating, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue, KeyedQueuedReturnReason,
+    KeyedEvent, KeyedOperating, KeyedOutcome, KeyedPool, KeyedPoolState, KeyedQueue,
+    KeyedQueuedReturnReason,
 };
 
 impl<Role, W, P, Key, Job, WorkerResult> KeyedOperating<Role, W, P, Key, Job, WorkerResult>
@@ -136,6 +139,256 @@ where
     Job: Clone + Send,
     WorkerResult: Send,
 {
+    pub(super) fn accept_creations(
+        &mut self,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+        workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
+    ) -> Result<
+        (
+            KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
+            KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
+        ),
+        (
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+            CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
+        ),
+    > {
+        let settlements = match workers.into_settlement() {
+            CreationSettlement::Settled(settlements) => settlements,
+            CreationSettlement::Rejected {
+                creations,
+                reason: _,
+            } => {
+                return self.reject_creation_batch(
+                    operating,
+                    creations,
+                    CreationBatchRejection::NamespaceExhausted,
+                );
+            }
+            CreationSettlement::Corrupt { creations, fault } => {
+                return self.reject_creation_batch(
+                    operating,
+                    creations,
+                    CreationBatchRejection::InterpreterCorrupt(fault),
+                );
+            }
+        };
+        let identities = settlements
+            .iter()
+            .map(direct_worker::creation_identity)
+            .collect::<Option<Vec<_>>>();
+        let Some(positions) =
+            identities.and_then(|identities| operating.creation_positions(identities))
+        else {
+            return Err((
+                operating,
+                CreationsSettled::new(CreationSettlement::Settled(settlements)),
+            ));
+        };
+        let mut received: BTreeMap<_, _> = positions.into_iter().zip(settlements).collect();
+        let mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult> =
+            Actions::cont();
+        while let Some((position, settlement)) = received.pop_first() {
+            let RoleCell {
+                member,
+                queue,
+                capacity,
+            } = operating.roles.remove(position);
+            match member.admit_creation(ChildCreationSettled::new(settlement)) {
+                WorkerCreationAdmission::Initializing { member, request } => {
+                    operating.roles.insert(
+                        position,
+                        RoleCell {
+                            member,
+                            queue,
+                            capacity,
+                        },
+                    );
+                    actions
+                        .sends
+                        .worker_initializations
+                        .append(InterpreterRequests::one(request));
+                }
+                WorkerCreationAdmission::Rejected {
+                    member,
+                    role,
+                    rejection,
+                    activation,
+                    stopped,
+                } => {
+                    let Member { recoveries, .. } = member;
+                    actions.sends.diagnostics.append(InterpreterRequests::one(
+                        self.diagnostics.action(KeyedDiagnostic::from(
+                            protocol::KeyedDiagnosticCause::WorkerCreationRejected {
+                                role: role.clone(),
+                                rejection,
+                                activation,
+                                stopped,
+                            },
+                        )),
+                    ));
+                    let (state, mut recovered) = self.retire_unrecovered_worker(
+                        operating, position, role, recoveries, queue, capacity, actions,
+                    );
+                    match state {
+                        KeyedPoolState::Operating(resumed) => {
+                            operating = resumed;
+                            actions = recovered;
+                        }
+                        state if received.is_empty() => return Ok((state, recovered)),
+                        KeyedPoolState::Retiring { workers, deadline } => {
+                            let remaining = CreationsSettled::new(CreationSettlement::Settled(
+                                received.into_values().collect::<Creations<_>>(),
+                            ));
+                            let (state, settled) =
+                                self.accept_worker_creations(workers, deadline, remaining);
+                            recovered.sends.append(settled.sends);
+                            recovered.creates.extend(settled.creates);
+                            recovered.become_ = settled.become_;
+                            return Ok((state, recovered));
+                        }
+                        state => {
+                            let remaining = CreationsSettled::new(CreationSettlement::Settled(
+                                received.into_values().collect::<Creations<_>>(),
+                            ));
+                            let (state, returned) =
+                                self.diagnose(state, KeyedEvent::WorkerCreationsSettled(remaining));
+                            recovered.sends.append(returned.sends);
+                            return Ok((state, recovered));
+                        }
+                    }
+                }
+                WorkerCreationAdmission::Unrelated { member, creation } => {
+                    operating.roles.insert(
+                        position,
+                        RoleCell {
+                            member,
+                            queue,
+                            capacity,
+                        },
+                    );
+                    let returned = CreationsSettled::new(CreationSettlement::Settled(
+                        Creations::one(creation.into_settlement()),
+                    ));
+                    actions.sends.diagnostics.append(InterpreterRequests::one(
+                        self.diagnostics.action(KeyedDiagnostic::from(
+                            protocol::KeyedDiagnosticCause::Unexpected(
+                                KeyedEvent::WorkerCreationsSettled(returned),
+                            ),
+                        )),
+                    ));
+                }
+            }
+        }
+        Ok((KeyedPoolState::Operating(operating), actions))
+    }
+
+    fn reject_creation_batch(
+        &mut self,
+        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+        creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
+        rejection: CreationBatchRejection,
+    ) -> Result<
+        (
+            KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
+            KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
+        ),
+        (
+            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
+            CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
+        ),
+    > {
+        let Some(positions) = operating.creation_positions(
+            creations
+                .iter()
+                .map(|creation| (creation.id(), creation.kind())),
+        ) else {
+            return Err((operating, rejection.settlement(creations)));
+        };
+        let mut received: BTreeMap<_, _> = positions.into_iter().zip(creations).collect();
+        let mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult> =
+            Actions::cont();
+        while let Some((position, creation)) = received.pop_first() {
+            let RoleCell {
+                member:
+                    Member {
+                        role,
+                        recoveries,
+                        state,
+                    },
+                queue,
+                capacity,
+            } = operating.roles.remove(position);
+            match state {
+                MemberState::Creating(starting) => {
+                    let (_, worker, _) = creation.into_parts();
+                    actions.sends.diagnostics.append(InterpreterRequests::one(
+                        self.diagnostics.action(KeyedDiagnostic::from(
+                            protocol::KeyedDiagnosticCause::WorkerCreationRejected {
+                                role: role.clone(),
+                                rejection: rejection.worker(worker.into_inner()),
+                                activation: starting.activation,
+                                stopped: starting.stopped,
+                            },
+                        )),
+                    ));
+                    let (state, mut recovered) = self.retire_unrecovered_worker(
+                        operating, position, role, recoveries, queue, capacity, actions,
+                    );
+                    match state {
+                        KeyedPoolState::Operating(resumed) => {
+                            operating = resumed;
+                            actions = recovered;
+                        }
+                        state if received.is_empty() => return Ok((state, recovered)),
+                        KeyedPoolState::Retiring { workers, deadline } => {
+                            let remaining = rejection
+                                .settlement(received.into_values().collect::<Creations<_>>());
+                            let (state, settled) =
+                                self.accept_worker_creations(workers, deadline, remaining);
+                            recovered.sends.append(settled.sends);
+                            recovered.creates.extend(settled.creates);
+                            recovered.become_ = settled.become_;
+                            return Ok((state, recovered));
+                        }
+                        state => {
+                            let remaining = rejection
+                                .settlement(received.into_values().collect::<Creations<_>>());
+                            let (state, returned) =
+                                self.diagnose(state, KeyedEvent::WorkerCreationsSettled(remaining));
+                            recovered.sends.append(returned.sends);
+                            return Ok((state, recovered));
+                        }
+                    }
+                }
+                state => {
+                    operating.roles.insert(
+                        position,
+                        RoleCell {
+                            member: Member {
+                                role,
+                                recoveries,
+                                state,
+                            },
+                            queue,
+                            capacity,
+                        },
+                    );
+                    actions.sends.diagnostics.append(InterpreterRequests::one(
+                        self.diagnostics.action(KeyedDiagnostic::from(
+                            protocol::KeyedDiagnosticCause::Unexpected(
+                                KeyedEvent::WorkerCreationsSettled(
+                                    rejection.settlement(Creations::one(creation)),
+                                ),
+                            ),
+                        )),
+                    ));
+                }
+            }
+        }
+        Ok((KeyedPoolState::Operating(operating), actions))
+    }
+
     fn retire_role(
         &self,
         mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,

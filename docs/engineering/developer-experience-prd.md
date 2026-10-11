@@ -680,7 +680,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Closed dispatch input equation denies four static forgeries; original pending-startup runtime custody regression fails debug/optimized | Open: preserve startup join before await; complete retirement and final package gates |
+| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody and template rejection repairs applied; actual native startup journey passes | Open: generic closed-control rejection custody, final owner/runtime gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -689,7 +689,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX22 | Existing Entity/HTTP owners retained | Open: same Application spine, exact rejection and family/root failures |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
-| DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup-cancellation witness fails debug/optimized against locked registry dependencies | Open: repair startup custody, retain inferred API and complete downstream corpus/gates |
+| DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 136 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
 | DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
@@ -793,129 +793,32 @@ A fresh recursive check fails six E0275 diagnostics. Actual Bombay remains
 registry-backed; these source-only results do not certify its package or gates.
 Logs: /private/tmp/bombay-devx-custody-consumer-{finite,optimized,recursive}.log.
 
-Earlier nominal source-copy factories proved recursive runtime journeys but
-invalidly required report ingress on pure declarations. A relational source
-port made named-child declarations and all 20 consumer tests pass, then failed
-the valid existing birth alias with two E0277 errors. All four candidate edits
-were removed. No placeholder policy, widened protocol, erased future, forged
-source capability or additional context bound is retained.
+The joint factory obligation remains open: pure nested birth aliases and actual
+recursive execution must work together, with operational child-source
+interpretation and exact settlement custody. Nominal Self/NoSends execution
+passes three generations, but adding immediate-child source premises rejects
+valid pure Nursery→Parent staging. Whole-product execution premises recurse
+(E0275); projected source markers do not prove heterogeneous leaf operations.
+No extra depth bound, ingress placeholder, erased future or duplicate source
+sum is retained. [Rejected models](../../DEAD_ENDS.md) records their falsifiers.
 
-The authorized independent design reviews refine the falsifier:
+The routed receiving candidate was also removed. Its correlated input equation
+passed four static forgery denials, non-Send standalone error custody, complete
+heterogeneous rejection and later effects, replay, receiving cancellation,
+projection failure and both shutdown orders. It nevertheless lost a child on
+pending startup disposal. The same witness through ORIGINAL
+Births::InterpretCreations fails debug/optimized against actual locked registry
+dependencies. This proves a runtime owner gap independently of the proposed
+interface. Repair parent-owned startup custody before revisiting inferred
+creation. No candidate receiving port is part of the actual public API.
 
-- Complete CommitActions proof belongs inside a nominal future body. Making
-  associated/method scope applicability depend on that proof still fails E0275.
-- An opaque whole-product source marker does not reveal heterogeneous leaf
-  premises. A projected tail proof compiles but rejects actual concrete sends
-  with E0308.
-- A method-bearing recursive source sum can preserve exact rejection, but it
-  would duplicate the existing closed sum and is not retained.
-- A selected source port on the existing binding product accepts actual child
-  sends, heterogeneous/repeated types and exact rejected allocation. Removing
-  the separate selected-port premise still fails E0277 despite the whole-product
-  marker. Missing ingress also remains E0277. This is not the complete factory.
-- An operational continuation over the existing birth sum now interprets real
-  InterpreterRequests<ReportToParent<_>> and offers the exact retained source
-  settlements. Single/heterogeneous/repeated aliases pass debug/optimized with
-  warnings denied; missing parent ingress is E0277. No copied settlement kernel
-  or second communications sum is used. Fresh installation and cancellation
-  remain unproved.
-- Moving only immediate-child source premises to the nominal factory method
-  passes four recursive generations but rejects nested pure staging with E0277
-  inside the method body. Calling the nominal factory after actual Core source
-  interpretation also fails E0277 for the child's own birth-source premise in
-  debug and optimized builds (core_source_continuation/descendant_{debug,optimized}.log).
-  Additional depth bounds would move that defect.
-- A proposed unconditional routed-child InterpretItem port rejects valid empty
-  Births<Never>/RetirementBirths<Never> interpreters needing only batch reservation.
-  Restricting dispatch to Behavior/ChildChoice/Never also removes an executable
-  custom ChildCreationProduct + DispatchBirth ownership port. Three focused
-  pinned-Nix tests establish those existing contracts before any owner edit.
-
-The next hypothesis must provide runtime-owned full child execution with finite,
-nonrecursive applicability, jointly proving pure aliases, recursive creation and
-operational selected-source interpretation/settlement offering. It must preserve
-actual LocalParentReports, create-before-send order, SourceSettlementCustody
-identity, original receiving loans and parent-owned binding maps/ProjectedTask.
-A child task may not borrow or take its parent's binding row. Existing
-ChildBindingAt selects exact occurrence; structural routing must not acquire
-unrelated runtime source requirements.
-
-The whole-routed-request witness isolates a concrete owner gap: nine E0277
-failures prevent the runtime from receiving the complete request before child
-selection. Derived law: dispatch preserves the exact child allocation, ID,
-route, provenance, settlement and independent later effects. Desired syntax is
-Actor::dispatch_birth(request, host), or the existing mutable request/reply row
-for receiving interpretation. Reuse ChildCreationProduct, DispatchBirth,
-CreateSelectedChild, batch reservation, InterpretItem and actual EstablishChild;
-no second selection algorithm or actor send capability.
-
-Pre-edit provenance: an owned RoutedCreation must return the existing exact
-ItemSettlement; a loan of its original row returns unit and deposits that same
-settlement. ActionItem's transferable-result contract cannot govern standalone
-owned dispatch, which lawfully returns non-Send initialization errors. The next
-candidate seals the complete address/child/input/settlement equation for those
-two native forms, with no Send metadata bounds, state, traversal or caller
-Output choice. Four private owner files, one sealed metadata trait and about
-+150 production lines were expected. A private runtime receiving adapter reuses
-owned dispatch and full EstablishChild eligibility; the existing combined
-activation/preparation test interpreter forwards that same loan. Its four
-E0277/E0599 failures are the pre-edit witness for the test-only forwarding.
-Expected runtime scope: one production adapter (+40), one test adapter (+40),
-zero types/states. Full recursive admission is a separate obligation.
-
-Rejected source-only models, removed before continuing:
-
-- Requiring ActionItem for all owned dispatch excludes a lawful Send future
-  yielding a non-Send initialization error.
-- Unconstrained DispatchBirth::Output accepts a custom product whose Result is
-  Never but whose dispatch drops its request and returns u64; original E0271.
-  Formatted private production +218/-81/net +137, zero actual retained delta.
-- Sealing input shape alone permits an external mapping of native
-  RoutedCreation<Addr, Child> to OtherChild and u64. Seal membership must carry
-  the exact address and child. Four private edits removed; no actual API change.
-
-Current correlated-seal evidence (saved copy, now removed): four forged receipt, arbitrary input,
-external projection and cross-child programs fail for their intended law. Four
-external owner regressions and nine owning creation tests pass debug/optimized.
-The heterogeneous allocation-rejection/later-report journey and completed-action
-replay pass optimized; cancellation retains original rows in both modes, its
-independent optimized inversion fails and restored source passes. An actual
-Behavior::Sends declaration denies creation with E0277 (missing InterpreterRequest);
-low-level InterpretSends availability is not that protocol proof. Runtime
-projection-panic/later-sibling, joined-child/two-capability retirement and both
-shutdown orders pass debug/optimized. Strict owner library Clippy and formatting
-pass. The adapter nevertheless fails actual pending-startup cancellation in
-both modes under Bombay pinned Rust 1.99: request/reply are empty, joined
-children/failures empty and the original definition is destroyed. The same
-regression through ORIGINAL Births::InterpretCreations also compiles and fails
-debug/optimized, with no new port or owner API. Thus this is a current runtime
-consumer gap, not merely a candidate defect. The native forwarding adapter
-is reopened; no production interface is retained.
-Workspace all-targets checking fails 29 existing-host/old-dispatch diagnostics;
-no new fallback, bound or catalogue migration has been added.
-
-Aggregate checkpoint, correlated private copy: progress 3→3, creation custody
-2→2, item settlements 4→4, child outcomes 4→4 and creation settlements 3→3.
-Each surviving alternative owns the original request, current reply,
-initialization failure/actions or committed child needed for exact settlement.
-Owner production +253/-84/net +169; owning tests +20/-8/net +12; public API
-+1 sealed metadata trait/-0 types; four existing modules. Runtime production
-+36/-2/net +34, tests +39/-0/net +39, +0 types/modules. Owner transition-arm
-tokens 95→93, conditionals 19→19; two production modules 3727→3896 lines.
-The old local settlement poll is deleted; selection/allocation remain their
-existing owners. Residue scan finds no new arrival history, duplicated cause,
-false cardinality, nested actor authority, semantic flags, erasure or structural
-application syntax. Creation/lifecycle, complete-settlement and normalized
-atomic-family laws are cross-checked; their policies are unchanged. Disposition:
-reopen for the runtime bridge; the static receiving equation is independently
-proven but not retained. Pending-startup custody and the full recursive/pure-
-authoring proof remain open. Evidence:
-/private/tmp/bombay-devx-{routed-creation,owned-creation}-consumer,
-/private/tmp/bombay-devx-creation-input-*.log, /private/tmp/bombay-local-child-creation.FRZITT,
-and /private/tmp/bombay-creation-reply.nx4amE. Counts exclude external consumers.
-The four private owner/two runtime edits are restored from actual worktrees;
-source patches remain creation-input-{correlated-owner,rejected-runtime}.patch
-under /private/tmp/bombay-devx-. No unproved production representation survives.
+The next factory proof must reuse actual LocalParentReports, SourceSettlementCustody,
+fresh allocation/init/binding, the existing closed child products and selected
+occurrence, parent-owned joins and create-before-dependent-send ordering.
+Pure construction cannot certify execution; a child task cannot take or borrow
+its parent's binding row. Empty/custom creation products and non-Send standalone
+initialization errors remain legal. The finite witnesses and recursive veto are
+source-only results, not package or full-gate acceptance.
 
 Before retaining the original consumer regression: scope one Bombay owning
 creation test module, expected test-only +163/-5, zero production/state/module/API delta.
@@ -945,95 +848,127 @@ Commands run in pinned Bombay Nix; logs original-cancellation-actual-*.log under
 route from actual batch reservation before polling child startup; it predicts no
 nonce. Its name is pending_creation_cancellation_retains_child_custody.
 
-The cancellation fixture's root must preserve custody without the neighboring
-intentional projector-panic policy. Before adding it: one private test terminal
-product owns exact origin plus full recursive retirement and implements the
-existing total ProjectTerminal inclusion. It introduces no runtime policy,
-placeholder, production type or state. This isolates cleanup from unrelated
-projection failure and permits the exact positive ownership oracle after repair.
-The public origin currently exposes address/nonce rather than ID/kind; this
-regression checks available provenance and does not certify the complete joined-
-retirement provenance criterion.
+#### Startup and creation custody
 
-Next bounded storage hypothesis, before any owner edit: a parent pending startup
-row must contain actual startup receipt, control, cancellation authority and raw
-join/receiving outcome. Early Root::project loses the child/error required by the
-existing initialization rejection; ProjectTerminal has no inverse. The current
-universal ChildOccurrenceShape::Member promises only Behavior, so it cannot
-store the needed BehaviorSettlements/MailAddr/nested-failure product. Derived
-law: each interpreter's accepted storage imposes the actual payload contract;
-pure actor/occurrence declarations remain independent of runtime admission.
-Desired application syntax is unchanged. A conditional shape-owned member
-projection may preserve the existing closed occurrence walk without inventing
-another traversal. Nested failure metadata must remain the existing direct
-failure product, independent of complete task applicability, so Self birth
-metadata does not recurse through a runtime proof. Before editing: execute the
-original-GAT storage compile veto, then check a no-birth actual startup payload,
-Self direct failure metadata and foreign-node denial. Expected source-only Core
-scope creation plus curated exports, one member projection replacing the GAT,
-no new state/module; runtime raw storage still requires its complete sum and
-cancellation/rejection proof before production lowering. A duplicate occurrence
-walk, transitive proof, widened capability or diagnostic-only alias reopens it.
+The concrete failing consumer requires these bounded laws. They are derived
+ownership/composition laws or deliberate Bombay failure policy; none is an
+Agha executor or restart guarantee. Application syntax remains unchanged,
+except borrowed creation provenance on the existing terminal origin.
 
-Conditional storage microproof result: same sealed Core occurrence walk,
-private +29/-21/net +8 across six existing files, +1 trait, no states/modules;
-five old shape implementations preserve their original universal eligibility.
-Actual local retirement task payload and direct Self child-failure metadata pass
-warning-clean debug/optimized. Nonlocal pure structural mapping still passes;
-local task mapping fails E0271, foreign node fails sealed E0277. The restricted
-original GAT fails E0271/E0277 with requirements missing from its owning trait.
-This proves storage eligibility only; no startup, ACK, allocation, source or
-recursive execution acceptance follows. Source/checkpoint:
-/private/tmp/bombay-pending-storage.0zBK6I. The measured patch is unformatted;
-retention requires final measurements and all original owning fixtures/docs.
+| Owner and law recorded before editing | Complete ownership and machinery reused |
+| --- | --- |
+| Core: storage eligibility belongs to the interpreter. | Split the old universal shape GAT into Empty and conditional ChildOccurrenceMember, using the same sealed three-clause occurrence walk. Existing universal shapes retain their Behavior-only contract; raw task storage states its real payload premises. Direct child-failure metadata stays independent of recursive execution eligibility. Pure authoring gains no runtime obligation. |
+| Bombay: startup custody enters the parent before await. | Store the actual startup receipt, control and raw OwnedTask in the existing binding. Initialization rejection acquires raw output and returns the current child/error/actions before one-way terminal projection. Reuse spawn_local_execution, existing receiving slots, settlement forwarding and ordered retirement. Request every child's retirement before joining; preserve an acquired value across disposal and retry. |
+| Bombay: uncommitted native failure grants no actor authority. | Existing ChildFailure gains StartupActorTaskFailed and StartupProjectionTaskFailed, owning original JoinError and typed origin. Startup retirement owns Raw or Projection: the original raw task/result or the actual terminal projection join/result. Project complete raw cleanup once; fabricate neither an OwnedTask nor cancellation authority after acquisition. |
+| Core/Actors: a destroyed accepted definition remains unavailable. | ChildCreationOutcome::Unavailable { id, kind } retains exact correlation and explicit provenance. Native cause and allocated origin remain in parent custody. Runtime borrows Err and leaves its row intact; only Ok transfers the old initialization classification. WorkerCreationRejection gains the same unavailable facts, retaining activation and any prior stop independently. Observe/Born/Restarted still require genuine commitment. |
+| Bombay: authority reads hide startup payload storage. | ChildBindingAt and its cursor return borrowed endpoint/control/kind or the exact unavailable prerequisite ID; absence means unknown binding. Separate private ChildCreationAt/cursor owns raw mutation/removal/recording. Reuse one registry and occurrence cursor. Ordinary readers require only their actual local Behavior contract; remove their raw-state matches and unrelated settlement/base/failure bounds. |
+| Bombay: terminal origin owns complete creator provenance. | Existing ChildOrigin adds exact CreationId and CreationKind, including replacement predecessor, with creation_id()/creation_kind() accessors. Existing maps and role conversion preserve address, actual reserved route and both facts. Remove duplicate ID/kind fields from every ChildFailure; RootOrigin remains separate. No provenance inference, new type, bound, capability or caller topology spelling. |
+| KeyedPool: correlated creation failure follows configured policy. | Reuse Member::admit_creation, creation_positions, retire_unrecovered_worker, retire_role and begin_retirement. RetireRole conserves sibling progress; StopPool transfers remaining original receipts through existing retirement admission, preserving emitted prefixes. Validate the whole batch before admitting any member; retain workers, activation, jobs, customers, bindings and prior stop. Delete the success-only admission. |
+| FIFO/KeyedPool: whole-batch rejection preserves each original request. | Namespace exhaustion and interpreter corruption use the same configured reaction. Move the existing two-alternative CreationBatchRejection once to the direct-worker owner; both pools reuse it. Foreign ID, wrong kind and replay return the whole unchanged input before any partial admission. No fake routed receipt, worker stop, source call or successful restart. |
+| Testkit: observation preserves the new receipt's exact facts. | Existing test-only ObservedCreation adds Unavailable { id, kind } for both heterogeneous alternatives. ModelHost admission, decisions and trace remain unchanged; no fabricated native-failure simulator or false establishment/corruption classification. |
 
-Before the next bounded PRIVATE runtime experiment: reuse the existing owned
-DispatchBirth/settle_child kernel; the rejected +169 receiving redesign is not
-needed if the interpreter preserves its own startup. Put startup receipt,
-control and exact raw OwnedTask plus acquired outcome in the parent binding
-before await. Proposed one control sum: Starting | RetiringStartup | Established
-| Rejected | StartupRejected (3→5); Starting owns the original startup receipt
-and raw task, RetiringStartup owns that task/received outcome after startup
-closure. Established retains its existing projected join; both rejection
-alternatives retain existing exact owned errors/cleanup facts. No extra child
-engine or arrival-history labels. The direct failure product depends on declared
-children, not full runtime binding applicability, and is the single failure
-shape used by raw storage and retirement. Reuse spawn_local_execution,
-OwnedTask receiving and ProjectedTask only AFTER successful startup; Root's
-one-way projection cannot implement initialization rejection. The unchanged
-ApplicationCapabilities owner decides binding/ACK and exact Core settlement.
-Expected copy scope Core port/exports and existing shape implementations, plus
-runtime children/creation/launch (about +200/-70 runtime lines, zero public
-runtime types); no catalogue actor or source-factory change. Original pending-
-cancellation witness is pre-edit regression; exact initialization rejection,
-both shutdown orders, later siblings, replay and collision return remain
-required. New arbitrary bounds, transitive failure proofs, early establishment,
-producer-owned joins or missing current-value custody reopen this candidate.
+The original regressions precede their respective production edits:
 
-The restored nominal runtime executes actual Node→Node→Node and returns typed
-child custody debug/optimized, through unchanged fresh allocation/init/binding,
-concrete Child=Self and NoSends. No fixed-depth type bound or application terminal
-recursion is used. NoSends cannot prove create-before-dependent-send or rejected
-report custody. The finite own-birth source premise on CreationScope::Actor still
-rejects valid pure Nursery→Parent: Parent's own ProxyOutcome/ProxyDiagnostic
-ingress becomes an independent execution premise. No concrete continuation was
-supplied; remove this duplicate source port (+97/-0 private lines, one alias/two
-traits/one function/three product implementations, zero state/caller spellings).
-The bounded method-only variant fails library normalization before reaching the
-body; its representation exposure/+104 private lines are removed without adding
-bounds or wrappers. This is an incomplete proof, not semantic impossibility.
-Both checkpoints reopen; actual production delta is zero. Evidence:
-/private/tmp/bombay-devx-{actual-scope-sources,method-source-scope,self-child-consumer}.
+- Restricted original GAT fails E0271/E0277 for actual startup payload storage.
+  Conditional selection passes for empty and repeated children; missing head
+  and tail independently deny E0277, as does a sealed foreign node. Native
+  Core-only tests use Rust 1.95; Bombay's Rust 1.96 minimum is never bypassed.
+- Pending startup disposal loses the original child on the old interpreter in
+  both profiles. The repaired actual-source test reports exactly one joined
+  original definition, its allocation/content and replacement provenance.
+- Native executor shutdown leaves the creator future alive but destroys the
+  child definition. The old kernel panics and takes its JoinError row; old Core
+  and Worker sums reject the required receipt syntax with E0599. Repaired
+  interpretation yields Unavailable and retirement returns the original native
+  error, task ID and allocated origin once.
+- Generic read projection originally fails five storage-only E0271/E0277
+  premises. The retained read/exclusive-custody split avoids an identity
+  extractor and a second registry; rejected projections are in DEAD_ENDS.md.
+- Exact joined replacement provenance initially fails E0599 for both absent
+  origin accessors. The witness uses an actual reserved route distinct from
+  its creation ID. Fresh births, replacement predecessor, role conversion,
+  projection failure, receiving retry and later siblings retain the full origin.
+- Keyed initialization-panic policy tests initially return zero queued jobs
+  instead of one/two; namespace/corruption tests initially emit one Unexpected
+  instead of two complete creation rejections. Unavailable policy tests show
+  the same defect before integration. Foreign/wrong-kind second items, both
+  roster orders, committed sibling progress, accepted prefixes and exact replay
+  preserve all independent custody after repair.
+- Testkit's two unavailable observations initially fail E0599/E0004. The
+  corrected oracle preserves ID/kind without changing the host model.
 
-Disposition: reopen; zero actual repository production states/modules/public
-types added by these reviews. Falsifiers are consolidated in [DEAD_ENDS](../../DEAD_ENDS.md).
-Probe sources/logs remain under /private/tmp/bombay-birth-source-proof.BUziey
-and /private/tmp/bombay-devx-nominal-creation-review. No proof-only marker or
-selected port is promoted into production. Earlier candidate denials proved
-wrong role E0277, forged scope E0277, forged creation E0451, nonlocal application
-E0599, wrong birth E0271/E0277, extracted creator E0616 and foreign born role
-E0277. Those results must be re-established for the final retained interface;
-missing/deleted symbols do not substitute for its authority denials.
+Complete aggregate checkpoint: one original actor transition authority.
+CreationBinding changes 3→5: Starting owns receipt/control/raw task;
+RetiringStartup owns pending/acquired raw or projection custody; Established
+owns genuine endpoint/control/projected join; Rejected retains no invented
+actor; StartupRejected owns its original classified error/cleanup. Raw and
+Projection are two different currently owned payload equations, not an event
+engine. The read sum contains established borrowed authority or one exact
+prerequisite, not a second lifecycle state. ChildFailure changes 4→6, with
+origin as sole provenance owner. Core creation outcome changes 4→5 and worker
+rejection 7→8. Keyed pool control states remain five, Member states four,
+creation admission and retirement custody three each. Existing two-arm batch
+cause moves once. No policy, generic execution bound or public runtime type is
+invented. Remaining values are precisely the original request/reply/task/ACK,
+current actor/error/actions, activation, prior stop, job/customer/binding or
+borrowed authority required for settlement and retirement.
+
+Residue scan: no new arrival history, repeated cause, false cardinality,
+semantic flag, nested actor transition authority, type erasure, placeholder,
+compiler-origin bound or structural caller requirement. Cross-checks cover
+creation freshness/provenance, commit-before-dependent-send policy,
+initialization/source custody, Driver retirement/receiving laws and normalized
+proxy, FIFO and keyed pool laws. Disposition: pass for the bounded storage,
+startup, unavailable receipt, template rejection, read and provenance laws;
+reopen the complete programme for generic closed-control custody and the joint
+pure-authoring/recursive factory proof.
+
+Measured concrete layouts agree in both profiles: ChildOrigin 16→32 B,
+RootOrigin 8→8, ChildFailure 128→128, actual complete child report 512→528,
+binding 600→616 and ActorRetirement 496→496, all aligned to 8 B. The earlier
+startup-only scalar Root u64 probe grows binding 128→536 and map entry
+136→544 B (+408 each); raw acquired result is 488 B. These substitutions do not
+support a universal storage-cost claim. No boxing is selected from a lint.
+
+Applied batch measurements against Behavior 9ca633e and Bombay d3b1363:
+
+| Tree | Production physical lines | Tests | Public type change |
+| --- | --- | --- | --- |
+| Behavior, 20 Rust files | +496/-274/net222, including rustdoc +99/-6/net93; nonblank code +390/-263/net127 | +2927/-10/net2917 | +1 conditional storage trait; two existing-sum Unavailable alternatives |
+| Bombay, 7 source modules plus 1 existing integration test | +655/-175/net480, including documentation +5/-2/net3 | +922/-44/net878 | +0 public types; two existing failure alternatives and two origin accessors |
+
+CFG-scoped measurements include all three new owning tests and interspersed
+test modules/functions; old first-test-module counts are superseded. Owner
+production arm tokens 778→786; runtime 216→231. Existing runtime public nominal
+declarations remain 11, ActorRetirement alternatives 24 and SpawnError 9.
+The increased code owns demonstrated custody and rejection responsibilities;
+it is not presented as code reduction. Native source layouts are measured above.
+
+Actual native Behavior runs pass 956 workspace nextest tests (zero skipped),
+112 workspace doctests (including exact head/tail/foreign denials), and the
+seven conditional-storage tests in optimization. The final added worker tests
+observe both bootstrap transitions' complete Actions rather than discarding
+them. Actual coupled-source Bombay passes all 297 library tests and strict
+library/test Clippy. Its six focused native startup/delivery/provenance tests
+include the original cancellation falsifier. Temporary CLI owner patches are
+development evidence, not released-dependency verification. Combined private
+debug/optimized runtime filters additionally pass pending 16, terminal 5 and
+role projection 3, including original authority denials. Final native Nix,
+optimized actual consumers and released-dependency gates remain open.
+
+Source, pre-edit vetoes and detailed counters remain in the bounded scratch
+proofs: /private/tmp/bombay-pending-storage.0zBK6I,
+/private/tmp/bombay-startup-binding-proof,
+/private/tmp/bombay-startup-authority-proof,
+/private/tmp/bombay-child-origin.tbw14s8e and
+/private/tmp/bombay-keyed-creation-custody.xzfotjq0. The owning checklist above
+remains the sole completion disposition; no new permanent audit series is added.
+
+The joint recursive factory proof remains open. [DEAD_ENDS](../../DEAD_ENDS.md)
+records the removed source/factory candidates; no proof-only marker or selected
+port is promoted. Earlier candidate wrong-role, forged-scope/creation, nonlocal,
+wrong-birth, extracted-creator and foreign-role denials must be re-established
+against the final retained API. Missing or deleted symbols do not certify them.
 
 ### Dependency delivery and exact gates
 
@@ -1101,6 +1036,32 @@ not override those blockers. Package final canonical syntax and every required
 authority denial against actual released dependencies before closing DX27.
 
 ### Remaining completion obligations
+
+The generic private-child input witness exposes another concrete runtime gap:
+an established parent binding can outlive its child's control receiver. The
+actual retained-control regression passes after genuine commit, delivery,
+shutdown and endpoint termination; the claimed unreachable closed-send branch
+is false. Direct public StableProxy input fails only an unrelated shutdown
+bound, and its shutdown wrapper fails missing child-input forwarding. Neither
+failure may be repaired with a placeholder event or widened protocol.
+
+Next bounded law, recorded before production: input embedding must permit exact
+owned recovery when admission closes. This is the existing affine rejection
+law, not a new actor capability. Desired caller remains ordinary
+ChildInput::after(id, input), with wrapping inferred. Extend the existing
+ChildInputIngress ownership port with recovery returning Input or the unchanged
+foreign event; forward both directions through EventLayer. Reuse ProxyEvent's
+existing RecoverEvent and ControlClosed, preserving source qualification and
+the whole ChildInput, including its creation ID. Remove the generic
+interpreter's unrelated shutdown premise and its false unreachable branch.
+The read-only binding remains the same owner; no new source, path parameter,
+trait, phase, error or registry is selected. Before editing, record the absent
+recovery-operation compile veto and the complete non-Clone proxy request test;
+prove missing/pending/closed bindings, replay and both meaningful wrapper orders
+before migration. Expected scope Core user_event and its one existing input
+fixture, proxy protocol, runtime delivery and focused tests; about +30 Core,
++5 Actors and +15 runtime production lines. Counts and full composition audit
+remain required. Evidence: /private/tmp/bombay-child-input-custody.qq6n6tna.
 
 Use the checklist above as the sole requirement disposition. Next exit is the
 joint counter/heterogeneous/recursive law, then supervision/pools and their

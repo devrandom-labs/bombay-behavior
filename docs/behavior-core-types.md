@@ -284,13 +284,28 @@ not protocol identity, actor identity, or runtime lookup keys.
 
 | Type | Kind | Semantic role |
 |---|---|---|
-| `ChildCreationOutcome<C, Occurrence>` | Enum | Established child, initialization rejection retaining child/error, caught pure-fold panic retaining the extant child, or host rejection retaining child/uninterpreted initialization actions/reason. |
+| `ChildCreationOutcome<C, Occurrence>` | Enum | Established child; unavailable definition retaining exact ID/kind with native failure in interpreter custody; initialization rejection retaining child/error; caught pure-fold panic retaining the extant child; or host rejection retaining child/uninterpreted initialization actions/reason. |
 | `EstablishChild<Occurrence, C>` | Trait | Concrete interpreter ownership port returning the fixed `ChildCreationOutcome` result for `C` at one exact occurrence. |
 | `ChildCreationProduct<A, Occurrence>` | Hidden trait | Runtime-independent result product for a closed creation-only child sum. |
 | `DispatchBirth<A, Host>` | Trait | Exhaustive static dispatch over one closed creation-only child sum. |
-| `ChildOccurrenceShape` | Trait | Downstream type constructor defining empty and per-child representations for a direct-child occurrence product. |
+| `ChildOccurrenceShape` | Trait | Downstream empty representation for a direct-child occurrence product. |
+| `ChildOccurrenceMember<Occurrence, Child, Tail>` | Trait | Shape-owned eligibility and exact storage representation of one child occurrence and its remaining product. |
 | `ChildOccurrenceProduct<Shape>` | Sealed trait | Selects a shape-owned static representation for a closed direct-child algebra. |
 | `ChildOccurrences<Children, Shape>` | Type alias | Occurrence-preserving representation selected by one child shape. |
+
+To migrate an existing shape, keep `type Empty` in `ChildOccurrenceShape` and
+move `type Member` to `impl<Occurrence, Child: Behavior, Tail>
+ChildOccurrenceMember<Occurrence, Child, Tail> for YourShape`. The old universal
+member becomes that universal implementation; a runtime storing stronger
+payloads states only its actual storage premises on the member implementation.
+The sealed traversal and occurrence positions remain unchanged.
+
+Exhaustive creation consumers must also handle `Unavailable { id, kind }`.
+This alternative contains no definition or installed capability. Worker
+consumers preserve it through `WorkerCreationRejection::Unavailable`, together
+with their own activation and prior-stop custody; native failure remains owned
+by the interpreter. It cannot be converted to establishment or a reconstructed
+definition-bearing rejection.
 
 These types let an interpreter prove support for every child alternative at
 compile time. They do not perform runtime protocol lookup or erase the child

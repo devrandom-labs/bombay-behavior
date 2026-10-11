@@ -41,6 +41,7 @@ where
     match settlement {
         SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
             ChildCreationOutcome::Established(child) => (child.id(), child.kind()),
+            ChildCreationOutcome::Unavailable { id, kind } => (*id, *kind),
             ChildCreationOutcome::InitializationRejected { creation, .. }
             | ChildCreationOutcome::InitializationPanicked { creation }
             | ChildCreationOutcome::HostRejected { creation, .. } => {

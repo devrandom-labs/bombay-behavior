@@ -161,7 +161,8 @@ identity and replacement are higher-level constructions; replacement never
 means overwriting an address.
 
 A static runtime can derive its creator-local binding product with
-`ChildOccurrenceProduct` and a runtime-owned `ChildOccurrenceShape`. The sealed
+`ChildOccurrenceProduct`, runtime-owned `ChildOccurrenceShape` for empty
+storage and `ChildOccurrenceMember` for each admitted member. The sealed
 product retains each direct behavior leaf together with its existing structural
 occurrence; the runtime decides what endpoint and nonce storage that leaf
 contains. It adds no runtime value or capability to `Behavior`, and it does not flatten

@@ -107,6 +107,7 @@ enum ChildKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ObservedCreation {
     Established,
+    Unavailable { id: CreationId, kind: CreationKind },
     Rejected(CreationRejection),
     InitializationPanicked,
     Corrupt(InterpreterFault),
@@ -278,6 +279,13 @@ fn normalize(
     >,
 ) -> ObservedCreation {
     match settlement {
+        ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::Unavailable {
+            id,
+            kind,
+        }))
+        | ItemSettlement::Accepted(ChildChoice::Tail(ChildChoice::Head(
+            ChildCreationOutcome::Unavailable { id, kind },
+        ))) => ObservedCreation::Unavailable { id, kind },
         ItemSettlement::Accepted(ChildChoice::Head(ChildCreationOutcome::Established {
             ..
         }))
@@ -482,4 +490,27 @@ proptest! {
             prop_assert_eq!(&host.trace, &expected);
         }
     }
+}
+
+#[test]
+fn unavailable_device_group_creation_preserves_exact_birth_identity() {
+    let id = CreationSequence::new()
+        .issue()
+        .expect("one concrete unavailable creation ID");
+    let kind = CreationKind::Birth;
+    let observed = normalize(ItemSettlement::Accepted(ChildChoice::Head(
+        ChildCreationOutcome::Unavailable { id, kind },
+    )));
+    assert_eq!(observed, ObservedCreation::Unavailable { id, kind });
+}
+#[test]
+fn unavailable_query_creation_preserves_exact_replacement_provenance() {
+    let mut ids = CreationSequence::new();
+    let previous = ids.issue().expect("previous creator correlation");
+    let id = ids.issue().expect("exact unavailable replacement request");
+    let kind = CreationKind::Replacement { previous };
+    let observed = normalize(ItemSettlement::Accepted(ChildChoice::Tail(
+        ChildChoice::Head(ChildCreationOutcome::Unavailable { id, kind }),
+    )));
+    assert_eq!(observed, ObservedCreation::Unavailable { id, kind });
 }

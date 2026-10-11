@@ -345,7 +345,7 @@ where
             WorkerPreparation<Source, Role, W, P>,
         >,
     ),
-    WorkerReturned {
+    WorkerCreationRejected {
         role: RoleName<Role>,
         rejection: WorkerCreationRejection<W>,
         activation: P,
@@ -438,7 +438,7 @@ where
     #[must_use]
     pub fn role(&self) -> Option<&Role> {
         match &self.cause {
-            FifoDiagnosticCause::WorkerReturned { role, .. }
+            FifoDiagnosticCause::WorkerCreationRejected { role, .. }
             | FifoDiagnosticCause::UnusedActivation { role, .. }
             | FifoDiagnosticCause::StoppedWorkerEstablished { role, .. }
             | FifoDiagnosticCause::WorkerActivationReturned { role, .. }
@@ -1262,3 +1262,7 @@ mod live_activation_correlation {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "creation_custody.rs"]
+mod creation_custody;

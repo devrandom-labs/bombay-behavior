@@ -140,6 +140,13 @@ retained values. The outer result never repeats those nested causes as another
 alternative. Its ready and unavailable alternatives carry the opaque worker
 attempt, not a worker actor or route.
 
+`WorkerCreationRejection::Unavailable { id, kind }` retains a failed creation's
+exact correlation and provenance when no worker definition survived. The
+interpreter separately retains its native cause. The proxy still returns its
+original activation plan and any earlier stop; it neither emits a successful
+restart nor fabricates a worker to satisfy rejection custody. Pools apply their
+configured failure reaction and retain each affected job, customer and binding.
+
 `ProxyDrain<W, P>` is a visible ownership result. Its six alternatives name current worker
 outcomes: initialization rejected, stopped, or completed after an observed
 stop; and activation start rejected, activation rejected, or activation

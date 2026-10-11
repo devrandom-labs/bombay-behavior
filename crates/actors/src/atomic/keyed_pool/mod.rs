@@ -5,8 +5,7 @@ use std::mem;
 
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, Births,
-    ChildCreationOutcome, ChildCreationSettled, ChildReport, CreateChild, CreationKind,
-    CreationSequence, CreationSettlement, Creations, CreationsSettled, EndpointAddress, Here,
+    ChildReport, CreateChild, CreationKind, CreationSequence, Creations, EndpointAddress, Here,
     InitializationTurn, InjectEvent, InterpreterRequests, ItemSettlement, MessageProtocol, Never,
     Protocol, SendEffects, SettledItem, SourceActions, User,
 };
@@ -819,102 +818,6 @@ where
         }
     }
 
-    fn accept_creations(
-        &mut self,
-        mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
-        workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
-    ) -> Result<
-        (
-            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
-            KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
-        ),
-        (
-            KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
-            CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
-        ),
-    > {
-        let settlements = match workers.into_settlement() {
-            CreationSettlement::Settled(settlements) => settlements,
-            settlement => {
-                return Err((operating, CreationsSettled::new(settlement)));
-            }
-        };
-        let identities = settlements
-            .iter()
-            .map(|settlement| match settlement {
-                SettledItem::Attempted(ItemSettlement::Accepted(
-                    ChildCreationOutcome::Established(child),
-                )) => Some((child.id(), child.kind())),
-                SettledItem::Attempted(
-                    ItemSettlement::Accepted(
-                        ChildCreationOutcome::InitializationRejected { .. }
-                        | ChildCreationOutcome::InitializationPanicked { .. }
-                        | ChildCreationOutcome::HostRejected { .. },
-                    )
-                    | ItemSettlement::Rejected { .. }
-                    | ItemSettlement::Corrupt { .. }
-                    | ItemSettlement::Blocked { .. },
-                )
-                | SettledItem::Unattempted(_) => None,
-            })
-            .collect::<Option<Vec<_>>>();
-        let Some(positions) =
-            identities.and_then(|identities| operating.creation_positions(identities))
-        else {
-            return Err((
-                operating,
-                CreationsSettled::new(CreationSettlement::Settled(settlements)),
-            ));
-        };
-        let mut returned: BTreeMap<_, _> = positions.into_iter().zip(settlements).collect();
-        let mut roles = Vec::with_capacity(operating.roles.len());
-        let mut actions: KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult> =
-            Actions::cont();
-        for (position, cell) in operating.roles.into_iter().enumerate() {
-            let Some(settlement) = returned.remove(&position) else {
-                roles.push(cell);
-                continue;
-            };
-            let RoleCell {
-                member,
-                queue,
-                capacity,
-            } = cell;
-            match member.admit_successful_creation(ChildCreationSettled::new(settlement)) {
-                Ok((member, request)) => {
-                    roles.push(RoleCell {
-                        member,
-                        queue,
-                        capacity,
-                    });
-                    actions
-                        .sends
-                        .worker_initializations
-                        .append(InterpreterRequests::one(request));
-                }
-                Err((member, creation)) => {
-                    roles.push(RoleCell {
-                        member,
-                        queue,
-                        capacity,
-                    });
-                    let returned = CreationsSettled::new(CreationSettlement::Settled(
-                        Creations::one(creation.into_settlement()),
-                    ));
-                    actions.sends.diagnostics.append(InterpreterRequests::one(
-                        self.diagnostics.action(KeyedDiagnostic::from(
-                            protocol::KeyedDiagnosticCause::Unexpected(
-                                KeyedEvent::WorkerCreationsSettled(returned),
-                            ),
-                        )),
-                    ));
-                }
-            }
-        }
-        operating.roles = roles;
-        Ok((operating, actions))
-    }
-
     fn accept_initialization(
         &mut self,
         mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
@@ -1370,7 +1273,7 @@ where
             }
             (KeyedPoolState::Operating(operating), KeyedEvent::WorkerCreationsSettled(workers)) => {
                 match self.accept_creations(operating, workers) {
-                    Ok((operating, actions)) => (KeyedPoolState::Operating(operating), actions),
+                    Ok(admission) => admission,
                     Err((operating, workers)) => self.diagnose(
                         KeyedPoolState::Operating(operating),
                         KeyedEvent::WorkerCreationsSettled(workers),

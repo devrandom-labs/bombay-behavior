@@ -230,6 +230,7 @@ impl<P> PendingWorker<P> {
             }
             SettledItem::Attempted(ItemSettlement::Accepted(creation)) => match creation {
                 ChildCreationOutcome::Established(child) => (child.id(), child.kind()),
+                ChildCreationOutcome::Unavailable { id, kind } => (*id, *kind),
                 ChildCreationOutcome::InitializationRejected { creation, .. }
                 | ChildCreationOutcome::InitializationPanicked { creation }
                 | ChildCreationOutcome::HostRejected { creation, .. } => {

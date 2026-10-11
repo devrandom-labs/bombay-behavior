@@ -194,8 +194,9 @@ from silently sharing an installer obligation while avoiding false `Behavior`
 bounds on unrelated wrapper and domain types.
 
 `ChildOccurrenceProduct` exposes that same closed direct-child structure to
-static runtimes. A runtime implements `ChildOccurrenceShape` to choose its own
-empty and per-child storage types; Behavior supplies every concrete leaf and
+static runtimes. A runtime implements `ChildOccurrenceShape` for its empty
+storage and `ChildOccurrenceMember` for each admitted child storage type;
+Behavior supplies every concrete leaf and
 its existing `ChildHead`/`ChildTail<_>` position. This type-level projection
 creates no values and adds no creation semantics, registry, protocol key, or
 runtime dependency. Nested children remain in the namespace of the concrete

@@ -398,6 +398,34 @@ in debug/optimized: request/reply absent, joined children/failures empty, origin
 weak ownership zero. Startup cancellation requests cleanup while disposal drops
 the sole unrecorded join. Receiving syntax cannot cure the interpreter's custody
 transfer. Reject the forwarding adapter; put startup authority and join into
-parent-owned storage before awaiting. No actual production change. Evidence:
+parent-owned storage before awaiting. The reopened correlated candidate measured
+owner production +253/-84/net169, owning tests +20/-8/net12 across four existing
+modules, one sealed metadata trait; runtime production +36/-2/net34 and tests
++39/-0/net39. Control/progress/settlement cardinalities stayed unchanged, and
+arm tokens fell 95→93. Every surviving value retained original request/reply,
+initialization custody or committed authority; no erasure, new history, repeated
+cause, nested actor authority or structural caller requirement survived the
+scan. Creation/lifecycle, total settlement and normalized atomic-family laws
+were cross-checked. Disposition: reopen; all candidate production edits removed.
+ No actual production change. Evidence:
 /private/tmp/bombay-original-creation-cancellation.znm6zpay and
 /private/tmp/bombay-devx-creation-input-runtime-cancel-{debug,optimized}.log.
+
+### Child authority reads expose unrelated startup custody
+
+Returning the entire startup row from ChildBindingAt forces ordinary local
+Behavior readers to prove settlements, terminal phase, base identity and direct
+failure storage. The focused generic reader fails with five E0271/E0277 on
+those unrelated premises. A CommittedChild projection removes storage exposure
+but cannot perform existing typed control admission without an unproven local
+actor extractor; no extractor or visibility change is added. A direct borrowed
+endpoint/control/kind projection expresses the actual readers' values.
+
+Keeping raw storage methods on the read traits with method-local premises also
+fails: six blanket/tail method declarations cannot normalize the same explicit
+child Base projection, even when signatures name the exact cursor child/root.
+No diagnostic-origin guard is retained. Both private candidates reopen; their
+read/raw representation is replaced by a separately reviewed ownership split,
+not a second registry. Actual production delta is zero. Evidence:
+/private/tmp/bombay-startup-authority-proof/read-before.log and
+read-raw-owner-projection.log.

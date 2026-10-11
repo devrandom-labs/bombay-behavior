@@ -97,6 +97,12 @@ original creation batch with `ChildNamespaceExhausted`. An allocation collision
 is `CreationRejection::Allocation(AddressAlreadyClaimed)` when the selected
 allocator rejects it; it can never mean replacement.
 
+If native execution destroys the accepted definition before commitment,
+`Unavailable { id, kind }` retains the exact request correlation and provenance.
+It grants no installed authority. The interpreter retains the original native
+failure and allocated origin for parent retirement; it cannot fabricate a child,
+initialization error, or successful birth to fill the receipt.
+
 `DispatchBirth` recursively selects the concrete child. One
 `EstablishChild<Occurrence, C>` implementation is required per structural
 occurrence. `Position` is interpreter navigation evidence, not hosting
@@ -105,7 +111,9 @@ identity.
 When the adapter retains exact child bindings, it may derive their complete
 direct-child product through `ChildOccurrenceProduct`. Behavior owns and seals
 the leaf, `ChildChoice`, and `Never` recursion; the adapter's
-`ChildOccurrenceShape` chooses only its storage constructor. The product is
+`ChildOccurrenceShape` chooses empty storage; `ChildOccurrenceMember` selects
+each admitted child and tail representation. Storage may require its actual
+payload contract without strengthening pure Behavior authoring. The product is
 compile-time structure and performs
 none of the creation transaction above. Each installed child derives its own
 product from its own `Behavior::Birth`, so creator namespaces are not flattened
