@@ -714,7 +714,7 @@ inference probes below remain historical evidence, not current acceptance syntax
 | DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
-| DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases and owned nested staged creation; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
+| DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases and owned nested staged creation; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus; empty-alias/spoof law now passes owner/downstream profiles and all ten native gates |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
@@ -1259,8 +1259,8 @@ New exact-head CI [run 38116165593](https://github.com/devrandom-labs/bombay-beh
 passes all eleven jobs, including Linux Nix/external-interpreter/fuzz build,
 published API audit, all eight mutation shards and strict aggregation
 (205 viable / 417 total). Exact logs/terminal status:
-/private/tmp/bombay-devx-custody-ci-66de825.{log,json}. Feature and delivery crate sources
-and mutation baseline are byte-equivalent. Inferred assembly remains open.
+/private/tmp/bombay-devx-custody-ci-66de825.{log,json}. Before the subsequent empty-birth alias batch, feature and delivery crate sources
+and mutation baseline were byte-equivalent. Public declared-topology assembly remains open.
 
 The isolated version preview `3501be1` on `codex/devx-release-preview` was
 produced by pinned release-plz 0.3.169 with the verified stack-safe API checker:
@@ -1293,7 +1293,23 @@ source denials, public authority and ordinary-Rust/macro comparison remain open.
 Pre-edit law and logs: /private/tmp/bombay-closed-creation-du62dgu1/LAW.md,
 BASELINE-FOCUSED.log and CANDIDATE-OPTIMIZED.log; data/space proof:
 /private/tmp/bombay-declared-topology.g8fpfq6k/ordinary.log. No catalogue migration
-or new production representation is retained from these private probes.
+or new production representation is retained from these private probes. Further
+scope tests reject missing/wrong edges and preserve shared actual protocol space.
+A deeper decorated child originally passed a base-only check with an undeclared
+birth; the same complete row equation on each resolved actual Child now vetoes
+it with E0277 in both profiles. Data/coverage artifact totals 302 lines, zero real
+production edits; cold copied actors still have six unused-field warnings.
+Singleton template role proof reuses the sealed owning product and existing role
+resolver: StableProxy, fixed/dynamic supervisors pass both profiles; seven invalid
+rows/targets/protocols fail, preserving replacement ID and original allocation.
+Private proof records: /private/tmp/bombay-declared-topology.g8fpfq6k/RESULTS.md and
+/private/tmp/bombay-single-worker-edge.fJtD35/RESULTS.md. Operational native cut
+retains all three source-custody equations and the byte-identical establishment
+body; five capability/edge denials and original E0275 inverse are checked in both
+profiles. Existing states remain 5/2/24, branch arms 12/12, native kernel delta
++74/-72/net2, three generated operations 79 lines. Private authority data cannot
+be silently equated with actual ApplicationOrigins; foreign consumer fails
+privacy/availability. Public factory integration remains open.
 
 
 Initial source revisions remain the inventory baseline in the appendix.
@@ -1366,6 +1382,57 @@ Exact full/build logs: /private/tmp/bombay-devx-full-nix-102fc2d{,-build}.log.
 Full gates remain open until actual dependency delivery and inferred interface
 retention, including the published macro rustdoc path. Package final canonical
 syntax and all authority denials against actual released dependencies before DX27 closes.
+
+### Empty-birth alias law and verification
+
+Concrete Bombay facade consumer exposes a spelling-based owner gap: an alias
+for NoBirths is rejected unless supplied an irrelevant creation-settlement
+policy, while a nonempty mode named NoBirths is accepted. Derived law: absence
+of fresh-child capability needs no settlement policy; eligibility follows
+BirthMode::Child = Never, independently of Rust spelling. Preserve pure authoring,
+exact initialization and both timer/shutdown orders without adding runtime ingress.
+Original empty consumer fails the parser, and the named nonempty consumer runs;
+private candidate accepts the alias and rejects the spoof with E0271. Complete
+wrapper initialization Actions match the literal NoBirths reference in debug and
+optimized builds. Pre-edit law, source and logs:
+/private/tmp/bombay-empty-birth-policy-769jvzr0/.
+
+Before retaining production, extend the existing owning FirstChild declaration
+with its empty alias and prove the original parser failure; the existing generic
+message actor tests the same alias without losing its type parameters. Reuse existing
+BirthMode/Behavior generics and exact Never, deleting BirthsSpec::is_no_births.
+Only a policy-free existing mode receives that semantic constraint; generated
+nonempty rows retain their explicit-policy requirement. Expected one semantic production
+module under +12/-15 lines, zero new public types/methods, one existing test
+module and Core/macro rustdoc. No state, branch, error, creation-source equation,
+factory capability or interpreter changes. Aggregate alternatives, production
+transition authority and owned values remain unchanged; pure, initialization,
+creation provenance and facade hygiene laws cross-checked. The original parser and an independent missing-Never-guard inverse falsify the
+pass and denial respectively in both profiles. Current owning generation tests
+pass all 19 cases in debug/optimized; the parser passes six tests. Actual Bombay
+consumer compares complete timer/shutdown initialization Actions in both orders
+and profiles, with the same exact owner sources. Final native
+`nix flake check --show-trace --keep-going` passes all ten gates, 961 nextest
+tests (zero skipped, 6.742s) and 114 doctests; diagnostic
+checker passes 68 annotated denials. Exact nextest/doctest counts and logs:
+/private/tmp/bombay-empty-birth-policy-769jvzr0/ACTUAL-{FULL-NIX-FINAL,NIX-NEXTEST,NIX-DOCTEST}.log.
+No catalogue migration belongs to this bounded owner law.
+The first full owner Nix run passes nine checks; the doc gate fails because its
+standalone rustc diagnostic probe lacks Cargo package/manifest context for the
+new macro denial. Cargo doctests pass all 44 Core cases. Before changing that
+checker, retained its E0271 assertion and reproduced the context failure; now each
+probe receives the actual owning manifest/name with both library artifacts
+unchanged. All 68 annotated denials pass. Verification edit +10/-1; no actor
+capability or dependency. Final batch: semantic macro +13/-14/net -1;
+Core rustdoc +37, tests +5/-3/net2; zero public types/modules or runtime
+branches/states changed. BirthsSpec and CreationSettlementDisposition remain
+2/2 alternatives; they own the same declaration and explicit disposition values.
+The removed spelling predicate has no independent domain responsibility.
+Residue scan: no no-op caller policy, erased protocol, arrival history, repeated
+cause, source or factory premise added. Provenance remains the pre-edit actual
+consumer plus owning FirstChild parser failure. Disposition: pass for the bounded
+alias law and native verification; release delivery remains separate.
+
 
 ### Remaining completion obligations
 

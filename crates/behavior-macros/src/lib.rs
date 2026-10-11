@@ -146,18 +146,6 @@ enum BirthsSpec {
     Generated(NamedProduct),
 }
 
-impl BirthsSpec {
-    fn is_no_births(&self) -> bool {
-        let Self::Existing(Type::Path(path)) = self else {
-            return false;
-        };
-        path.qself.is_none()
-            && path.path.segments.last().is_some_and(|segment| {
-                segment.ident == "NoBirths" && matches!(segment.arguments, syn::PathArguments::None)
-            })
-    }
-}
-
 #[derive(Clone, Copy)]
 enum CreationSettlementDisposition {
     ReturnToCreator,
@@ -295,7 +283,7 @@ impl Parse for BehaviorArgs {
             }
         }
         match (&births, creation_settlements) {
-            (Some(births), None) if !births.is_no_births() => {
+            (Some(BirthsSpec::Generated(_)), None) => {
                 return Err(input.error(
                     "birth-owning behaviors must declare `creation_settlements = return_to_creator` or `creation_settlements = retain_for_retirement`",
                 ));
@@ -1330,6 +1318,7 @@ fn generate_births(
 /// `init(&mut self)`. Omitting `init` selects the behavior algebra's empty
 /// initialization transition. The original impl and methods are preserved
 /// unchanged.
+///
 #[proc_macro_attribute]
 #[allow(
     clippy::too_many_lines,
@@ -1453,6 +1442,16 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
         |_| quote!(<#self_ty>::init(self)),
     );
 
+    let mut behavior_generics = item.generics.clone();
+    if let (Some(BirthsSpec::Existing(mode)), None) = (&births, creation_settlements) {
+        behavior_generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote!(
+                #mode: #behavior::BirthMode<Child = #behavior::Never>
+            ));
+    }
+    let (behavior_impl_generics, _, behavior_where_clause) = behavior_generics.split_for_impl();
     let (sends_ty, sends_items) = generate_sends(sends, self_name, &item, &behavior);
     let (births_ty, births_items) = generate_births(
         births,
@@ -1495,7 +1494,7 @@ pub fn behavior(args: TokenStream, item: TokenStream) -> TokenStream {
             type Msg = #message;
         }
 
-        impl #impl_generics #behavior::Behavior for #self_ty #where_clause {
+        impl #behavior_impl_generics #behavior::Behavior for #self_ty #behavior_where_clause {
             type Protocol = Self;
             type Event = #event_ty;
             type Sends = #sends_ty;
@@ -1673,7 +1672,7 @@ mod tests {
     fn capability_omission_and_trailing_comma_parse() {
         syn::parse_str::<BehaviorArgs>("message = (), addr = u8,")
             .expect("only required protocol declarations are sufficient");
-        for declaration in ["NoBirths", "behavior::NoBirths"] {
+        for declaration in ["NoBirths", "behavior::NoBirths", "EmptyBirths"] {
             syn::parse_str::<BehaviorArgs>(&format!(
                 "message = (), addr = u8, births = {declaration}"
             ))
