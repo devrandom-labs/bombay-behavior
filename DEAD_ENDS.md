@@ -483,3 +483,30 @@ inclusion, native projection timing and pure alias legality. Snapshot:
 /private/tmp/bombay-selected-projection._oivv31s/rejected-associated-terminal.patch.
 Original/candidate witness logs:
 /private/tmp/bombay-inferred-application.qm31zb9h/pure-projection-{original,candidate}.log.
+
+
+### Conditional descendant metadata recurses before execution
+
+The actual inferred facade Node declaring StopOnShutdown<Node> fails E0275
+when only Option<NodeDescendants> is named: no launch, source interpretation or
+CommitActions is present. A conditional universal Births/RetirementBirths
+projection admits pure foreign/generic/empty/nested aliases, actual FIFO and
+fixed-supervisor metadata and both timer/shutdown orders, but the same recursive
+Node remains red. An unconditional nominal family with the exact existing typed
+report in its field fails E0277 at the field before any constructor or accessor.
+The equation is Family(Base,Children) well-formedness → the closed child product
+implements ChildRetirements<Base> → each child Base supplies its birth retirement
+family → the original Node family obligation. Adding the suggested guard merely
+restores the E0275 cycle. No extra bound, erased payload or source operation is
+retained. This falsifies the current equation, not every possible nominal model.
+
+Disposition: reopen. Actual production/test/API/module/branch deltas are zero;
+control sums remain 5/2/6, with original task/request/native-failure custody.
+The private alternatives select types only and add no transition authority.
+Residue: recursive eligibility; no arrival history, repeated runtime causes,
+false cardinality, semantic booleans or structural caller placeholders.
+Cross-check: DX03/DX07, complete affine retirement, pure authoring and normalized
+atomic-family laws. Evidence: /private/tmp/bombay-retirement-metadata.o4obk6bk/
+{node_metadata.rs,current-node.log,blanket_node.log,unconditional_family.log}.
+Published frunk_core HCons/Coproduct substitution independently preserves that
+E0275 in debug/optimized; /private/tmp/bombay-devx-crate-review/frunk-metadata*.log.

@@ -656,6 +656,26 @@ Crate upgrades require a separate compatibility reason, not a desire to shorten
 the manifest. No new crate is a prerequisite for the initial application and
 terminal experiments.
 
+The requested crates.io/[Awesome Rust](https://github.com/rust-unofficial/awesome-rust)
+review inspected current registry metadata and downloaded published sources.
+No dependency was added. The bounded comparisons are:
+
+| Candidate | Responsibility and disposition |
+| --- | --- |
+| [`frunk_core` 0.5.0](https://docs.rs/frunk_core/0.5.0/frunk_core/) | Typed heterogeneous products/sums. Substituting actual HCons/Coproduct into the descendant eligibility equation still produces E0275 in both profiles; it does not prove recursive metadata. Core already owns the closed occurrence product. |
+| [`recursion` 0.5.4](https://docs.rs/recursion/0.5.4/recursion/) | Stack-safe traversal of a defined recursive data family. Traversal is distinct from proving the family's types and child interpreter eligibility; no owner machinery deletion is demonstrated. |
+| [`recursion-schemes` 0.1.3](https://docs.rs/recursion-schemes/0.1.3/src/recursion_schemes/recursive.rs.html) | Fix stores Box of F::Layer<Fix<F>>. Keeping exact current child payloads retains the eligibility cycle; replacing recursive positions by X requires a different, proven closed actor frame. It supplies no child interpreter proof. Partial expansion uses an erased callback. No adoption. |
+| [`enum_dispatch` 0.3.13](https://docs.rs/enum_dispatch/0.3.13/enum_dispatch/) | Generates static delegation, but its generated TryInto rejection returns a string and drops the other variant. An independent original-worker Drop witness fails in debug and optimized builds. Rejected for custody-bearing sums. |
+| [`enum-as-inner` 0.7.0](https://docs.rs/enum-as-inner/0.7.0/enum_as_inner/) | Checked consuming access returns Err(original), but the derive also generates unchecked unsafe accessors. It expands the public surface and does not select recursive custody. No adoption. |
+| [`auto_enums` 0.8.10](https://docs.rs/auto_enums/0.8.10/auto_enums/) | Generates closed Future/Iterator delegation. It does not discharge child-host capability requirements; no repeated owner implementation has been shown to justify another macro dependency. |
+| [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. Potentially useful for independently repeated total inclusions, but no measured replacement justifies another generated public accessor path; thiserror remains the error owner. |
+| [`async-recursion` 1.1.1](https://docs.rs/async-recursion/1.1.1/async_recursion/) | Boxes erased futures; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
+
+Published-source comparisons and pinned 1.99 debug/optimized falsifiers are in
+/private/tmp/bombay-devx-crate-review/. These are library evaluations, not
+Bombay acceptance tests. Existing thiserror, trybuild, Tokio and standard owned
+sums/products remain the selected tools.
+
 ## Completion and change record
 
 ### Requirement checklist
@@ -667,7 +687,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Inferred finite counter/heterogeneous fixtures and original invalid-child denial pass privately; all 300 native library tests pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
+| DX03 | Inferred finite counter/heterogeneous fixtures and original invalid-child denial pass privately; all 300 native library tests pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive metadata and execution remain red |
 | DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -691,7 +711,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 135 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
-| DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
+| DX27 | Fresh Bombay 102fc2d Nix: four pass, seventeen fail on locked owner API mismatch; Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Retained laws and evidence
@@ -899,6 +919,17 @@ substep is tests +385/-0, production/API/control-state delta zero. Format check
 passes. Each source snapshot uses its own target directory: a shared-target check
 reused an experimental interface and is not passing evidence. Fresh owning logs:
 /private/tmp/bombay-devx-source-refusal-owning-{test-fresh,optimized-final,clippy-final}.log.
+
+The metadata obligation is independently red before execution: the actual
+facade Node with a StopOnShutdown<Node> child cannot even name its inferred
+Descendants (E0275). A conditional uniform birth-family projection admits pure
+foreign/generic/empty/nested aliases and real FIFO/fixed-supervisor metadata in
+both timer/shutdown orders, but retains that same recursive proof cycle.
+Unconditional nominal storage cannot postpone the exact field's eligibility
+(E0277). No generated metadata or template-specific exception is retained.
+The precise equation and disposition are in DEAD_ENDS.md; private logs are in
+/private/tmp/bombay-retirement-metadata.o4obk6bk/. This is distinct from the
+remaining interpreter CommitActions/EstablishChild cycle.
 
 The joint factory obligation remains open: pure nested birth aliases and actual
 recursive execution must work together, with operational child-source
@@ -1153,11 +1184,19 @@ Nix output; no full pass, signing fix or waiver is inferred. Cancellation ends
 both observed processes and leaves 2.7 GB free. Full gates remain open until
 the inferred recursive interface is implemented. Log:
 /private/tmp/bombay-devx-nested-full-nix.log.
-Current full Bombay gates remain open on inferred application compilation and
-the published owner macro's rustdoc path. They must be rerun after delivery
-and retention of the final inferred interface; historical native passes do
-not override those blockers. Package final canonical syntax and every required
-authority denial against actual released dependencies before closing DX27.
+Fresh authoritative Bombay `102fc2d` check:
+`nix flake check --show-trace --keep-going` exits 1, with four native checks
+passing (formatting, Driver-law evidence, Observe loom and panic-abort denial)
+and seventeen failing. The locked published Behavior/Actors 0.23.0 contract
+lacks ChildOccurrenceMember, recover_child_input and ChildCreationOutcome::Unavailable;
+the original ChildOccurrenceShape::Member requirement also differs. The build
+reports seven E0432/E0576/E0046/E0599 diagnostics. These failures precede the
+inferred caller witnesses; paired-source focused passes cannot certify this
+released build. No signing or disk-exhaustion failure occurred; 35 GB remained.
+Exact full/build logs: /private/tmp/bombay-devx-full-nix-102fc2d{,-build}.log.
+Full gates remain open until actual dependency delivery and inferred interface
+retention, including the published macro rustdoc path. Package final canonical
+syntax and all authority denials against actual released dependencies before DX27 closes.
 
 ### Remaining completion obligations
 
