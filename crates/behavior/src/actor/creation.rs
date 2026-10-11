@@ -2945,6 +2945,9 @@ mod tests {
         fn child_input(input: u8) -> Self {
             User::new(TestAddr(7), input)
         }
+        fn recover_child_input(event: Self) -> Result<u8, Self> {
+            Ok(event.message)
+        }
     }
 
     #[test]

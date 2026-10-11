@@ -139,7 +139,7 @@ method. Effects cross explicit interpreter traits.
 | `EventLayer<Owned, Inner>` | Enum | Concrete coproduct `Owned(Owned) | Inner(Inner)` for adding one typed event lane around another. |
 | `ComposedEvent` | Trait | Identifies an event algebra's inner event and its structure-preserving injection. |
 | `EventIngress<Source, Input>` | Trait | Owner-selected construction of one input lane without caller-visible wrapper paths. |
-| `ChildInputIngress<Source, Input>` | Trait | Constructs a private parent-to-child input in the concrete child's event algebra. |
+| `ChildInputIngress<Source, Input>` | Trait | Embeds a private parent-to-child input and recovers the exact owned input on rejection; foreign events return unchanged. |
 | `InjectEvent<Input, Path>` | Trait | Low-level path-indexed injection into a structural event coproduct. |
 | `Ingress<Input, Path>` | Zero-state struct | Address-free capability selecting one exact interpreter-return ingress member. |
 | `Here` | Unit struct | Compile-time path selecting the current event or send layer. |

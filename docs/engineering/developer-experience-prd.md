@@ -680,7 +680,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody and template rejection repairs applied; actual native startup journey passes | Open: generic closed-control rejection custody, final owner/runtime gates and released dependency delivery |
+| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: truthful startup-failure reporting, final owner/runtime gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -800,7 +800,7 @@ passes three generations, but adding immediate-child source premises rejects
 valid pure Nursery→Parent staging. Whole-product execution premises recurse
 (E0275); projected source markers do not prove heterogeneous leaf operations.
 No extra depth bound, ingress placeholder, erased future or duplicate source
-sum is retained. [Rejected models](../../DEAD_ENDS.md) records their falsifiers.
+sum is retained. The repository-root `DEAD_ENDS.md` records their falsifiers.
 
 The routed receiving candidate was also removed. Its correlated input equation
 passed four static forgery denials, non-Send standalone error custody, complete
@@ -964,7 +964,7 @@ proofs: /private/tmp/bombay-pending-storage.0zBK6I,
 /private/tmp/bombay-keyed-creation-custody.xzfotjq0. The owning checklist above
 remains the sole completion disposition; no new permanent audit series is added.
 
-The joint recursive factory proof remains open. [DEAD_ENDS](../../DEAD_ENDS.md)
+The joint recursive factory proof remains open. The repository-root `DEAD_ENDS.md`
 records the removed source/factory candidates; no proof-only marker or selected
 port is promoted. Earlier candidate wrong-role, forged-scope/creation, nonlocal,
 wrong-birth, extracted-creator and foreign-role denials must be re-established
@@ -1062,6 +1062,35 @@ before migration. Expected scope Core user_event and its one existing input
 fixture, proxy protocol, runtime delivery and focused tests; about +30 Core,
 +5 Actors and +15 runtime production lines. Counts and full composition audit
 remain required. Evidence: /private/tmp/bombay-child-input-custody.qq6n6tna.
+The complete actual test module fails before production with E0576 for absent
+recovery and E0277 for the unrelated shutdown/forwarding requirements; no
+other error codes. Selected inverse batch: three existing production modules,
++48/-10/net38 production, +507 test lines, zero new types/traits/paths/states,
+one method on the existing ingress. Final production is +51/-10/net41
+including three additional rustdoc lines. Reuse the existing proxy inverse and
+remove its separate runtime recovery bound. Existing EventLayer alternatives
+remain Inner | Owned; two inverse match arms preserve each original value.
+Original five binding phases, two startup-custody alternatives and six native
+failure alternatives are unchanged. Pre-edit checkpoint: pass for this scoped
+model. Actual focused native/composition tests pass debug and optimized,
+as does the existing Core custody/replay test; all 299 runtime library tests
+and strict library/test Clippy pass with paired command-line owner patches.
+Final repository gates and published dependencies remain required.
+Logs/source: /private/tmp/bombay-devx-child-input-actual-before.log and
+/private/tmp/bombay-child-input-recovery.o0d5i77j.
+
+Independent startup reporting falsifier: a joined child initialization refusal
+returns its original definition/error but also emits an empty
+StartupRetirementFailed. Starting already placed its ID in creation order;
+recording a later fact-free row does not remove that entry. Derived law:
+retirement reports actual remaining failures only; complete returned refusal
+is not a second independent failure. Next scoped model: reconcile that same
+ordered collection with the current row, retaining rejection tombstones and
+existing order for owned tasks/facts. No new state/type/port. Before lowering,
+retain the complete caller refusal regression against actual source. Expected
+one existing registry method and one owning creation test module, under +10
+production lines. Original RED:
+/private/tmp/bombay-inferred-application.qm31zb9h/PHANTOM-ORIGINAL-DEBUG-COMPLETE.log.
 
 Use the checklist above as the sole requirement disposition. Next exit is the
 joint counter/heterogeneous/recursive law, then supervision/pools and their

@@ -232,3 +232,11 @@ registration service. See [Established capabilities](established-capabilities.md
 for requests constructed outside folds, original input emission, serial
 never-accepted retry, both legal control arrival orders, and retirement
 admission custody.
+
+Private child-input admission uses the selected `ChildInputIngress` in both
+directions. On a closed control lane, return the original `ChildInput` with its
+creation ID and `ClosedControlLane`; an established binding does not prove the
+receiver remains open. Implementations must recover the exact input from every
+event they construct. `EventLayer` forwards that law while preserving complete
+foreign events. Existing custom ingress implementations must implement
+`recover_child_input`; no unrelated shutdown capability is required.
