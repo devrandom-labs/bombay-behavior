@@ -3,9 +3,11 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
+import os
 import re
 import subprocess
 import sys
+import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,7 +85,14 @@ def main() -> int:
                 "--extern", f"behavior={artifacts['behavior']}",
                 "--extern", f"behavior_actors={artifacts['behavior_actors']}",
             ]
-            compiled = subprocess.run(command, capture_output=True, text=True)
+            crate = ROOT / "crates" / path.relative_to(ROOT / "crates").parts[0]
+            manifest = tomllib.loads((crate / "Cargo.toml").read_text())
+            environment = os.environ.copy()
+            environment["CARGO_MANIFEST_DIR"] = str(crate)
+            environment["CARGO_PKG_NAME"] = manifest["package"]["name"]
+            compiled = subprocess.run(
+                command, capture_output=True, text=True, env=environment,
+            )
             codes = []
             for diagnostic in compiled.stderr.splitlines():
                 try:

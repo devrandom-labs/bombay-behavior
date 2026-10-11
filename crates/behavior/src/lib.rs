@@ -337,4 +337,41 @@ pub use user_event::{
 /// {}
 /// child::<Root, _>(RootChild::Workers, Query);
 /// ```
+/// An existing birth mode may omit creation-settlement policy only when its
+/// child capability is empty (`BirthMode::Child = Never`). Rust aliases preserve
+/// that equation; a type name does not grant it. Nonempty modes require an
+/// explicit `creation_settlements` disposition.
+///
+/// ```
+/// type EmptyBirths = behavior::NoBirths;
+/// struct Quiet;
+/// #[behavior::behavior(addr = behavior::MailAddr, message = (), births = EmptyBirths)]
+/// impl Quiet {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
+///     }
+/// }
+/// let actions = behavior::initialize(&mut Quiet).unwrap();
+/// assert!(actions.creates.is_empty());
+/// ```
+///
+/// A nonempty birth mode cannot acquire policy-free authoring by spelling.
+///
+/// ```compile_fail,E0271
+/// struct Child;
+/// #[behavior::behavior(addr = behavior::MailAddr, message = ())]
+/// impl Child {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
+///     }
+/// }
+/// type NoBirths = behavior::Births<Child>;
+/// struct Parent;
+/// #[behavior::behavior(addr = behavior::MailAddr, message = (), births = NoBirths)]
+/// impl Parent {
+///     fn receive(&mut self, _: behavior::MailAddr, _: ()) -> behavior::BehaviorActed<Self> {
+///         Ok(behavior::Actions::cont())
+///     }
+/// }
+/// ```
 pub use behavior_macros::behavior;
