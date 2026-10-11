@@ -668,7 +668,7 @@ No dependency was added. The bounded comparisons are:
 | [`enum_dispatch` 0.3.13](https://docs.rs/enum_dispatch/0.3.13/enum_dispatch/) | Generates static delegation, but its generated TryInto rejection returns a string and drops the other variant. An independent original-worker Drop witness fails in debug and optimized builds. Rejected for custody-bearing sums. |
 | [`enum-as-inner` 0.7.0](https://docs.rs/enum-as-inner/0.7.0/enum_as_inner/) | Checked consuming access returns Err(original), but the derive also generates unchecked unsafe accessors. It expands the public surface and does not select recursive custody. No adoption. |
 | [`auto_enums` 0.8.10](https://docs.rs/auto_enums/0.8.10/auto_enums/) | Generates closed Future/Iterator delegation. It does not discharge child-host capability requirements; no repeated owner implementation has been shown to justify another macro dependency. |
-| [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. Potentially useful for independently repeated total inclusions, but no measured replacement justifies another generated public accessor path; thiserror remains the error owner. |
+| [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. The three existing u64 newtypes MailAddr, TimerId and TimerGeneration have six five-line conversion impls; these are bounded boilerplate candidates, not an assembly fix. No dependency/build-cost or deletion experiment is retained; thiserror remains the error owner. |
 | [`async-recursion` 1.2.0](https://crates.io/crates/async-recursion/1.2.0) | Fresh registry/source recheck: src/expand.rs still emits Pin<Box<dyn Future>>; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
 | [`bon` 3.10.2](https://docs.rs/bon/3.10.2/bon/) | Awesome Rust lists its checked builders. Named field construction does not establish recursive child custody or interpreter eligibility; adding a required-field typestate builder would conflict with the selected owning constructors and ordinary Application spine. No adoption. |
 | [`lru`](https://docs.rs/lru/latest/lru/struct.LruCache.html) / [`priority-queue`](https://github.com/garro95/priority-queue) | Catalogue source check: Cache deliberately supports Eq keys and exposes a recency slice; lru requires Hash and would change that contract. PriorityQueue already uses BinaryHeap for immutable priorities and checked FIFO ties; priority changes are not its law. Reconsider only with a measured scale or mutable-priority requirement. Neither addresses Application assembly. |
@@ -713,7 +713,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 135 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
-| DX27 | Fresh Bombay 102fc2d Nix: four pass, seventeen fail on locked owner API mismatch; Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
+| DX27 | Fresh Bombay 102fc2d Nix: four pass, seventeen fail on locked owner API mismatch; Timers 0.2 released/pinned; owner PR #89 passes native ten-gate/927-test, package preflight and all CI; draft #90 at 66de825 passes native ten-gate/961-test, 112 doctests and package preflight | Open: #90 strict CI rerun after reviewed unviable classifications; owner review, release/pin; final inferred API and downstream gates |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Retained laws and evidence
@@ -933,6 +933,29 @@ The precise equation and disposition are in DEAD_ENDS.md; private logs are in
 /private/tmp/bombay-retirement-metadata.o4obk6bk/. This is distinct from the
 remaining interpreter CommitActions/EstablishChild cycle.
 
+Read-only follow-up separates two narrower premises. Manually supplied Node/Leaf
+schemas guarded only by each actor's own native settlement contract can name
+complete recursive boxed retirement data (pinned 1.99 pass); this does not infer
+the schemas. Existing public DriverRetirement also carries a pure actor's
+original Actions and error without a settlement guard, preserving all owned
+allocations. It cannot manufacture accepted receipts or acquired-source prefixes.
+A valid pure child emitting LedgerDispatch lacks ActionItem; its receipt-ready
+parent's metadata compiles, but the child's full native ActorRetirement fails
+E0277. Parent readiness therefore does not imply child retirement readiness.
+Actual child launch replaces its immediate parent context; fixed Self recursion
+repeats the same interpreter type rather than growing host ancestry. The loop
+remains operational CommitActions→creation dispatch→child establishment→
+CommitActions. These reviews add zero production, tests, public types, states,
+branches or modules. Existing control/subordinate sums remain 5/2/2/3/6/24,
+ActorCustody retains fourteen fields, and original task, receipt, prefix, error
+and projection custody remain their only causes. No flags, erased values,
+placeholder capability, arrival history or caller structural syntax is added.
+Cross-checks: actor-transition-algebra, atomic-runtime-settlement,
+execution-ownership DG-PROJECTION and normalized atomic laws. Disposition:
+reopen automatic family and factory ownership. Evidence:
+/private/tmp/bombay-retirement-data.l5tbw4o8/ and
+/private/tmp/bombay-occurrence-factory-w5qkcqq9/HOST_IDENTITY_REVIEW.md.
+
 The joint factory obligation remains open: pure nested birth aliases and actual
 recursive execution must work together, with operational child-source
 interpretation and exact settlement custody. Nominal Self/NoSends execution
@@ -1075,7 +1098,7 @@ Retained measurements against Behavior 9ca633e and Bombay d3b1363:
 
 | Tree/batch | Production physical lines | Tests | Public type change |
 | --- | --- | --- | --- |
-| Behavior current, 22 Rust files | +525/-274/net251; rustdoc +106/-6/net100; nonblank compiled code +408/-263/net145 | +2927/-6/net2921 | +1 conditional storage trait; two existing-sum Unavailable alternatives; one existing-trait inverse method |
+| Behavior current, 23 Rust files | +525/-274/net251; rustdoc +106/-6/net100; nonblank compiled code +408/-263/net145 | +3141/-12/net3129 | +1 conditional storage trait; two existing-sum Unavailable alternatives; one existing-trait inverse method |
 | Bombay startup/provenance 4fd7ad6, 7 source modules plus 1 integration test | +655/-175/net480, including documentation +5/-2/net3 | +922/-44/net878 | +0 types; two existing failure alternatives and two origin accessors |
 | Bombay inverse delivery 29da7a4, 1 existing source module | +22/-10/net12 | +504 | +0 types/states |
 | Bombay truthful startup report 3c34bee, 1 registry method | +6/-3/net3 | +150 | +0 types/states |
@@ -1083,7 +1106,7 @@ Retained measurements against Behavior 9ca633e and Bombay d3b1363:
 CFG-scoped measurements include interspersed test functions/modules and
 `cfg(all(test, tokio_unstable))`; first-test-module counts are superseded.
 Later runtime batches add 15 production lines to the 480-line startup batch.
-Owner production arm tokens across current changed modules are 798→808;
+Owner production arm tokens across current changed modules are 811→821;
 runtime remains 216→231. Public runtime nominal declarations remain 11,
 ActorRetirement alternatives 24 and SpawnError 9. Increased code owns proven
 custody/rejection responsibilities; it is not described as code reduction.
@@ -1134,8 +1157,8 @@ prepare the already-retained Core/Actors custody changes after owner PR #89,
 without changing their semantics. Reuse the recorded conditional occurrence,
 Unavailable receipt, pool rejection and ingress inverse laws and their original
 falsifiers. Expected extraction: 29 tracked code/test/contract-document paths (actual 31,
-including the two ingress files from the later inverse batch; 32 with the
-subsequent direct owner-test path),
+including the two ingress files from the later inverse batch; current 33 with
+the direct owner-test path and reviewed mutation baseline),
 zero new production beyond the retained +251-line owner batch; one new public
 trait relative to #89, unchanged source relative to the retained feature branch.
 Exclude the large DevX research documents from the delivery branch and link the
@@ -1160,8 +1183,8 @@ The three owner regressions pass in pinned debug and optimized builds.
 Stopping inner recovery independently fails the intended ownership assertion in
 both profiles; the production bytes were restored exactly. Actual test delta is
 +138/-5 (net +133); all production/API/state/module/dependency deltas are zero.
-Delivery head 7a85639 exactly matches the feature branch crates. Its fresh
-pinned native Nix check exits 0: all ten gates pass, 959 nextest tests pass with
+Delivery head 66de825 exactly matches the feature branch crates. Its fresh
+pinned native Nix check exits 0: all ten gates pass, 961 nextest tests pass with
 zero skipped, and 112 doctests pass. Release preflight passes all four Cargo
 workspace locks, README versions and the packaged archive consumer. No signing
 or disk exception is needed. Production is unchanged from extracted 322c3db;
@@ -1173,7 +1196,38 @@ on the custom benchmark and is not counted as a passing check. Registry-based
 Bombay full gates and publication remain open. The extracted delivery is stacked
 draft [PR #90](https://github.com/devrandom-labs/bombay-behavior/pull/90), labeled
 semver-breaking, after #89. Exact-head CI was dispatched on its feature branch
-because ordinary pull-request CI filters for main; its results are pending.
+because ordinary pull-request CI filters for main. At 7a85639 the published API
+audit, Linux Nix/external-interpreter/fuzz-build job and all eight mutation
+shards pass; strict aggregation fails on unaccounted EventLayer child_input and
+recover_child_input functions. Both exact candidates are Unviable, not survivors:
+Default::default() fails E0277 because EventLayer has no Default; returning a
+default Input fails E0277 because ChildInputIngress promises no Input:Default.
+Retain both typed vetoes and classify these two known-zero-viable entries without
+altering production bounds, existing mutation floors or exclusions. Original
+shard 2/3 candidate, outcome, diff and compiler logs are downloaded under
+/private/tmp/bombay-devx-custody-mutations-38114649392.
+Separately extend the existing Core creation tests and their genuine ChildHead/u8
+private-input port through two EventLayer orders: injection retains the exact
+user lane, recovery returns the complete input, and each foreign owned lane
+returns its original allocation unchanged. Reuse TestAddr, Child and that input
+implementation; introduce no actor/source/plan fixture or production port.
+Pre-edit budget: +90 test lines and two baseline entries, zero production/state/
+API/dependency changes. Retained tests at owner 66de825 (feature e7a8bbb) add +76/-1 test lines and
+two known-zero-viable classifications (+3/-1 JSON); no production/API/state
+change. Both Core tests pass debug/optimized; injection interruption and stopped
+recovery fail for the intended law in both profiles, four independent failures,
+with original production bytes restored. Complete control/subordinate sums,
+branches, production lines, modules and public spellings remain unchanged;
+foreign owned allocations, the exact input and its complete lane are retained.
+Residue scan and the preceding custody/composition laws pass. The strict gate
+reproduces the original aggregation failure and passes the reviewed baseline on
+all eight original reports: 205 viable / 417 total mutants. Existing floors and
+exclusions are unchanged; a future viable mutant in either classified function
+still fails the gate. Exact-head native and package logs:
+/private/tmp/bombay-devx-custody-delivery-66de825-{nix,nextest,doctest,preflight}.log.
+New exact-head CI [run 38116165593](https://github.com/devrandom-labs/bombay-behavior/actions/runs/38116165593)
+is running; it is not counted as passing. Feature and delivery crate sources
+and mutation baseline are byte-equivalent. Inferred assembly remains open.
 
 
 Initial source revisions remain the inventory baseline in the appendix.

@@ -510,3 +510,21 @@ atomic-family laws. Evidence: /private/tmp/bombay-retirement-metadata.o4obk6bk/
 {node_metadata.rs,current-node.log,blanket_node.log,unconditional_family.log}.
 Published frunk_core HCons/Coproduct substitution independently preserves that
 E0275 in debug/optimized; /private/tmp/bombay-devx-crate-review/frunk-metadata*.log.
+
+Follow-up falsifies a narrower shortcut: a receipt-ready parent's own native
+metadata does not imply that every pure child can name a complete native
+retirement. Actual ReceiptParent with Births<OriginalActor> compiles; the pure
+child's LedgerDispatch sends lack ActionItem, so its ActorRetirement fails
+E0277. DriverRetirement can already carry original Actions without that guard,
+but substituting original requests for accepted receipts/acquired-source custody
+would discard required information. Distinct positive evidence: manually
+supplied Node/Leaf schemas guarded only by each actor's own settlement contract
+compile exact recursive boxed retirement data. Automatic schema selection and
+execution remain unproved. This review changes zero actual production/test/API/
+state/branch/module counts; existing 5/2/2/3/6/24 sums and fourteen custody fields
+retain original tasks, prefixes and native failures. No new transition authority,
+arrival history, repeated cause, flag, erasure or structural caller requirement.
+Cross-check pure Actions, atomic-runtime-settlement, execution-ownership
+DG-PROJECTION and normalized atomic laws. Disposition: reopen the proposed
+parent-readiness implication, not the positive own-only nominal representation.
+Evidence: /private/tmp/bombay-retirement-data.l5tbw4o8/{RESULTS.md,CHECKPOINT.json,COMMANDS.md}.
