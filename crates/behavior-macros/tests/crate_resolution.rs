@@ -77,3 +77,26 @@ fn missing_behavior_and_facade_dependencies_report_the_contract_error() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn facade_rustdoc_resolves_the_library_crate() {
+    let output = Command::new(env!("CARGO"))
+        .args([
+            "test",
+            "--offline",
+            "--locked",
+            "--doc",
+            "--package",
+            "bombay-rs",
+        ])
+        .arg("--manifest-path")
+        .arg(fixture_manifest())
+        .output()
+        .expect("facade rustdoc must start");
+    assert!(
+        output.status.success(),
+        "facade rustdoc failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

@@ -137,6 +137,15 @@ before wrapper-owned effects, preserving initialization and delegated
 transition order. Independent named lanes retain their own order; no global
 order is invented between unrelated lanes.
 
+`Actions::with_send(request)` infers a unique typed lane through composed send
+products. When two lanes accept the same input, select the named lane explicitly;
+inference does not choose between them. For advanced `SendInput` implementations,
+wrapper-owned selection is now `(Own, Path)` and inner selection is
+`Inside<Path>`. Replace an explicit `SendLayer` owned-only `Own` proof with
+`(Own, Own)`; named product lane selectors and leaf `Own` proofs are unchanged.
+This is a source break for explicit wrapper proofs. Interpretation order,
+emitter ingress, request rejection and settlement custody are unchanged.
+
 Composition must preserve these invariants:
 
 - every accepted event produces one result;
