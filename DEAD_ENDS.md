@@ -579,3 +579,52 @@ Cross-check: original actual native host, typed report/source qualification,
 exact sends/source custody, pure birth authoring and DX02/03/08. Evidence:
 /private/tmp/bombay-scoped-application-p0fuke2_/COMMUNICATION-LAW.md,
 COMMUNICATION-RESULTS.json and COMMUNICATION-CONCRETE[-OPTIMIZED].log.
+## Public actor failure alias through a private occurrence shape
+
+The derived public `ChildFailures<Actor>` alias attempts to reuse the exact
+existing DirectChildFailures/ChildStartupFailures product without restating
+birth rows. A real two-report recursive foreign consumer and a decorated leaf
+reject the absent alias in both profiles solely on two E0425s. Making only the
+existing alias public and re-exporting it then produces17 foreign privacy
+errors: the private shape remains part of the projected type. The empty-birth
+alias is affected too. Exposing that shape would violate the recorded candidate
+and information-hiding constraint; no visibility workaround is retained.
+
+All owner/consumer bytes are restored. Actual production/API/state/module deltas
+are0; binding5/startup2/retirement24 and every failure value remain unchanged.
+Evidence: /private/tmp/bombay-scoped-application-p0fuke2_/
+FAILURE-PRODUCT-{RESULTS,RESTORED}.json. Disposition: reopen the representation;
+next compare a closed failure sum and ordinary owned collection, preserving all
+original failure causes, origins and independent retirement values.
+
+## Inferred root sharing the child-only native custody index
+
+A private Topology<ExecutedRoot> retains concrete recursive Node/Leaf native
+operations and puts the exact complete child interpreter guard only on the root
+edge. Declared domain Base equality preserves provenance but does not make the
+existing NativeChild root and Node implementation headers disjoint. Both pinned
+runtime profiles deny ONLY E0119 after unrelated probe placement and entry-point
+errors are corrected. This falsifies that expansion before execution; it does
+not show that its root-only interpreter guard itself cycles.
+
+No exclusion marker, added bound or visibility workaround is retained. The
+private ordinary effects owner is byte-restored; the denied owner-only binary
+remains evidence. Actual production/API/state/module deltas0, binding5/startup2/
+retirement24/native-failure6 unchanged. Disposition: reopen. Source and logs:
+/private/tmp/bombay-retirement-schema-kgazqjhv/INFERRED-ROOT-OWNER-COHERENCE-*.
+
+## HTTP shutdown eligibility for an impossible graceful-serving error
+
+An inferred ShutdownPath added to execute_axum/run_axum repairs their existing
+serve-error shutdown branch and passes four real bind-refusal/retry/serving runs.
+Pinned Axum0.8.9 then vetoes its responsibility: with_graceful_shutdown promises
+no error and its IntoFuture body awaits run then returns Ok(()), although its
+output remains io::Result. The branch and actor capability have no executable
+transition; no HTTP path parameter or caller migration is retained.
+
+Keep real bind/startup rejection and original serving result beside independent
+root custody. Prove finite natural-root HTTP completion before deleting the
+unused branch. Any future upstream fallibility needs a fresh explicit owner
+retirement law. Actor/runtime states remain unchanged; disposition: reopen.
+Source: https://docs.rs/axum/0.8.9/src/axum/serve/mod.rs.html#334-350.
+Candidate logs: /private/tmp/bombay-application-shutdown-pv2wsny6/HTTP-RESULTS.json.
