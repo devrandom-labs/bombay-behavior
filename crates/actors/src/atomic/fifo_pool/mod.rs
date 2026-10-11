@@ -6,11 +6,10 @@ use std::mem;
 
 use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BehaviorBase, Births,
-    ChildCreationSettled, ChildHead, ChildNamespaceExhausted, ChildReport, CreateChild,
-    CreationKind, CreationSequence, CreationSettlement, Creations, CreationsSettled,
-    EndpointAddress, Here, InitializationTurn, InjectEvent, InterpreterFault, InterpreterRequests,
-    ItemSettlement, MessageProtocol, Never, Protocol, SendEffects, SettledItem, SourceActions,
-    User,
+    ChildCreationSettled, ChildHead, ChildReport, CreateChild, CreationKind, CreationSequence,
+    CreationSettlement, Creations, CreationsSettled, EndpointAddress, Here, InitializationTurn,
+    InjectEvent, InterpreterRequests, ItemSettlement, MessageProtocol, Never, Protocol,
+    SendEffects, SettledItem, SourceActions, User,
 };
 use thiserror::Error;
 
@@ -22,11 +21,12 @@ use crate::{
 };
 
 use super::RoleName;
+use super::pool::worker::CreationBatchRejection;
 use super::worker::{InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, BeginActivation, InitializeWorker,
-    OrderedRoles, PrepareWorkers, PreparedWorker, WorkerCreationRejection, WorkerPreparation,
-    WorkerSource, WorkerSubmission,
+    OrderedRoles, PrepareWorkers, PreparedWorker, WorkerPreparation, WorkerSource,
+    WorkerSubmission,
 };
 
 mod event;
@@ -124,47 +124,6 @@ where
     CorrelationUnavailable(
         QueuedJob<RoleName<Role>, Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
     ),
-}
-
-#[derive(Clone, Copy)]
-enum CreationBatchRejection {
-    NamespaceExhausted,
-    InterpreterCorrupt(InterpreterFault),
-}
-
-impl CreationBatchRejection {
-    fn worker<W>(self, worker: W) -> WorkerCreationRejection<W>
-    where
-        W: Behavior,
-    {
-        match self {
-            Self::NamespaceExhausted => WorkerCreationRejection::NamespaceExhausted { worker },
-            Self::InterpreterCorrupt(fault) => {
-                WorkerCreationRejection::InterpreterCorrupt { worker, fault }
-            }
-        }
-    }
-
-    fn settlement<W>(
-        self,
-        creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
-    ) -> CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>
-    where
-        W: Behavior + BehaviorBase,
-        BehaviorAddr<W>: EndpointAddress,
-        StopOnShutdown<W>:
-            Behavior<Protocol = W::Protocol, Error = W::Error, Ph = W::Ph, Birth = W::Birth>,
-    {
-        match self {
-            Self::NamespaceExhausted => CreationsSettled::new(CreationSettlement::Rejected {
-                creations,
-                reason: ChildNamespaceExhausted,
-            }),
-            Self::InterpreterCorrupt(fault) => {
-                CreationsSettled::new(CreationSettlement::Corrupt { creations, fault })
-            }
-        }
-    }
 }
 
 impl<Role, W, P, Job, WorkerResult> FifoOperating<Role, W, P, Job, WorkerResult>
@@ -2747,7 +2706,7 @@ where
                     let (_, returned_worker, _) = creation.into_parts();
                     actions.sends.diagnostics.append(InterpreterRequests::one(
                         self.diagnostics.action(FifoDiagnostic::new(
-                            FifoDiagnosticCause::WorkerReturned {
+                            FifoDiagnosticCause::WorkerCreationRejected {
                                 role: role.clone(),
                                 rejection: rejection.worker(returned_worker.into_inner()),
                                 activation: worker.activation,
@@ -2836,7 +2795,7 @@ where
                                 .worker_initializations
                                 .append(InterpreterRequests::one(request));
                         }
-                        WorkerCreationAdmission::Returned {
+                        WorkerCreationAdmission::Rejected {
                             member,
                             role,
                             rejection,
@@ -2846,7 +2805,7 @@ where
                             members.push(member);
                             actions.sends.diagnostics.append(InterpreterRequests::one(
                                 self.diagnostics.action(FifoDiagnostic::new(
-                                    FifoDiagnosticCause::WorkerReturned {
+                                    FifoDiagnosticCause::WorkerCreationRejected {
                                         role,
                                         rejection,
                                         activation,
@@ -3116,7 +3075,7 @@ where
                 }
                 exhausted
             }
-            WorkerCustody::Returned {
+            WorkerCustody::Rejected {
                 role,
                 rejection,
                 activation,
@@ -3124,7 +3083,7 @@ where
             } => {
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(FifoDiagnostic::new(
-                        FifoDiagnosticCause::WorkerReturned {
+                        FifoDiagnosticCause::WorkerCreationRejected {
                             role,
                             rejection,
                             activation,

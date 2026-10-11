@@ -116,6 +116,15 @@ its affine recovery source, applies restart limits and release timing, returns
 work, removes bindings when a role becomes permanently unavailable, and selects
 role retirement or pool shutdown.
 
+A fully correlated creation failure follows that configured reaction while
+returning each affected role's queued jobs, customers, bindings and activation
+plan. This includes initialization failures, unavailable definitions and whole
+batch namespace rejection or corruption. Validate the complete batch before
+settling any member. Foreign IDs, wrong provenance and replay retain the whole
+input; a valid sibling can progress after another role retires. If policy stops
+the pool, its existing retirement path settles the remaining batch and preserves
+effects already emitted.
+
 Rejected delivery returns the complete assignment to the shared authority
 reunion. An exact return restores the existing customer obligation to its
 original role queue at its immutable admission order, then quarantines that

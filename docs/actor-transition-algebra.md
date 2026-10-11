@@ -101,7 +101,10 @@ initialization rejection returns the current child and exact error; host
 rejection after that fold returns the current child and uninterpreted
 initialization `Actions`. A caught pure initialization panic returns the
 extant current child through `InitializationPanicked`, without claiming an
-initialization error or accepted actions. None of these outcomes commits a
+initialization error or accepted actions. If execution destroys the accepted
+definition, `Unavailable { id, kind }` retains exact correlation and provenance;
+the native cause stays with the interpreter for retirement. It grants no actor
+authority and reconstructs no definition. None of these failure outcomes commits a
 binding. Once committed,
 an initialization-effect failure belongs to the installed child's drain and
 cannot be reported as a creation rejection. An initialization `Stop` still
@@ -170,7 +173,9 @@ Missing support fails to compile.
 retain creator-local state per direct child occurrence. Behavior owns the closed
 `Behavior` leaf / `ChildChoice` / `Never` recursion and supplies the same
 `ChildHead` / `ChildTail<_>` navigation evidence used by child creation. A
-runtime-owned `ChildOccurrenceShape` supplies only the storage constructor.
+runtime-owned `ChildOccurrenceShape` supplies empty storage;
+`ChildOccurrenceMember` selects storage for each admitted child and tail.
+Storage eligibility belongs to that runtime, independently of pure authoring.
 This is a type-level derived construction, not an actor operation: it performs
 no transition, allocation, binding, lookup, or effect interpretation.
 Transitive descendants remain owned by the concrete child actors that may

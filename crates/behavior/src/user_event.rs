@@ -108,6 +108,15 @@ pub trait EventIngress<Source, Input>: Sized {
 pub trait ChildInputIngress<Source, Input>: Sized {
     /// Construct the concrete child event selected by `Source` and `Input`.
     fn child_input(input: Input) -> Self;
+
+    /// Recover the original input from this port's selected event lane.
+    ///
+    /// Recovering an event constructed by `child_input` must return its exact
+    /// original input. A foreign event is returned complete and unchanged.
+    ///
+    /// # Errors
+    /// Returns the complete original event when it belongs to another lane.
+    fn recover_child_input(event: Self) -> Result<Input, Self>;
 }
 
 /// One statically owned input lane composed in front of an inner event algebra.
@@ -119,6 +128,22 @@ pub trait ChildInputIngress<Source, Input>: Sized {
 pub enum EventLayer<Owned, Inner> {
     Owned(Owned),
     Inner(Inner),
+}
+
+impl<Owned, Inner, Source, Input> ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>
+where
+    Inner: ChildInputIngress<Source, Input>,
+{
+    fn child_input(input: Input) -> Self {
+        Self::Inner(Inner::child_input(input))
+    }
+
+    fn recover_child_input(event: Self) -> Result<Input, Self> {
+        match event {
+            Self::Inner(inner) => Inner::recover_child_input(inner).map_err(Self::Inner),
+            owned @ Self::Owned(_) => Err(owned),
+        }
+    }
 }
 
 impl<Owned, Inner, Source, Input> EventIngress<Source, Input> for EventLayer<Owned, Inner>

@@ -435,7 +435,7 @@ where
         key: Key,
         binding: BindingEvidence<Role>,
     },
-    WorkerReturned {
+    WorkerCreationRejected {
         role: RoleName<Role>,
         rejection: WorkerCreationRejection<W>,
         activation: P,
@@ -1360,3 +1360,7 @@ mod live_activation_correlation {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "creation_custody.rs"]
+mod creation_custody;

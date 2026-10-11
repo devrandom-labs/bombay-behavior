@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use behavior::{
-    Actions, Behavior, BehaviorAddr, ChildCreationOutcome, CreationId, CreationRejection,
-    EndpointAddress, EstablishedActor, InterpreterFault, ItemSettlement, Never, RoutedCreation,
-    SettledItem,
+    Actions, Behavior, BehaviorAddr, ChildCreationOutcome, CreationId, CreationKind,
+    CreationRejection, EndpointAddress, EstablishedActor, InterpreterFault, ItemSettlement, Never,
+    RoutedCreation, SettledItem,
 };
 
 use crate::{Exit, StopOnShutdown, TerminalOutcome};
@@ -105,6 +105,8 @@ pub enum WorkerCreationRejection<W>
 where
     W: Behavior,
 {
+    /// Creation did not commit and no worker definition survived for return.
+    Unavailable { id: CreationId, kind: CreationKind },
     /// Bombay could not route the creator's child creation.
     NamespaceExhausted { worker: W },
     /// The worker's pure initialization transition rejected.
@@ -181,6 +183,9 @@ where
 {
     match settlement {
         SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
+            ChildCreationOutcome::Unavailable { id, kind } => {
+                WorkerCreationOutcome::Rejected(WorkerCreationRejection::Unavailable { id, kind })
+            }
             ChildCreationOutcome::Established(child) => {
                 WorkerCreationOutcome::Established(child.into_parts().2)
             }

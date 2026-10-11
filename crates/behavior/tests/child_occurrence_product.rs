@@ -1,8 +1,9 @@
 use core::marker::PhantomData;
 
 use behavior::{
-    Address, Behavior, BehaviorActed, BehaviorAddr, ChildHead, ChildOccurrenceShape,
-    ChildOccurrences, ChildTail, MailAddr, Never, NoBirths, User,
+    Address, Behavior, BehaviorActed, BehaviorAddr, ChildHead, ChildOccurrenceMember,
+    ChildOccurrenceShape, ChildOccurrences, ChildTail, MailAddr, Never, NoBirths, NoSends,
+    Protocol, User,
 };
 
 struct NoBindings;
@@ -22,7 +23,11 @@ struct RuntimeBindings;
 
 impl ChildOccurrenceShape for RuntimeBindings {
     type Empty = NoBindings;
-    type Member<Occurrence, Child: Behavior, Tail> = ChildBinding<Occurrence, Child, Tail>;
+}
+impl<Occurrence, Child: Behavior, Tail> ChildOccurrenceMember<Occurrence, Child, Tail>
+    for RuntimeBindings
+{
+    type Member = ChildBinding<Occurrence, Child, Tail>;
 }
 
 trait Same<T> {}
@@ -130,4 +135,65 @@ fn child_occurrence_storage_is_runtime_owned_and_has_no_behavior_value() {
     assert_eq!(product.endpoints[0].1.0, 29);
     let ChildBinding { tail, .. } = product;
     let _: NoBindings = tail;
+}
+
+struct NoChildren;
+struct EmptyOnly;
+impl ChildOccurrenceShape for EmptyOnly {
+    type Empty = NoChildren;
+}
+struct OccurrenceSlot<Position, Child, Tail> {
+    child: Child,
+    tail: Tail,
+    position: PhantomData<fn() -> Position>,
+}
+struct EveryChild;
+impl ChildOccurrenceShape for EveryChild {
+    type Empty = NoChildren;
+}
+impl<Position, Child: Behavior, Tail> ChildOccurrenceMember<Position, Child, Tail> for EveryChild {
+    type Member = OccurrenceSlot<Position, Child, Tail>;
+}
+struct StoredWorker {
+    payload: u32,
+}
+impl Protocol for StoredWorker {
+    type Addr = MailAddr;
+    type Msg = Never;
+}
+impl Behavior for StoredWorker {
+    type Protocol = Self;
+    type Event = User<MailAddr, Never>;
+    type Sends = NoSends;
+    type Birth = NoBirths;
+    type Ph = Never;
+    type Error = Never;
+    fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
+        match event.message {}
+    }
+}
+#[test]
+fn empty_children_need_no_member_representation() {
+    let empty: ChildOccurrences<Never, EmptyOnly> = NoChildren;
+    let NoChildren = empty;
+}
+#[test]
+fn repeated_children_retain_exact_positions_and_owned_payloads() {
+    type Workers = behavior::ChildChoice<StoredWorker, behavior::ChildChoice<StoredWorker, Never>>;
+    let workers: ChildOccurrences<Workers, EveryChild> = OccurrenceSlot {
+        child: StoredWorker { payload: 11 },
+        position: PhantomData,
+        tail: OccurrenceSlot {
+            child: StoredWorker { payload: 13 },
+            tail: NoChildren,
+            position: PhantomData,
+        },
+    };
+    let _: &OccurrenceSlot<
+        ChildHead,
+        StoredWorker,
+        OccurrenceSlot<ChildTail<ChildHead>, StoredWorker, NoChildren>,
+    > = &workers;
+    assert_eq!(workers.child.payload, 11);
+    assert_eq!(workers.tail.child.payload, 13);
 }

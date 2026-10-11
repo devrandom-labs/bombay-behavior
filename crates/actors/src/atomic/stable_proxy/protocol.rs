@@ -329,6 +329,10 @@ where
     fn child_input(input: ProxyControl<W, P>) -> Self {
         Self::Owner(input)
     }
+
+    fn recover_child_input(event: Self) -> Result<ProxyControl<W, P>, Self> {
+        <Self as RecoverEvent<ProxyControl<W, P>, Here>>::recover(event)
+    }
 }
 
 impl<W, P> RecoverEvent<ProxyControl<W, P>, Here> for ProxyEvent<W, P>
