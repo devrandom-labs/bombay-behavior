@@ -214,8 +214,9 @@ async fn fifo_unavailable_diagnostic_preserves_exact_receipt_activation_and_prio
         let CreationSettlement::Settled(rows) = original.into_settlement() else {
             panic!("foreign receipt remains accepted")
         };
+        let row = rows.into_iter().next().unwrap();
         assert!(
-            matches!(rows.into_iter().next().unwrap(),SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id,kind:returned_kind})) if id==foreign && returned_kind==kind)
+            matches!(row,SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id,kind:returned_kind})) if id==foreign && returned_kind==kind)
         );
         assert_eq!(retired.load(Ordering::SeqCst), 1);
         let at = Instant::now();
@@ -294,8 +295,9 @@ async fn fifo_unavailable_diagnostic_preserves_exact_receipt_activation_and_prio
         let CreationSettlement::Settled(rows) = original.into_settlement() else {
             panic!("replayed receipt remains accepted")
         };
+        let row = rows.into_iter().next().unwrap();
         assert!(
-            matches!(rows.into_iter().next().unwrap(),SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id:returned_id,kind:returned_kind})) if returned_id==id && returned_kind==kind)
+            matches!(row,SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id:returned_id,kind:returned_kind})) if returned_id==id && returned_kind==kind)
         );
     }
 }

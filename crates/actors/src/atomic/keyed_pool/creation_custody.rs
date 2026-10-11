@@ -242,7 +242,8 @@ fn matched_creation_failure_returns_only_primary_queue_and_preserves_replica() {
     let mut creations = initialized.actions.creates.into_iter();
     let primary = creations.next().expect("primary request");
     let replica = creations.next().expect("replica request");
-    assert!(creations.next().is_none());
+    let remaining = creations.next();
+    assert!(remaining.is_none());
     let primary_id = primary.id();
     let replica_id = replica.id();
     let (id, child, kind) = primary.into_parts();
@@ -426,7 +427,8 @@ fn matched_creation_failure_stops_pool_and_returns_both_queues() {
     let mut creations = initialized.actions.creates.into_iter();
     let primary = creations.next().expect("primary creation");
     let replica = creations.next().expect("replica creation");
-    assert!(creations.next().is_none());
+    let remaining = creations.next();
+    assert!(remaining.is_none());
     let replica_id = replica.id();
     let (id, child, _) = primary.into_parts();
     let worker = child.into_inner();
@@ -906,7 +908,8 @@ fn mixed_creation_batch(policy: PoolFailureReaction, first: SearchRole) {
     let mut requests = initialized.actions.creates.into_iter();
     let one = requests.next().expect("first role request");
     let two = requests.next().expect("second role request");
-    assert!(requests.next().is_none());
+    let remaining = requests.next();
+    assert!(remaining.is_none());
     let (primary, replica) = match &first {
         SearchRole::Primary => (one, two),
         SearchRole::Replica => (two, one),
@@ -1005,17 +1008,13 @@ fn mixed_creation_batch(policy: PoolFailureReaction, first: SearchRole) {
         PoolFailureReaction::RetireRole => {
             assert!(acted.sends.worker_shutdowns.is_empty());
             assert_eq!(acted.sends.worker_initializations.len(), 1);
-            assert_eq!(
-                acted
-                    .sends
-                    .worker_initializations
-                    .into_requests()
-                    .pop()
-                    .expect("independent committed sibling initialization")
-                    .worker()
-                    .creation(),
-                replica_id
-            );
+            let initialization = acted
+                .sends
+                .worker_initializations
+                .into_requests()
+                .pop()
+                .expect("independent committed sibling initialization");
+            assert_eq!(initialization.worker().creation(), replica_id);
             let KeyedPoolState::Operating(operating) = &pool.state else {
                 panic!("sibling remains operating");
             };
@@ -1063,13 +1062,11 @@ fn mixed_creation_batch(policy: PoolFailureReaction, first: SearchRole) {
                 .into_requests()
                 .pop()
                 .expect("one genuine sibling shutdown");
-            assert_eq!(
-                shutdown
-                    .actor()
-                    .recipient()
-                    .interpret(&mut SearchEndpointTransfer),
-                SearchEndpoint(83)
-            );
+            let endpoint = shutdown
+                .actor()
+                .recipient()
+                .interpret(&mut SearchEndpointTransfer);
+            assert_eq!(endpoint, SearchEndpoint(83));
         }
     }
 }
@@ -1837,7 +1834,8 @@ fn unavailable_creation_policy(policy: PoolFailureReaction) {
     let mut requests = initialized.actions.creates.into_iter();
     let primary = requests.next().expect("primary request");
     let replica = requests.next().expect("replica request");
-    assert!(requests.next().is_none());
+    let remaining = requests.next();
+    assert!(remaining.is_none());
     let id = primary.id();
     let kind = primary.kind();
     let replica_id = replica.id();

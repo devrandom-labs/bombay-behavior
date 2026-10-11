@@ -167,8 +167,9 @@ fn proxy_unavailable_preserves_receipt_activation_prior_stop_and_replays() {
     let CreationSettlement::Settled(rows) = workers.into_settlement() else {
         panic!("accepted result remains accepted")
     };
+    let row = rows.into_iter().next().unwrap();
     assert!(
-        matches!(rows.into_iter().next().unwrap(),SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id,kind:returned})) if id==foreign && returned==kind)
+        matches!(row,SettledItem::Attempted(ItemSettlement::Accepted(ChildCreationOutcome::Unavailable{id,kind:returned})) if id==foreign && returned==kind)
     );
     let at = Instant::now();
     let waiting = proxy
