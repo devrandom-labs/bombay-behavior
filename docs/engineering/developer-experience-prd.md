@@ -667,20 +667,20 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Five candidate caller fixtures and original invalid-child denial pass; private actual three-generation Self-child creation and complete typed retirement pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
-| DX04 | Lossless work/cleanup and borrowed state, custody and completion; all 24 outcomes retained; completion passes 299 debug/optimized tests and independent owner/consumer inversions | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
+| DX03 | Inferred finite counter/heterogeneous fixtures and original invalid-child denial pass privately; all 300 native library tests pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive execution remains red |
+| DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Pure actor authoring retained, including single/heterogeneous birth-mode aliases and owned nested staged creation; ordinary and pool-worker rustdoc fixes, renamed consumer and original denials pass | Open: publish macro fix; resolve factory availability with recursive creation; complete generic/private corpus |
 | DX08 | Composed SendInput routes unique lanes; six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and two static denials pass | Open: downstream dependency delivery and full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | Existing constructor owners retained | Open: measured policy syntax across all five families |
-| DX11 | Existing preparation and completion custody retained | Open: source refusal, prepared prefix, shutdown and late completion |
+| DX11 | Real FIFO replacement-source refusal preserves original workers, source diagnostic, accepted job and independent caller work; owning debug/optimized and strict Clippy pass | Open: inferred template path, prepared prefix, shutdown and late completion |
 | DX12 | Existing occurrence/creation owners inspected | Open: inferred roles, relational identity and rejection corpus |
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: full downstream gates and released dependency delivery |
+| DX16 | Startup/native failure, complete provenance, independent raw/projected retirement, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: full downstream gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -690,7 +690,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
-| DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 136 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
+| DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 135 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
 | DX27 | Timers 0.2 released/pinned; extracted/MSRV and renamed facade evidence; owner PR #89 passes exact-head native ten-gate/927-test, package preflight and all CI including strict mutation | Open: owner review, release/pin; package final inferred API and execute downstream denials and journeys |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
@@ -792,6 +792,113 @@ uses actual elapsed reports and replay rejection, never a fixed-delay claim.
 A fresh recursive check fails six E0275 diagnostics. Actual Bombay remains
 registry-backed; these source-only results do not certify its package or gates.
 Logs: /private/tmp/bombay-devx-custody-consumer-{finite,optimized,recursive}.log.
+
+Native projection has an independently demonstrated owner gap: raw child
+retirement and the projected report are different ownership roles, but the
+retained interpreter forces their descendant types to agree. The original
+`application_terminal_custody` journeys reject the finite inferred candidate
+with 17 diagnostics. Selecting a projection after launch cannot change its
+already-owned raw task. Pure total inclusion uses `(origin, retirement).into()`;
+native projection consumes that same exact origin and complete retirement once
+inside the existing task, preserving cancellation, native panic and later siblings.
+
+Two selection models are rejected in `DEAD_ENDS.md`: an unused occurrence
+requires ordinary callers to invent an annotation, and per-variant associated
+inputs reject original-valid pure child variants sharing one origin alias but
+accepting different payloads. No production from either is retained. The private
+replacement selects descendants using the actor and finite direct failures known
+before launch, with one native implementation per derived enum reusing exact
+`From` inclusions. Its counter main is 109 lines; all 300 library tests pass
+in debug and optimized builds, including native projector panic, startup raw/
+projection retry, cancellation and later-sibling custody. Four complete terminal
+journeys, real FIFO source refusal and supervisor activation/retirement pass both
+profiles; pure shared-origin inclusion, finite inference and timer orders pass.
+This still is not retained: handwritten template metadata and recursive execution
+remain open. Strict library Clippy rejects an oversized derive function; no
+lint waiver has been applied. Source/logs: /private/tmp/bombay-native-input._k_nomqj.
+
+Before extracting a narrower native-only batch, the derived law is:
+`raw retirement<Actor, Descendants, Failures> + exact Origin -> native report`.
+`Descendants` is selected before launch; it need not equal the report. Preserve
+all five creation-binding states, two startup-custody alternatives, six child
+failures, receiving slots, initialization/commit ordering and original task
+causes. Reuse the existing creation and retirement interpreters, closed occurrence
+products, `ActorRetirement`, `ProjectTerminal` and projection task; delete only
+the forced raw/projected descendant equality. The focused native leaf regression
+first implements the existing port for `ActorRetirement<Worker, Never, ()>`:
+actual creation/retirement rejects it with E0277, requiring the report instead of
+`Never`. Its two original worker allocations, actual creation IDs, distinct fresh
+addresses, complete custody and later sibling must survive. The owned-conversion
+regression independently fails actual source with missing-From E0277.
+
+Scope before edits: five existing runtime/macro owners, approximately +75/-50
+production lines, zero new public types/modules/control alternatives. Reshape
+the existing native port with `Origin`, `Actor`, finite direct failures and
+associated descendants; no unused occurrence parameter in this narrower batch.
+No inferred metadata, facade construction, Application inference or catalogue
+migration belongs to it. The original 300 native tests and both unrelated real
+templates must remain valid, along with pure aliases/shared-origin payloads and
+static denials. Full inference/recursive acceptance stays open independently;
+this extraction cannot close those requirements. Native failure and raw/projection
+retry need fresh debug/optimized evidence on the extracted source. Raw data must
+remain readable without acquiring execution or projection authority. Aggregate
+checkpoint before edits: control sums 5/2/6, no new state/branch/module, every
+surviving alternative retains its original pending/acquired task or exact cause;
+no historical state, repeated cause, inferred provenance or semantic boolean.
+Final measurements and residue scan are required before retention.
+
+The native-only extraction passes 300 library tests in debug and optimization,
+plus the leaf witness, four existing terminal journeys, real FIFO source refusal,
+supervisor activation, and real timer/shutdown orders with replay rejection and
+original allocations. Strict focused Clippy passes without a production waiver.
+Pure shared-origin payloads and all eight terminal denials pass; only the
+duplicate-pair and forged-role diagnostic carriers change from the old port to
+`From`. Full workspace/all-target compilation passes on coupled source. Native
+failure/retry controllers retain their original bodies and semantic oracles.
+
+Checkpoint before retention: production +187/-118/net69 (five semantic owners
+and mechanical example conversions); tests +1084/-154/net930 (Rust and both diagnostic fixtures), including all
+untracked fixtures; zero new public types, actor states, alternatives or modules.
+The existing native port gains associated raw descendants and replaces its
+arbitrary terminal input with the actual actor/failure inputs. One private macro
+function separates native projection from pure inclusion. Actor control branches
+and the 5/2/6 custody sums are unchanged; each alternative still owns exactly its
+existing pending/acquired task, report or native cause. Read-only capabilities
+retain raw storage independently of projection authority. Residue scan finds no
+new arrival history, repeated cause, inferred provenance, false cardinality,
+nested authority, semantic boolean or ordinary occurrence placeholder. Cross-check:
+DX03/04/16/21/25, execution-ownership DG-API/DG-PROJECTION/DG-WORK, Driver
+D-RETIRE-1 and current atomic creation/replacement laws. Disposition: pass for
+this bounded native law; inferred/recursive acceptance and full package gates
+remain open. Source, exact counts and logs:
+/private/tmp/bombay-native-retirement-xeszwlu8. Mechanical migration now applies
+only the proven standard inclusion and native signature; it changes no policies,
+constructor choices, topology, wrapper order or effect interpretation.
+
+Retained Bombay commit `102fc2d` implements this bounded native law.
+Fresh actual worktree verification uses pinned Rust 1.99, compact debug/release
+profiles and the exact paired Behavior source, with no committed manifest/lock
+patch. Native law tests: 300 library + eight integration journeys pass in both
+profiles; terminal tests pass three tests including one pure fixture and all
+eight denials. Workspace/all-target strict Clippy, formatting and the counter
+executable pass. Actual counter remains 135 lines with explicit terminal/runner
+ceremony; the 109-line inferred version remains private. Commands/results:
+/private/tmp/bombay-devx-native-retirement-actual-results.json and
+/private/tmp/bombay-devx-native-retirement-actual-{debug-final,optimized-final,static,clippy-final,counter-final,format}.log.
+An initial static run in an external target directory resolved released Core
+instead of the paired unpublished source and failed; it is not passing evidence.
+The target now sits under the actual worktree so nested trybuild inherits the
+same temporary patch configuration, removed with the original lock restored.
+Full inference, released dependency delivery and authoritative repository gates
+remain unaccepted. No Darwin signing or disk failure is waived.
+
+Before native signature migration, the owning real FIFO source-refusal test
+passes debug, optimized and strict Clippy, preserving first/replacement worker allocations, accepted job,
+actual source diagnostic/provenance and independent boxed caller work. This
+substep is tests +385/-0, production/API/control-state delta zero. Format check
+passes. Each source snapshot uses its own target directory: a shared-target check
+reused an experimental interface and is not passing evidence. Fresh owning logs:
+/private/tmp/bombay-devx-source-refusal-owning-{test-fresh,optimized-final,clippy-final}.log.
 
 The joint factory obligation remains open: pure nested birth aliases and actual
 recursive execution must work together, with operational child-source

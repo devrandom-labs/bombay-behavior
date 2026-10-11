@@ -447,3 +447,39 @@ affine custody, local runtime readiness and unchanged alias authoring. A deferre
 mode-family hypothesis passes finite pure/runtime guards; complete source,
 custom native projection and recursive execution remain unproved, so it is not
 retained. Evidence: /private/tmp/bombay-inferred-application.qm31zb9h.
+
+### Projection selection with an unused custom occurrence
+
+An associated-input replacement for ProjectTerminal makes raw descendant
+selection explicit before child launch and removes the blanket coherence
+collision in a pinned Rust probe. Canonical repeated roles and a custom recursive
+sum preserve their original allocations. The next ordinary custom child call
+fails E0282: its generic occurrence selects nothing beyond the already exact
+origin. Requiring callers to annotate it would introduce a placeholder.
+Disposition: reopen before production lowering. No defaults, origin extractors,
+wrappers or production edits are retained. Control sums remain 5/2/6;
+subordinate alternatives, branches, production lines, modules and public
+spellings change by zero. Existing pending/acquired tasks and original failures
+remain the only custody values. Residue: an unused structural user parameter;
+no new history, repeated runtime cause, false cardinality, nested authority or
+semantic boolean. Cross-check: DX03/DX05, affine retirement custody and the
+no-op/compiler-friction gates. Evidence:
+/private/tmp/bombay-terminal-associated.iesuua3i/RESULTS.md.
+
+### Native input selection rejects valid pure terminal inclusions
+
+Per-variant native ProjectTerminal associated-input selection passes four full
+native journeys and a real source refusal but rejects an original-valid pure
+enum: two child-source variants share one exact origin alias and accept u16 and
+String. Original compiles; candidate E0119 conflates their different inputs.
+Reopen; retain no production. The private five-owner batch is +139/-140 physical
+lines (not a CFG production metric), zero new types and unchanged 5/2/6 control
+sums; original pending/acquired tasks and native causes remain the only state.
+No transition branches or modules change. Public changes were two associated
+projection names and a reshaped existing port, not new control authorities.
+Residue: repeated static source selection; no arrival history, semantic boolean,
+false cardinality or caller placeholder. Cross-check DX03/DX05, total affine
+inclusion, native projection timing and pure alias legality. Snapshot:
+/private/tmp/bombay-selected-projection._oivv31s/rejected-associated-terminal.patch.
+Original/candidate witness logs:
+/private/tmp/bombay-inferred-application.qm31zb9h/pure-projection-{original,candidate}.log.
