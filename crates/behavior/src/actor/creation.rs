@@ -2481,7 +2481,9 @@ impl<C> BirthMode for RetirementBirths<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Actions, BehaviorActed, ChildInputIngress, Interpretation, NoBirths, User};
+    use crate::{
+        Actions, BehaviorActed, ChildInputIngress, EventLayer, Interpretation, NoBirths, User,
+    };
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct TestAddr(u64);
@@ -2948,6 +2950,79 @@ mod tests {
         fn recover_child_input(event: Self) -> Result<u8, Self> {
             Ok(event.message)
         }
+    }
+
+    type ParentInputWithOuterNotice = EventLayer<Box<str>, EventLayer<u64, User<TestAddr, u8>>>;
+    type ParentInputWithInnerNotice = EventLayer<u64, EventLayer<Box<str>, User<TestAddr, u8>>>;
+
+    #[test]
+    fn private_input_lifting_preserves_control_in_both_layer_orders() {
+        let event =
+            <ParentInputWithOuterNotice as ChildInputIngress<ChildHead, u8>>::child_input(43);
+        let EventLayer::Inner(EventLayer::Inner(original)) = &event else {
+            panic!("private input must reach its exact inner user lane");
+        };
+        assert_eq!(original, &User::new(TestAddr(7), 43));
+        let returned =
+            <ParentInputWithOuterNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        assert_eq!(returned, Ok(43));
+
+        let event =
+            <ParentInputWithInnerNotice as ChildInputIngress<ChildHead, u8>>::child_input(47);
+        let EventLayer::Inner(EventLayer::Inner(original)) = &event else {
+            panic!("private input must reach the same lane after reordering");
+        };
+        assert_eq!(original, &User::new(TestAddr(7), 47));
+        let returned =
+            <ParentInputWithInnerNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        assert_eq!(returned, Ok(47));
+    }
+
+    #[test]
+    fn private_input_recovery_returns_each_foreign_owned_lane() {
+        let notice = Box::<str>::from("outer notice");
+        let allocation = notice.as_ptr();
+        let event = ParentInputWithOuterNotice::Owned(notice);
+        let returned =
+            <ParentInputWithOuterNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        let Err(EventLayer::Owned(returned)) = returned else {
+            panic!("the outer notice must return in its original lane");
+        };
+        assert_eq!(returned.as_ptr(), allocation);
+        assert_eq!(&*returned, "outer notice");
+
+        let event = ParentInputWithOuterNotice::Inner(EventLayer::Owned(37));
+        let returned =
+            <ParentInputWithOuterNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        assert_eq!(returned, Err(EventLayer::Inner(EventLayer::Owned(37))));
+
+        let event = ParentInputWithInnerNotice::Owned(41);
+        let returned =
+            <ParentInputWithInnerNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        assert_eq!(returned, Err(EventLayer::Owned(41)));
+
+        let notice = Box::<str>::from("inner notice");
+        let allocation = notice.as_ptr();
+        let event = ParentInputWithInnerNotice::Inner(EventLayer::Owned(notice));
+        let returned =
+            <ParentInputWithInnerNotice as ChildInputIngress<ChildHead, u8>>::recover_child_input(
+                event,
+            );
+        let Err(EventLayer::Inner(EventLayer::Owned(returned))) = returned else {
+            panic!("the reordered inner notice must return in its original lane");
+        };
+        assert_eq!(returned.as_ptr(), allocation);
+        assert_eq!(&*returned, "inner notice");
     }
 
     #[test]
