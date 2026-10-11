@@ -11,10 +11,26 @@ restate child positions, wrapper types, settlement products, hosting proofs,
 or runtime retirement bookkeeping. Correctness and usability are joint release
 criteria: a shorter example that drops owned failures fails acceptance.
 
+Selected topology decision (user-authorized 2026-10-11): allow one explicit
+application topology declaration. Derive its structural spaces, occurrence
+products, runner projections and complete recursive retirement types behind the
+canonical Application path. Fully inferred topology is no longer mandatory.
+The declaration must use domain roles and actual child relationships, remain
+statically checked against Behavior's birth/protocol contracts, and preserve
+all failure custody. Ordinary callers still write no structural paths, managed
+actor aliases, spaces or recursive terminal enums. Compare ordinary Rust with
+a concise DSL before selecting macro syntax; syntax owns no runtime semantics.
+The selection belongs to each Application, not globally to the root actor: two
+applications may reuse an actor under different valid closed graphs. Validate
+the complete actual decorated birth row, including singleton template births;
+one space per graph vertex is insufficient when distinct actors share a protocol.
+
 The first production work should be in **Bombay application assembly and terminal
 consumption**, followed by demonstrated gaps in Behavior composition. The
-current evidence does not justify starting with a new Behavior trait, effect
-language, application macro, or builder framework.
+initial evidence did not justify starting with a new Behavior trait, effect
+language, application macro, or builder framework. The approved explicit
+topology path now needs a focused native recursive proof before any production
+DSL or catalogue migration.
 
 ## Evidence and scope
 
@@ -101,7 +117,7 @@ consumer to reproduce an invariant that it already owns.
 | Emit effects | Named declared lanes and generated `Actions::send_<lane>` methods | Generic positional selectors, implicit sends and hand-written send-product traversal |
 | Decorate an existing Bombay actor | `ActorExt` methods returning the owning concrete wrappers | A second normal spelling using nested constructors or application wrapper aliases |
 | Construct a standalone supervisor, pool or service | Its single owning constructor, with explicit policy values | A universal actor builder or empty policies demanded by unused capabilities |
-| Assemble and run an application | `Application`, on a caller-owned async host | Switching to `App`, spelling the final actor type, constructing spaces or terminal projections |
+| Assemble and run an application | One explicit domain topology declaration feeding `Application`, on a caller-owned async host | Switching to `App`, spelling the final actor type, constructing spaces or terminal projections |
 | Send from HTTP, CLI or another external client | `ActorInterface` and one real typed `ExternalActor` endpoint | Invented sender addresses, channels inside a behavior, or framework-specific request execution |
 | Consume application termination | Inferred, owned application result with domain access to complete retirement | A mandatory recursive terminal enum and manual `ProjectTerminal` call |
 | Add an interpreter | Explicit component/interpreter ports with concrete types | Replacing the standard Environment, using a provider registry or erasing futures |
@@ -128,12 +144,13 @@ child authority, so it is not an ordinary required-fields builder to eliminate.
 1. Declare domain state and commands once using the existing actor facade.
 2. Compose actual policies through `ActorExt`; use owning constructors for
    standalone actors. Policy choices stay visible.
-3. Declare application roles once. Behavior-owned dynamic births remain
+3. Declare application topology and roles once. Behavior-owned dynamic births remain
    explicit `Actions`; application startup children use `Application::child`.
    These differ in ownership and timing and must not create the same child twice.
 4. Run `Application::new(actor).run_with(work).await` with type inference.
    This call shape is a **target**, not a claim that the current unannotated
-   expression compiles. It must infer hosting and complete result custody.
+   expression compiles. Derive hosting and complete result custody from the
+   single explicit topology declaration; infer the resulting runner arguments.
 5. Publish a named product of public recipients, establish a typed external
    customer, send a command, and distinguish admission from its later reply.
 6. Select shutdown policy, await actual retirement, and inspect the inferred
@@ -207,9 +224,10 @@ change never requires switching application systems. Preserve cold declaration
 recovery and prove root plus two heterogeneous children, including duplicate
 protocols in distinct roles and a startup failure.
 
-**DX02 — Infer the installed topology. P0, Bombay consuming Behavior proofs.**
-Derive internal occurrence products and standard local hosting from declared
-births, logical-host requirements and application roles. Eliminate mandatory
+**DX02 — Derive installation from one declared topology. P0, Bombay consuming Behavior proofs.**
+Allow one explicit domain topology declaration and statically validate its
+child relationships against declared births and logical-host requirements.
+Derive internal occurrence products and standard local hosting. Eliminate mandatory
 `ActorSpaces` structs, repeated protocol lists, `ChildHead`/`ChildTail` and nested
 failure tuples in application source. Exact external recipients must not require
 local hosting; a logical external destination needs an explicit domain binding,
@@ -220,12 +238,13 @@ an absent genuine logical binding still fails with the protocol and role named.
 Do not promise automatic Rust type-level deduplication before a concrete witness
 proves the projection and sharing law using the existing owning primitives.
 
-**DX03 — Infer complete terminal custody. P0, Bombay.** Applications receive
+**DX03 — Generate complete terminal custody. P0, Bombay.** Applications receive
 complete concrete results without defining recursive `TerminalProjection` enums
 or naming composed actor types. Keep origin and child-role distinctions and the
 complete failed child definition/actions. Eliminate projection boilerplate from
 counter, topology, pool and supervision before declaring success. The owning
-library must account for transitive and recursive birth structures, not only
+library must derive exact actor-indexed subtrees from the same explicit topology
+and account for transitive and recursive birth structures, not only
 leaf actors. Acceptance: a root with duplicate child protocols and a supervisor
 with a proxy/worker tree returns distinguishable exact values; wrong-role
 projection and forged authority still fail to compile. A leaf-only shortcut is
@@ -684,12 +703,14 @@ sums/products remain the selected tools.
 
 This is the single implementation checklist. `Open` includes unexecuted
 acceptance; no source inventory or focused pass closes an entire requirement.
+DX01–03 now accept the approved single explicit topology declaration; historical
+inference probes below remain historical evidence, not current acceptance syntax.
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
 | DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
-| DX02 | Child bindings, logical Hosts and exact delivery inspected | Open: inferred hosting, repeated roles, missing-binding denial |
-| DX03 | Inferred finite counter/heterogeneous fixtures and original invalid-child denial pass privately; all 300 native library tests pass debug/optimized | Open: retain the public model, cover all legal bases, inferred hosting and complete owner gates; finite authoring passes but recursive metadata and execution remain red |
+| DX02 | Child bindings, logical Hosts and exact delivery inspected; one explicit topology declaration approved | Open: derived hosting, repeated roles, child/topology consistency and missing-binding denials |
+| DX03 | Private explicit graph data/space proof passes; native recursive execution passes debug/optimized with four nodes, three audits, initialization refusal and actor-indexed retirement; all 300 retained native library tests pass both profiles | Open: public owner seam and generated schema; source/coverage denials, shared protocols, legal bases and complete downstream journey before migration |
 | DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -713,7 +734,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Counter baseline 144 lines; native linking exhausts 4.8/8.3 GB; compact Nix profiles execute finite witnesses with space remaining; current counter main is 135 lines, with terminal/runner ceremony still present | Open: canonical caller/compiler/runtime measurements and final resource gates |
-| DX27 | Fresh Bombay 102fc2d Nix: four pass, seventeen fail on locked owner API mismatch; Timers 0.2 released/pinned; owner PR #89 passes native ten-gate/927-test, package preflight and all CI; draft #90 at 66de825 passes native ten-gate/961-test, 112 doctests and package preflight | Open: #90 strict CI rerun after reviewed unviable classifications; owner review, release/pin; final inferred API and downstream gates |
+| DX27 | Fresh Bombay 102fc2d Nix: four pass, seventeen fail on locked owner API mismatch; Timers 0.2 released/pinned; owner PR #89 passes native ten-gate/927-test, package preflight and all CI; draft #90 at 66de825 and tool-generated version preview 3501be1 pass native ten-gate/961-test, 112 doctests, package preflight and all eleven exact-head CI jobs | Open: owner review and release/pin; public declared-topology API and downstream gates |
 | DX28 | Initial documentation pruning preserved | Open: compiled guide inclusions, reconciliation and final link gates |
 
 ### Retained laws and evidence
@@ -758,16 +779,16 @@ execution-ownership DG-API/DG-PROJECTION/DG-WORK, Driver D-RETIRE-1, complete
 source/retirement custody, Core transition/effect laws, timer generation and
 initialization, and both shutdown orders. Normalized atomic-family state laws
 are unchanged by these batches. Disposition: pass for the bounded retained
-laws; inferred topology and recursive runtime creation remain open.
+laws; public declared-topology assembly remains open.
 
 The expanded selected-programme surface was explicitly authorized on
 2026-10-09. That authorization does not waive per-stage law, provenance,
 composition, aggregate-drift or verification gates. Stage 1 must finish before
 catalogue migration or later programme stages.
 
-### Current inferred-creation proof
+### Earlier inference experiments and current declared-topology proof
 
-The desired caller is one `Application` with domain roles, inferred hosts and
+The desired caller is one `Application` with one domain topology, derived hosts and
 complete root/descendant retirement. Caller code must not declare structural
 spaces, composed aliases or recursive terminal enums. Pure facade authoring,
 including existing single/heterogeneous/empty birth-mode aliases, remains valid
@@ -955,6 +976,15 @@ execution-ownership DG-PROJECTION and normalized atomic laws. Disposition:
 reopen automatic family and factory ownership. Evidence:
 /private/tmp/bombay-retirement-data.l5tbw4o8/ and
 /private/tmp/bombay-occurrence-factory-w5qkcqq9/HOST_IDENTITY_REVIEW.md.
+The independent context review identifies existing ChildCreationAt as a real
+lower-order selector: it exposes a known Child/Descendants without CommitActions
+or ProjectTerminal. Automatic construction of that binding from the report
+being inferred still depends on the same report's ProjectTerminal. It retrieves
+an already-selected family rather than supplying an independent nominal one.
+No source candidate or new context parameter is retained; the preceding zero
+checkpoint remains unchanged. Exact equations:
+/private/tmp/bombay-retirement-data.l5tbw4o8/CONTEXT-REVIEW.md and
+/private/tmp/bombay-occurrence-factory-w5qkcqq9/RETIREMENT_OWNER_REVIEW.md.
 
 The joint factory obligation remains open: pure nested birth aliases and actual
 recursive execution must work together, with operational child-source
@@ -1226,8 +1256,44 @@ exclusions are unchanged; a future viable mutant in either classified function
 still fails the gate. Exact-head native and package logs:
 /private/tmp/bombay-devx-custody-delivery-66de825-{nix,nextest,doctest,preflight}.log.
 New exact-head CI [run 38116165593](https://github.com/devrandom-labs/bombay-behavior/actions/runs/38116165593)
-is running; it is not counted as passing. Feature and delivery crate sources
+passes all eleven jobs, including Linux Nix/external-interpreter/fuzz build,
+published API audit, all eight mutation shards and strict aggregation
+(205 viable / 417 total). Exact logs/terminal status:
+/private/tmp/bombay-devx-custody-ci-66de825.{log,json}. Feature and delivery crate sources
 and mutation baseline are byte-equivalent. Inferred assembly remains open.
+
+The isolated version preview `3501be1` on `codex/devx-release-preview` was
+produced by pinned release-plz 0.3.169 with the verified stack-safe API checker:
+Behavior/Actors 0.24.0 and macros 0.14.1. Reviewed changelogs name the breaking
+contracts. The first preflight rejected stale secondary locks/README; all four
+locks now retain identical external packages and the exact-head preflight passes.
+Metadata/docs delta: ten files +56/-23; production Rust, tests and API delta zero.
+Native `nix flake check --show-trace --keep-going` passes all ten gates,
+961 nextest tests (zero skipped) and 112 doctests. Exact-head
+[CI run 38117186479](https://github.com/devrandom-labs/bombay-behavior/actions/runs/38117186479)
+passes all eleven jobs. The separate API check accepts the 0.24 major-change
+classification, skipping compatibility checks; it is not a compatibility proof.
+Logs: /private/tmp/bombay-devx-release-preview-{full-nix,nextest,doctest,api-audit}.log,
+/private/tmp/bombay-devx-release-preview-3501be1-preflight.log and
+/private/tmp/bombay-devx-release-preview-ci-3501be1.{json,log}. No merge or
+publication is claimed; Bombay still selects registry 0.23/0.14.
+
+The user-approved explicit graph is being proved separately before production
+lowering. Ordinary Rust schema data/space proof passes against exact owning
+roles (including repeated Node roles and an actor-indexed leaf `Never` subtree).
+The full native recursive probe first fails E0275 under the original establishment
+blanket, then passes debug/optimized by selecting nominal closed-edge operations
+whose bodies reuse the unchanged establishment kernel and all three exact
+source-custody equations. Actual reports establish four Nodes/three audit actors;
+the initialization refusal returns its original Box and joined retirement owns
+complete native subtrees. These are owner-internal probes, not public DSL proof:
+foreign private hosts cannot be implemented from downstream code. Whole-row
+validation, shared-protocol spaces, singleton supervisor/proxy roles, finite
+source denials, public authority and ordinary-Rust/macro comparison remain open.
+Pre-edit law and logs: /private/tmp/bombay-closed-creation-du62dgu1/LAW.md,
+BASELINE-FOCUSED.log and CANDIDATE-OPTIMIZED.log; data/space proof:
+/private/tmp/bombay-declared-topology.g8fpfq6k/ordinary.log. No catalogue migration
+or new production representation is retained from these private probes.
 
 
 Initial source revisions remain the inventory baseline in the appendix.
