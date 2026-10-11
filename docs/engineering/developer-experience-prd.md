@@ -29,8 +29,9 @@ The first production work should be in **Bombay application assembly and termina
 consumption**, followed by demonstrated gaps in Behavior composition. The
 initial evidence did not justify starting with a new Behavior trait, effect
 language, application macro, or builder framework. The approved explicit
-topology path now needs a focused native recursive proof before any production
-DSL or catalogue migration.
+topology path has a private native recursive proof; public creation authority
+and complete downstream execution remain prerequisites for a production DSL
+or catalogue migration.
 
 ## Evidence and scope
 
@@ -708,9 +709,9 @@ inference probes below remain historical evidence, not current acceptance syntax
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | Source-copy Application owns explicit hosts; real supervisor/FIFO journeys and both namespace-refusal branches pass | Open: retain the public model, unify App, all seven journeys, cold recovery |
+| DX01 | Private unified Application owns root/scope/members/families; actual public cold-child/origin/late-report and missing-host work recovery pass both profiles; supervisor/FIFO and namespace-refusal evidence retained | Open: retain the public model, unify App, all seven journeys, combined families and complete cold recovery |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected; one explicit topology declaration approved | Open: derived hosting, repeated roles, child/topology consistency and missing-binding denials |
-| DX03 | Private explicit graph data/space proof passes; native recursive execution passes debug/optimized with four nodes, three audits, initialization refusal and actor-indexed retirement; all 300 retained native library tests pass both profiles | Open: public owner seam and generated schema; source/coverage denials, shared protocols, legal bases and complete downstream journey before migration |
+| DX03 | Private declared graph metadata and genuine external scoped recursion pass both profiles, with complete refusal/retirement, nine authority denials and startup cancellation | Open: retain minimized public port and generated schema; Application scope/cold-report custody, wrappers/templates and complete downstream journey before migration |
 | DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -723,7 +724,7 @@ inference probes below remain historical evidence, not current acceptance syntax
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Startup/native failure, complete provenance, independent raw/projected retirement, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: full downstream gates and released dependency delivery |
+| DX16 | Startup/native failure, complete provenance, independent raw/projected retirement, read custody, template rejection and closed-control/report custody implemented; actual301 tests pass both builds and563 downstream tests pass with one inference failure | Open: full downstream gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -1174,11 +1175,150 @@ proofs: /private/tmp/bombay-pending-storage.0zBK6I,
 /private/tmp/bombay-keyed-creation-custody.xzfotjq0. The owning checklist above
 remains the sole completion disposition; no new permanent audit series is added.
 
-The joint recursive factory proof remains open. The repository-root `DEAD_ENDS.md`
-records the removed source/factory candidates; no proof-only marker or selected
-port is promoted. Earlier candidate wrong-role, forged-scope/creation, nonlocal,
-wrong-birth, extracted-creator and foreign-role denials must be re-established
-against the final retained API. Missing or deleted symbols do not certify them.
+The selected native loan now passes a genuine foreign caller in debug and
+optimization: four recursive nodes, three audit children, real reports, original
+boxed initialization refusal and complete actor-indexed retirement. Nine
+independent invalid callers are denied in both profiles, including wrong failure
+product, occurrence swapping, forged loan, missing edges and separate report
+ingresses. Startup cancellation and host-shutdown tests preserve original rows,
+retirement order, allocation/provenance and the exact native task failure.
+This remains private evidence, not a retained Application or DSL.
+
+The first public alias candidate failed E0446 and was removed. Its replacement
+stores the existing complete raw `(Vec<Descendants>, Failures)` product, matching
+ActorRetirement/OwnedTask; the private constructor and unchanged Commit require
+the exact child failure product. The loan fixes occurrence and failures while
+preserving the actual origin function item; no private mapper/host is exported.
+Compared with the prior private native cut, the selected-loan delta (before
+removing superseded cursor methods) is production +290/-287/net3 across four
+existing modules/reexports, public types2, new modules0. This is not the delta
+from the actual production branch; the earlier native cut adds a further net2.
+Creation/startup/retirement alternatives remain5/2/24; native match/if/else counts
+remain3/2/6. No historical label, semantic flag, duplicate registry, source
+weakening or extra transition authority. Evidence:
+/private/tmp/bombay-selected-custody-jyhj820f,
+/private/tmp/bombay-selected-denials-ne0mc1bu and
+/private/tmp/bombay-selected-startup-ic0qhkg6.
+
+The private cold-origin journey passes both profiles with actual ordinary
+ChildOrigin<RootBase, ChildHead> and cold ChildOrigin<ActualManagedRoot, Role>
+kept distinct; the actual origin function item survives creation and joined
+retirement. Actual public Application cold-child execution still fails E0277:
+it hardcodes ActorSpace instead of the selected graph scope. The owning probe
+also exposes an early-stopping parent panic on a sibling's later report; the
+original closed report is consumed. Preserve this independent failure witness
+at /private/tmp/bombay-cold-origin-iz73ahf3. The existing Core reply already
+supports complete rejection with ClosedParentControlLane; forward-only
+EventIngress cannot recover the report after failed send. Before any production
+repair, compare admission-before-mapping in the Communication owner with inverse
+ingress: the former must return the original non-Clone input without invoking
+mapping on closed admission, preserve current accepted-tail semantics and never
+reserve a queue slot before a panicking conversion. No Core capability widening
+or structural recovery path is selected. Expected bounded owner/native changes:
+existing ControlSender admission plus ParentReporting and its interpreter;
+zero new types, about +15/-9 production, focused owner and real sibling-report
+regressions in both profiles. Communication owner af3e3f1 implements the admission law in
+[draft PR #11](https://github.com/devrandom-labs/bombay-communication/pull/11):
+all seven native Nix gates, 88 tests (zero skipped), strict all-target Clippy,
+four focused tests in both profiles and twelve bounded Loom models pass.
+Both original-source inverses fail solely on five missing-method diagnostics.
+Exact-head Linux CI run38124396727 passes; current actual Bombay still selects
+registry0.1.3. Owner production is +21/-2 including docs; one public method,
+no types/dependencies/versions. Its native repair is +15/-15 in reports.rs,
+with existing typed rejection and no new bounds. The original single-report-stop
+journey passes both profiles; restoring the original interpreter reproduces
+the lane panic in both. The later complete request remains in EffectsFailed
+with ClosedParentControlLane, and the earlier report remains in the root result.
+The actual owning regression was applied before production and fails at the
+original lane panic in both builds/orders. The actual +16/-15 native fix then
+passes all301 library tests debug/optimized (5.34s/5.28s), workspace/all-target
+strict Clippy and formatting. Complete Box fields/allocation, actual timers,
+replay and retained source are covered. With inherited task-local owner source
+selection, workspace/all-features nextest has563 passed, one failed, one skipped
+in71.432s; the sole failure is the still-open inferred-assembly compile corpus.
+The first CLI-only run stopped with compile-suite failures because spawned
+Cargo selected registry0.23; the inherited-source control and full rerun retain
+that failure honestly. Native report source, all three custody equations,
+creation/storage/terminal shapes remain unchanged apart from the stated repair.
+Logs: /private/tmp/bombay-parent-report-actual-{baseline-debug,baseline-optimized,
+library-debug,library-optimized,clippy,workspace-inherited-nextest}.log. The original
+registry lock is byte-restored. Fresh authoritative Nix exits1: four gates pass,
+seventeen fail on the unpublished owner API mismatch; no signing or disk
+exception is observed or waived. Exact log:
+/private/tmp/bombay-parent-report-actual-registry-nix.log. The report aggregate
+adds no control/subordinate alternatives, production242→243, public types0,
+modules0 and new bounds0; the original report-send two-arm branch moves to
+its interpreter settlement, with complete request ownership as the sole cause.
+Creation/startup/retirement remain5/2/24 and all three source-custody equations
+are unchanged. No arrival history, semantic flag, structural user recovery,
+second transition authority or duplicate error is added. Cross-checks: existing
+Communication closure/accepted-tail contract, Core ParentReportReason/
+NoReturnEmitter source laws and the original early-stop retirement witness.
+Disposition: pass for the bounded repair; registry release/gates and complete
+Application acceptance remain open. The owning report test is one existing-module cfg(test)
+seam, 451 formatted lines: actual report/timer interpreters, pure child Actions,
+accepted and rejected source custody, replay, exact boxed fields and both
+OneShot/shutdown orders. Its empty hosting/binding inputs perform no unused
+host or creation operation; it proves item/correlation laws, while the separate
+early-stop journey proves genuine establishment and origin custody. No new
+runtime type, bound, path, visibility or control state is selected.
+Public scope selection, cold recovery, wrapper/templates,
+full gates and minimization remain required. Disposition:
+reopen complete Application model; retain only the independently proven laws.
+The repository-root DEAD_ENDS.md records older removed factory candidates.
+
+The next bounded Application experiment follows the actual scoped caller's
+`.child(role, actor)` E0599 in both profiles, recorded before edits at
+/private/tmp/bombay-application-scope-5s0do3ul. Derived ownership law: one
+Application owns `(root, scope, members, families)`. Scope is the actual local
+hosting capability selected per application; two applications may select
+different scopes for the same root. Ordinary comparison syntax is
+`Application::with_topology(root, scope).child(role, actor)`; generated graph
+construction may later supply that scope. Root-only construction selects the
+existing actual ActorSpace internally, without a caller marker or discarded
+transient space. No global Root::Scope association is selected.
+
+Missing-host/unstarted return owns Self and original work. Member rejection
+owns original root, scope, uninstalled families, work and existing complete
+StagingFailure; HTTP additionally retains its acquired listener. Prepared
+custody owns the actual composed actor and exact scope. Existing family joins
+remain independent original results; this does not reclassify the currently
+consuming invalid-directory policy. Reuse ComposeApplication/its exact Origins,
+ApplicationWorkPublication, execute_application_with and existing Entity setup;
+delete the competing App owner and hardcoded Application host construction only
+after the scoped cold-child journey is proven. Expected private comparison:
+three existing Application modules/reexports, one owner removed, no additional
+control phases or bounds beyond the existing selected-host execution contract.
+Checkpoint baseline is ApplicationOutcome6, WorkCustody5, child binding5 and
+startup custody2. The private four-field owner now compiles and executes
+through public run_with: actual ordinary/cold origins and receipt IDs/kinds/
+addresses, accepted result and late rejection survive in both profiles. Missing
+host returns the exact selected scope, untouched root/member and original work;
+re-entering executes that same callable and returns its original Box allocation.
+HTTP-feature library compilation passes, but its runtime/family composition is
+not proven. Private source delta +76/-674/net-598 in four existing files removes
+the parallel App owner; this is pre-minimization/private evidence, not retained
+production or a final caller-ceremony claim. Evidence:
+/private/tmp/bombay-scoped-application-p0fuke2_/{LAW.md,COUNTS.json,
+CANDIDATE-DEBUG.log,CANDIDATE-OPTIMIZED.log,MISSING-HOST-DEBUG.log,
+MISSING-HOST-OPTIMIZED.log}. Existing Entity execution prepares Arc<Scope> and the current kernel holds
+Arc<Arc<Scope>>; Hosts already delegates that shared scope. The exact recursive
+consumer with Arc<Scope> fails solely on missing NativeChild in both profiles,
+while the bare-scope baseline passes:
+/private/tmp/bombay-shared-native-scope-lrt82aa9. Before edits, derived inclusion
+law: shared ownership of the same hosted registration scope preserves the same
+native child capability. Compare a direct Arc<Scope> delegation with changing
+all kernel prepared payloads. Select the narrower existing-trait implementation:
+clone only the existing inner Arc, move the exact selected map/order/actor space,
+allocations/control/request/origin/position loan unchanged, and return the
+original Scope::establish future. No public extractor, new type, Clone<Scope>,
+Commit guard, extra actor state or child/source proof is selected. Expected
+private delta: one existing creation module, roughly40 lines, zero types/states.
+Independent denials, original Box refusal, full recursive retirement, actual
+shared registration identity and both profiles must pass before retention.
+Root-retirement inference, cancellation/failure custody,
+HTTP/Entity combined composition, strict gates and wrapper/template proofs
+remain separate required acceptance; field unification alone satisfies none.
 
 ### Dependency delivery and exact gates
 
@@ -1431,7 +1571,7 @@ The removed spelling predicate has no independent domain responsibility.
 Residue scan: no no-op caller policy, erased protocol, arrival history, repeated
 cause, source or factory premise added. Provenance remains the pre-edit actual
 consumer plus owning FirstChild parser failure. Disposition: pass for the bounded
-alias law and native verification; release delivery remains separate.
+alias law and native verification. Stacked draft [PR #91](https://github.com/devrandom-labs/bombay-behavior/pull/91), a1a06ef, has byte-identical crate sources and passes its own ten native checks, 961 tests (6.963s, zero skipped), 114 doctests, 68 diagnostics and package preflight across four workspace locks. Exact-head [CI run 38122047497](https://github.com/devrandom-labs/bombay-behavior/actions/runs/38122047497) passes all eleven jobs, including strict mutation aggregation (205 viable / 417 total). Exact status/logs: /private/tmp/bombay-devx-empty-birth-a1a06ef-ci-run.json and -ci.log. Earlier version preview3501be1 excludes this additional batch. Release delivery remains open.
 
 
 ### Remaining completion obligations
