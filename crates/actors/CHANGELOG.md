@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.23.0...bombay-behavior-actors-v0.24.0) - 2026-10-11
+
+### Added
+
+- **Breaking:** add `WorkerCreationRejection::Unavailable { id, kind }` and
+  preserve unavailable creation through proxy, FIFO and keyed pool custody.
+
+### Fixed
+
+- route composed send requests through typed lanes
+
 ## [0.23.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.22.0...bombay-behavior-actors-v0.23.0) - 2026-10-08
 
 ### Fixed

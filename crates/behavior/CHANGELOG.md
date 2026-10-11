@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.23.0...bombay-behavior-v0.24.0) - 2026-10-11
+
+### Added
+
+- **Breaking:** replace `ChildOccurrenceShape::Member` with conditional
+  `ChildOccurrenceMember`, preserving pure creation declarations independently
+  of interpreter storage requirements.
+- **Breaking:** require `ChildInputIngress::recover_child_input` to return the
+  original private input or the complete unchanged foreign event.
+- **Breaking:** add `ChildCreationOutcome::Unavailable { id, kind }` when
+  accepted creation custody was destroyed, preserving explicit provenance.
+
+### Fixed
+
+- route composed send requests through typed lanes
+
 ## [0.23.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.22.0...bombay-behavior-v0.23.0) - 2026-10-08
 
 ### Fixed
