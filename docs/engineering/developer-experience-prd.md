@@ -724,13 +724,13 @@ inference probes below remain historical evidence, not current acceptance syntax
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual301 owner tests pass both builds, downstream567 pass with one generated-topology failure and one skipped | Open: full downstream gates and released dependency delivery |
-| DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
-| DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
+| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual301 owner tests pass both builds, downstream571 pass with one generated-topology failure and one skipped | Open: full downstream gates and released dependency delivery |
+| DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
+| DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
 | DX20 | Existing ActorInterface/ExternalActor retained | Open: correlated replies, cancellation and slow/closed customers |
 | DX21 | Existing lifecycle and child retirement retained | Open: inferred access with complete shutdown/retirement evidence |
-| DX22 | One Application owner now composes ordinary/cold actors, HTTP and Entity; real combined cold Account plus hydrated/passivated/reactivated family and three independent failure/recovery journeys pass both profiles | Open: acquired family-prefix cancellation, complete HTTP/family/root failure corpus and generated assembly |
+| DX22 | One Application owner now composes ordinary/cold actors, HTTP and Entity; real combined cold Account plus hydrated/passivated/reactivated family and three independent failure/recovery journeys plus pre-transfer configuration rejection pass both profiles | Open: acquired family-prefix cancellation, complete HTTP/family/root failure corpus and generated assembly |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
@@ -1482,6 +1482,99 @@ executed and no such success is claimed. Actual production/API/state deltas0;
 private existing bindings/startup/retirement remain5/2/24, zero modules or event
 alternatives. No custody, actor law or concrete host was changed. Disposition:
 reopen; exact falsifier in DEAD_ENDS.md and scoped COMMUNICATION-RESULTS.json.
+
+Before the next bounded configuration edit, actual Application::entity_family
+and EntityRuntime::new still consume their affine inputs when raw DirectoryConfig
+has an invalid shard count. Derived ownership law: validate configuration in
+its owning value before transferring root, scope, children, family or runtime.
+Local hash policy requires positive power-of-two shards and a u64-representable
+mask; activation waiter capacity remains positive. DirectoryConfig gains private
+immutable fields, new(shards, waiters) and read-only scalar accessors. Its own
+DirectoryConfigError returns both original counts on invalid construction.
+LocalDirectory::{new,with_hasher}, EntityRuntime::new and entity_family then
+consume only a validated configuration and are infallible with respect to it.
+Default remains valid. Do not merely move the loss into a result convenience
+wrapper or add actor Debug/Clone bounds. Reuse actual shard/mask/table/slot and
+native family/runtime composition, deleting duplicated validation, error
+translation and impossible command-admission configuration branches.
+
+Pre-edit record: /var/folders/3t/tds_sn397djg1g8d8c471g780000gn/T/
+bombay-directory-configuration-rki61ud7/LAW.md. The current actual ownership
+witness must fail because invalid configuration disposes original root/family;
+the desired public constructor, complete scalar rejection and infallible
+installation are separately red. Expected owning files: entity/directory.rs,
+runtime.rs, family.rs, application/mod.rs and entity root export; one narrow
+public configuration error, roughly net-neutral production, no module or
+actor-state additions. Before/after checkpoint: config product2 fields remains2,
+command DirectoryError3→2 plus configuration error1; SlotState Ready/Poisoned2,
+dispatch Idle/Dispatching2 and all actor EntitySlot, startup, retirement and
+source-custody alternatives unchanged. Every surviving command error owns its
+original command; configuration error owns both rejected scalar inputs.
+No arrival history, repeated cause, new cardinality, semantic flag, erasure,
+second transition authority or structural caller parameter. Cross-checks:
+actual directory hash/identity/retention, Entity admission, root-first family
+retirement and DX16/17/18/21/22. Focused original failure/inverse and both
+profiles precede mechanical migration; full consumer/gates and exact counts
+remain mandatory. Retained result: both original-source ownership runs dispose
+root/scope/family/cold child (1/1/1/0 instead of0/0/0/1); both constructor and
+application syntax witnesses independently reject only missing owning API. The
+inverse restores the original five owners, reproduces each defect in both
+profiles and byte-restores the candidate. Candidate external configuration and
+all four complete actual Application/Entity journeys pass both profiles.
+
+Four owning configuration tests include390 independent table cases and complete
+rejected counts, corrected waiter retention, valid Default and two active
+forged/mutated-construction denials. Focused44 tests pass debug and optimization;
+full source workspace check(all targets/features), strict Clippy, formatting,
+two doctests and the migrated Entity binary pass. Full source nextest:572 run,
+571 pass, one unfinished generated-custody fixture fails, one skipped. Six real
+Entity directory Loom tests pass both preemption3 and the repository's unbounded
+settings (1.91s model runtime). Fresh registry Nix completes in347.92s: four gates
+pass, seventeen fail on missing published owner API, no disk/signing failure.
+Cargo.lock is byte-identical to the committed registry lock. Exact commands and
+results remain in CURRENT-RESULTS.json, SOURCE-RESULTS.json, LOOM-REPOSITORY.log,
+INVERSE-RESULTS.json and REGISTRY-NIX-RESULTS.json in the evidence directory.
+
+Measured production+89/-80/net+9 across five existing owning files; tests/benches
++199/-138/net+61 across16 paths, Entity example+6/-8/net-2. New production owns
+validated construction and inspection; it is not a code-reduction claim. Types
++1/-0, existing public functions55→58, match expressions29→28/arms71→67 across
+those owners; no modules. Complete aggregate state remains EntitySlot
+Inactive/Activating/Active/Draining/Retiring5, SlotState Ready/Poisoned2 and dispatch
+Idle/Dispatching2; native binding5/startup2/retirement24 unchanged. Both retained
+configuration fields are current limits required by hashing/waiter admission.
+The one configuration rejection retains both input limits; each of the two
+command errors retains its original command. No new transition authority,
+arrival history, repeated cause, cardinality assumption, semantic boolean,
+erasure or structural caller syntax. The original directory hash/table/native
+slot equations and kernel are unchanged. Cross-checked the documents/laws named
+above and the normalized Entity/creation/custody contracts. Provenance for every
+changed signature/export points to the pre-edit disposal and constructor
+regressions; caller migration adds no policy, generic or bound. Checkpoint: pass
+for this bounded law; whole-programme acceptance and registry delivery stay open.
+
+Before the next private topology comparison, use the approved application-scoped
+closed graph to name actual executed actor stacks, including decoration. Derived
+law: each exact creator and authoritative occurrence selects one concrete child,
+its complete descendant retirement and direct failure product. A changed stack
+requires the one declaration to change; no universal decorator theorem or
+application-global topology is claimed. Compare direct concrete NativeChild
+operations with the private generic-C ChildEdge selection, deleting that trait
+and its explicit report/lifetime predicates. Keep original PendingChild execution,
+actual parent Event/Birth, complete Commit/source equalities inside the operation,
+and generic terminal presentation only. A repeated child at a different position
+is a distinct edge; identical normalized operation keys share one operation.
+Pre-edit witness: the existing real recursive reports/refusal consumer without
+ChildEdge must fail solely for missing native edge capabilities. Then prove two
+aliased, distinct owned reports and meaningful child timer decoration in both
+shutdown orders, including missing-ingress denial and accepted-prefix custody.
+Scope before/after: binding5, startup2, retirement24, no subordinate state or
+transition/module additions; actual production/API0. Only the private foreign
+consumer changes, replacing handwritten generic selection with the finite exact
+expansion. This precedes generator lowering and retention. Protocol sharing,
+whole birth-row coverage, source lifetimes, missing roles and complete cancellation
+remain independent gates. No compiler-invented premise or base-first report
+reinterpretation is permitted. Disposition remains unretained pending execution.
 
 ### Dependency delivery and exact gates
 
