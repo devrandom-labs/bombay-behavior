@@ -680,7 +680,7 @@ acceptance; no source inventory or focused pass closes an entire requirement.
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: truthful startup-failure reporting, final owner/runtime gates and released dependency delivery |
+| DX16 | Startup cancellation/native-failure, complete terminal provenance, read custody, template rejection and closed-control recovery implemented; actual native journeys pass | Open: full downstream gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -920,8 +920,9 @@ creation freshness/provenance, commit-before-dependent-send policy,
 initialization/source custody, Driver retirement/receiving laws and normalized
 proxy, FIFO and keyed pool laws. Disposition: pass for the bounded storage,
 startup, unavailable receipt, template rejection, read and provenance laws;
-reopen the complete programme for generic closed-control custody and the joint
-pure-authoring/recursive factory proof.
+reopen the complete programme for the joint pure-authoring/recursive factory
+proof. The later inverse and truthful failure-reporting batches preserve these
+control sums, retirement order and rejection tombstones.
 
 Measured concrete layouts agree in both profiles: ChildOrigin 16→32 B,
 RootOrigin 8→8, ChildFailure 128→128, actual complete child report 512→528,
@@ -930,31 +931,47 @@ startup-only scalar Root u64 probe grows binding 128→536 and map entry
 136→544 B (+408 each); raw acquired result is 488 B. These substitutions do not
 support a universal storage-cost claim. No boxing is selected from a lint.
 
-Applied batch measurements against Behavior 9ca633e and Bombay d3b1363:
+Retained measurements against Behavior 9ca633e and Bombay d3b1363:
 
-| Tree | Production physical lines | Tests | Public type change |
+| Tree/batch | Production physical lines | Tests | Public type change |
 | --- | --- | --- | --- |
-| Behavior, 20 Rust files | +496/-274/net222, including rustdoc +99/-6/net93; nonblank code +390/-263/net127 | +2927/-10/net2917 | +1 conditional storage trait; two existing-sum Unavailable alternatives |
-| Bombay, 7 source modules plus 1 existing integration test | +655/-175/net480, including documentation +5/-2/net3 | +922/-44/net878 | +0 public types; two existing failure alternatives and two origin accessors |
+| Behavior current, 22 Rust files | +525/-274/net251; rustdoc +106/-6/net100; nonblank compiled code +408/-263/net145 | +2927/-6/net2921 | +1 conditional storage trait; two existing-sum Unavailable alternatives; one existing-trait inverse method |
+| Bombay startup/provenance 4fd7ad6, 7 source modules plus 1 integration test | +655/-175/net480, including documentation +5/-2/net3 | +922/-44/net878 | +0 types; two existing failure alternatives and two origin accessors |
+| Bombay inverse delivery 29da7a4, 1 existing source module | +22/-10/net12 | +504 | +0 types/states |
+| Bombay truthful startup report 3c34bee, 1 registry method | +6/-3/net3 | +150 | +0 types/states |
 
-CFG-scoped measurements include all three new owning tests and interspersed
-test modules/functions; old first-test-module counts are superseded. Owner
-production arm tokens 778→786; runtime 216→231. Existing runtime public nominal
-declarations remain 11, ActorRetirement alternatives 24 and SpawnError 9.
-The increased code owns demonstrated custody and rejection responsibilities;
-it is not presented as code reduction. Native source layouts are measured above.
+CFG-scoped measurements include interspersed test functions/modules and
+`cfg(all(test, tokio_unstable))`; first-test-module counts are superseded.
+Later runtime batches add 15 production lines to the 480-line startup batch.
+Owner production arm tokens across current changed modules are 798→808;
+runtime remains 216→231. Public runtime nominal declarations remain 11,
+ActorRetirement alternatives 24 and SpawnError 9. Increased code owns proven
+custody/rejection responsibilities; it is not described as code reduction.
 
-Actual native Behavior runs pass 956 workspace nextest tests (zero skipped),
-112 workspace doctests (including exact head/tail/foreign denials), and the
-seven conditional-storage tests in optimization. The final added worker tests
-observe both bootstrap transitions' complete Actions rather than discarding
-them. Actual coupled-source Bombay passes all 297 library tests and strict
-library/test Clippy. Its six focused native startup/delivery/provenance tests
-include the original cancellation falsifier. Temporary CLI owner patches are
-development evidence, not released-dependency verification. Combined private
-debug/optimized runtime filters additionally pass pending 16, terminal 5 and
-role projection 3, including original authority denials. Final native Nix,
-optimized actual consumers and released-dependency gates remain open.
+Actual Behavior 0dedb69 passes all ten native pinned Nix gates with
+`nix flake check --show-trace --keep-going --max-jobs 1 --cores 2`: build,
+nextest (956 passed, zero skipped), strict Clippy, docs, doctests, package,
+Rust/TOML formatting, audit and deny. Doctests total 112, including exact
+head/tail/foreign denials; seven conditional-storage tests pass optimized.
+The first fresh check failed unpublished research links; the next exposed nine
+ownership transfers inside assertions. Corrected links and pre-assertion
+transfers pass the authoritative documentation/ownership scan. No Darwin
+signing or disk waiver is used. Log:
+/private/tmp/bombay-devx-owner-full-nix-assertions.log.
+
+Pinned fuzz-shell runs pass 1,000 inputs each for keyed assignment, keyed
+binding and FIFO sequences, with scratch corpora. The initial `nix run .#fuzz`
+invocation failed Darwin libiconv linking; the pinned `nix develop .#fuzz`
+environment supplies the required linker environment. These runs do not claim
+coverage of native task loss, which has independent runtime witnesses.
+
+Actual paired-source Bombay passes 300 library tests and strict library/test
+Clippy. The original 297-test library passes optimization; focused new inverse
+and truthful startup-rejection journeys pass debug and optimized. They retain
+original allocations, complete error/request values, real commit/shutdown,
+replay, provenance and both meaningful wrapper orders. Temporary CLI owner
+patches are development evidence; every committed registry lockfile is restored.
+Full Bombay/optimized consumer/package gates and released owners remain open.
 
 Source, pre-edit vetoes and detailed counters remain in the bounded scratch
 proofs: /private/tmp/bombay-pending-storage.0zBK6I,
@@ -1075,7 +1092,8 @@ failure alternatives are unchanged. Pre-edit checkpoint: pass for this scoped
 model. Actual focused native/composition tests pass debug and optimized,
 as does the existing Core custody/replay test; all 299 runtime library tests
 and strict library/test Clippy pass with paired command-line owner patches.
-Final repository gates and published dependencies remain required.
+Owner gates pass as recorded above; full downstream gates and published
+dependencies remain required.
 Logs/source: /private/tmp/bombay-devx-child-input-actual-before.log and
 /private/tmp/bombay-child-input-recovery.o0d5i77j.
 
@@ -1084,12 +1102,16 @@ returns its original definition/error but also emits an empty
 StartupRetirementFailed. Starting already placed its ID in creation order;
 recording a later fact-free row does not remove that entry. Derived law:
 retirement reports actual remaining failures only; complete returned refusal
-is not a second independent failure. Next scoped model: reconcile that same
-ordered collection with the current row, retaining rejection tombstones and
-existing order for owned tasks/facts. No new state/type/port. Before lowering,
-retain the complete caller refusal regression against actual source. Expected
-one existing registry method and one owning creation test module, under +10
-production lines. Original RED:
+is not a second independent failure. The retained registry reconciles that
+same ordered collection with its current row, keeping rejection tombstones and
+order for owned tasks/facts. No new state/type/port, one selection branch;
+existing 5/2/6 state/failure counts remain. Residue scan finds no history,
+duplicated cause, false cardinality, new transition authority or semantic flag.
+Cross-check: creation/rejection ownership and Driver retirement/receiving laws.
+Disposition: pass for this bounded law. Pre-edit estimate was one registry
+method/test module under +10 production lines; actual +6/-3/net3 and tests +150.
+Actual original fails only the final phantom assertion, then passes debug and
+optimized; 300 library tests and strict Clippy pass. Original RED:
 /private/tmp/bombay-inferred-application.qm31zb9h/PHANTOM-ORIGINAL-DEBUG-COMPLETE.log.
 
 Use the checklist above as the sole requirement disposition. Next exit is the

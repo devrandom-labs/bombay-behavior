@@ -429,3 +429,21 @@ read/raw representation is replaced by a separately reviewed ownership split,
 not a second registry. Actual production delta is zero. Evidence:
 /private/tmp/bombay-startup-authority-proof/read-before.log and
 read-raw-owner-projection.log.
+
+
+### Concrete runtime metadata on pure child declarations
+
+Unconditional nominal retirement metadata passed finite counter/component
+journeys but rejected an unchanged pure foreign Births alias: original passes,
+candidate E0271/E0277 demands local address/endpoint capability before execution.
+Generic pure child declarations have the same owner-level defect. Reopen;
+retain no production from that representation. Baseline Bombay 4fd7ad6: seven
+modules, CFG-scoped production +394/-69/net325, four new public spellings;
+full-file net190 included moved test-only code. Binding/startup/failure counts
+remain 5/2/6, arrow tokens 307→322; no new transition authority or cardinality.
+The surviving metadata owns child report/failure type equations, but attaches
+execution applicability to pure construction. Cross-check: pure initialization,
+affine custody, local runtime readiness and unchanged alias authoring. A deferred
+mode-family hypothesis passes finite pure/runtime guards; complete source,
+custom native projection and recursive execution remain unproved, so it is not
+retained. Evidence: /private/tmp/bombay-inferred-application.qm31zb9h.
