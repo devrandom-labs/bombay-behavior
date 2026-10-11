@@ -709,9 +709,9 @@ inference probes below remain historical evidence, not current acceptance syntax
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | Private unified Application owns root/scope/members/families; actual public cold-child/origin/late-report and missing-host work recovery pass both profiles; supervisor/FIFO and namespace-refusal evidence retained | Open: retain the public model, unify App, all seven journeys, combined families and complete cold recovery |
+| DX01 | One actual Application owns root/scope/members/families; App removed. Actual cold Account plus native families, staging recovery, unpolled cancellation and root refusal pass both profiles; supervisor/FIFO and all seven example packages use that owner | Open: generated topology/runner path, complete acquired-family-prefix and HTTP cancellation custody; full published gates |
 | DX02 | Child bindings, logical Hosts and exact delivery inspected; one explicit topology declaration approved | Open: derived hosting, repeated roles, child/topology consistency and missing-binding denials |
-| DX03 | Private declared graph metadata and genuine external scoped recursion pass both profiles, with complete refusal/retirement, nine authority denials and startup cancellation | Open: retain minimized public port and generated schema; Application scope/cold-report custody, wrappers/templates and complete downstream journey before migration |
+| DX03 | Private declared recursive graph executes with complete refusal/retirement, same-type siblings, decorated creator, nine authority denials and startup cancellation; actual Application scope and combined cold/family custody retained | Open: minimized public native port, generated schema/hosting and runner; opaque report aliases and wrappers/templates before canonical migration |
 | DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned terminal inclusion; all 24 outcomes retained; native retirement passes 300 library plus eight journey tests debug/optimized and all eight terminal denials | Open: published macro dependency and final package gates; inferred descendants and complete proportional recovery |
 | DX05 | Existing execute/run work and caller-host contracts inspected | Open: infer associated runner types; cancellation and host corpus |
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
@@ -724,13 +724,13 @@ inference probes below remain historical evidence, not current acceptance syntax
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Startup/native failure, complete provenance, independent raw/projected retirement, read custody, template rejection and closed-control/report custody implemented; actual301 tests pass both builds and563 downstream tests pass with one inference failure | Open: full downstream gates and released dependency delivery |
+| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual301 owner tests pass both builds, downstream567 pass with one generated-topology failure and one skipped | Open: full downstream gates and released dependency delivery |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
 | DX20 | Existing ActorInterface/ExternalActor retained | Open: correlated replies, cancellation and slow/closed customers |
 | DX21 | Existing lifecycle and child retirement retained | Open: inferred access with complete shutdown/retirement evidence |
-| DX22 | Existing Entity/HTTP owners retained | Open: same Application spine, exact rejection and family/root failures |
+| DX22 | One Application owner now composes ordinary/cold actors, HTTP and Entity; real combined cold Account plus hydrated/passivated/reactivated family and three independent failure/recovery journeys pass both profiles | Open: acquired family-prefix cancellation, complete HTTP/family/root failure corpus and generated assembly |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
@@ -1316,9 +1316,172 @@ Commit guard, extra actor state or child/source proof is selected. Expected
 private delta: one existing creation module, roughly40 lines, zero types/states.
 Independent denials, original Box refusal, full recursive retirement, actual
 shared registration identity and both profiles must pass before retention.
+The private sharing implementation now passes complete recursive/refusal and
+cold-origin/missing-host recovery journeys in both profiles. Its sole projection
+clones the existing inner Arc and moves the complete loan; it selects no new
+operation. Logs: SHARED-{RECURSION,SCOPE}-{DEBUG,OPTIMIZED}.log in the scoped
+application proof above. These remain private results, not Entity acceptance.
+
+Before extending Entity execution, the unchanged real account journey adds a
+real cold account (balance71) beside hydrated/passivated/reactivated balances40,2.
+It fails solely with E0599: run_with_entities exists only for Members=().
+Derived composition law: stage Members with existing ComposeApplication before
+installing Families. Staging rejection returns original root, scope, uninstalled
+families, Work and exact StagingFailure; prepared custody owns actual composed
+Actor and the same shared scope. Root retirement uses RootOrigin<original Root>
+and ActorRetirement<actual Actor>; independent family receiving and root-first
+shutdown keep their existing equations. Reuse the existing execution kernel,
+family installer and exact member Origins; add no engine, protocol or capability.
+Expected private change: one existing execution module, roughly +20/-20 lines
+plus existing associated actor proof substitutions; zero public types/states.
+Focused proof: /private/tmp/bombay-scoped-application-p0fuke2_/ENTITY-{LAW.md,BASELINE.log}.
+Complete rejection, cancellation, identity and family/root failure witnesses
+remain required before retaining the combined model.
+The private combined account journey, original staging rejection/recovery,
+unpolled execution cancellation/recovery and root initialization refusal now
+pass both profiles. Refusal retains the original root Box and unstarted child;
+the installed zero-incarnation family shuts down independently. Restoring the
+prior Entity method restriction fails solely with four E0599 diagnostics in
+each build; removing Arc delegation independently fails six NativeChild E0277
+diagnostics per build. Original source bytes are restored. Minimized library
+Clippy passes; this is not the full workspace gate. Evidence remains in the
+scoped proof's ENTITY-{STARTUP,REJECTION}-{DEBUG,OPTIMIZED}.log and
+INVERSE-RESULTS.json. Acquired family-prefix cancellation and complete HTTP
+runtime custody remain unexecuted on this composition.
+
+Before the next graph comparison: existing timer/shutdown composition changes
+the creator while concrete Base/Role still selects the same child. The unchanged
+four-node/three-audit caller with a real root safety timer fails solely on the
+missing decorated-creator NativeChild operation. Compare one operation generic
+only in creator C for each concrete Base/Role: require its exact existing role,
+event/report and send capability; keep concrete child Commit and all three
+source-custody equations in the body. No arbitrary child generics or whole
+Commit eligibility. Expected private edit: three scope implementations only,
+zero runtime/type/state changes. Handwriting still names Trace: no automatic
+report-payload extraction or public DSL is claimed. Root runner families need
+their own application-selected owner; NativeChild cannot infer a leaf's root D.
+Focused pre-edit law/source: scoped proof CREATOR-{LAW.md,BASELINE.log}.
+The creator-generic Base-equality comparison is rejected: E0119 overlaps the
+Root/Node factories and E0310 exposes the retained typed parent-report source
+lifetime. Its three candidate implementations were removed; no bound was
+invented to retain them. The corrected caller's baseline fails solely on
+missing decorated-creator NativeChild. DEAD_ENDS.md records the falsifier.
+Next pre-edit comparison: one application-scoped closed edge owner selects
+source domain, concrete declared occurrence, exact child and its one target
+retirement/failure family. A single operation on the concrete Scope delegates
+to that edge; no universal blanket or global domain topology. Existing affine
+PendingChild/native execution and exact ingress/source laws remain unchanged.
+Same-type siblings, actual decorated occurrence resolution and stored-source
+lifetime must be proven independently; metadata cannot assert execution.
+Expected private comparison: one external consumer, one private edge contract
+replacing three operation impls, roughly +60 lines, no runtime states or public
+types. Pre-edit full checkpoint and corrected RED: scoped proof EDGE-LAW.md and
+CREATOR-BASELINE.log. This is not a retained DSL or a caller-ceremony gain. The
+current spawned interpreter retains LocalParentReports<Event, Child, C::Birth>;
+its source tag is type qualification, not an owned Birth value. Restrict the
+executed private edge's C::Birth to 'static for that existing native context,
+without tightening pure authoring or substituting Base::Birth. This current
+interpreter restriction is tested separately with lifetime-bearing pure birth
+metadata and is not presented as an actor-model requirement.
 Root-retirement inference, cancellation/failure custody,
 HTTP/Entity combined composition, strict gates and wrapper/template proofs
 remain separate required acceptance; field unification alone satisfies none.
+
+Before actual Application retention, the same completed account/cold/failure
+regression uses the actual Bombay feature branch, actual Core/Actors source and
+Communication custody owner. Its cold Account has no births; remove the private
+NativeChild implementation entirely. This independently proves the four-field
+Application owner without retaining the unproven generated topology. Expected
+actual production: application/mod.rs, execution.rs, http.rs and lib.rs only,
+remove App, reuse exact kernel/Origins/family publication and existing launch
+proof visibility; roughly net -560 lines. Focused witness/old-source inverse
+must pass both profiles before mechanical App callers migrate. Existing counter,
+heterogeneous, supervisor/FIFO, Entity and HTTP regressions remain independent
+required gates. No new runtime type, native factory, state or protocol.
+Evidence directory selected before editing:
+/private/tmp/bombay-application-owner-i27iyp5f.
+
+The actual four-file owner is now retained in the isolated Bombay diff. The
+external consumer contains no NativeChild implementation. Both profiles pass
+all four account/cold/failure journeys; byte-restoring the prior four owners
+fails solely on five E0599 diagnostics in each profile. Proven supervisor and
+FIFO callers pass before mechanical App migration. All seven example packages
+compile/test through Application; the six terminating executables run. HTTP's
+router and static protocol inversion tests pass. The complete actual execution
+kernel, receiving and outcome suffix are token-identical to the prior source.
+Public root borrowing and every rejection keep the same owned scope.
+
+Checkpoint: ApplicationOutcome remains StagingRejected/Unstarted/Prepared/
+NotInvoked/Completed/Interrupted (6→6); original Work custody5→5, bindings5→5,
+startup2→2 and retirement24→24. Each surviving alternative owns current cold
+inputs, staged actors, actual callable/result, task/cause or independent cleanup
+needed by a later decision. No arrival history, duplicated cause, semantic
+flag, cardinality assumption, nested transition authority or new structural
+caller recovery is introduced. Production2720→2165 lines (+206/-761/net-555),
+match expressions53→48 and match arms105→97; existing modules unchanged and
+public method spellings23→17. Public types+0/-1 (App). Application's original
+conditional Clone/Copy/equality are removed because it now owns an affine
+ActorSpace. Members and Families coexist; family staging reuses exact Origins,
+with no new generic bound beyond the existing selected-host contract.
+Cross-checks: DX01/03/16/21/22, execution-ownership, Driver work/publication and
+retirement laws, Entity root-first shutdown and normalized atomic source laws.
+Disposition: pass for this independently bounded owner change, not generated
+Application acceptance. Mechanical migration adds no semantic production.
+Tests +1096/-194/net902 include four independent full custody journeys and
+updated exact signature snapshots; examples+12/-11/net1. Source/default and
+all-feature owner consumer checks are distinct from the registry contract.
+
+Pinned source verification: workspace/all-target/all-feature compilation,
+strict Clippy, formatting, two doctests, four focused owner cases plus fixed
+supervisor/two FIFO cases in both profiles pass. Full all-feature nextest has
+567 passed, one failed (the four unfinished generated-custody pass fixtures),
+one skipped. Every existing compile denial remains active; only Application
+signature text changed. Six terminating examples pass, including real Entity
+reactivation; the HTTP example's deterministic package tests pass. Source
+Communication emits a dependency deprecation warning under Rust1.99, while its
+own pinned1.95 checks pass; no broad lint suppression or API workaround added.
+The original registry lock is byte-restored. Exact laws, before/after inverse,
+counts and commands: /private/tmp/bombay-application-owner-i27iyp5f/
+{LAW.md,INVERSE-RESULTS.json,FINAL-COUNTS.json,BRANCH-COUNTS.json,
+FINAL-VERIFICATION.json,WORKSPACE-DOCTEST.log,OWNING-TEMPLATES-OPTIMIZED.log}.
+Fresh authoritative registry Nix exits1: formatting, panic-abort rejection,
+Observe Loom and Driver-law evidence pass;17 remaining gates fail on unavailable
+published Behavior APIs (including ChildOccurrenceMember and Unavailable).
+Neither signing nor disk exhaustion occurred; no waiver applies. The immutable
+run's REGISTRY-NIX.log and REGISTRY-NIX-RESULTS.json record all21 dispositions.
+An independent post-run eval generated different unbuilt paths and is not used
+as a substitute for that executable run. The registry lock remains byte-exact.
+
+
+The bounded Application owner is committed as Bombay4529bc3. Current Behavior
+also passes all ten pinned native Nix gates; this turn changes only its owning
+PRD and rejected-model record, with no actual Core/Actors production edit.
+
+Next native comparison, recorded before prototype edits: reuse the existing
+finite InterpretSends and exact send-source custody against the actual child
+host. Outer Terminal/Origin affect retirement projection only. Compare a public
+ChildCommunications supertrait naming that operational contract, with the exact
+associated custody equality, while keeping ApplicationCapabilities and its
+namespace private. A blanket implementation contains no whole Commit/creation
+guard. Concrete edge bodies retain all three complete source-custody equations.
+It would delete caller-spelled report-payload ingress, without new metadata or a
+surrogate interpreter. Expected private effects/reexport change: one public
+trait, roughly80 lines, zero state/field/module changes. Foreign predicate
+elaboration, two aliased report payloads plus timer, both orders, complete
+rejection/prefix and missing ingress denials are required; a new unnameable
+premise reopens. Full pre-edit law/checkpoint:
+/private/tmp/bombay-scoped-application-p0fuke2_/COMMUNICATION-LAW.md.
+The actual foreign-edge witness falsifies this public supertrait candidate:
+three absent-port E0405 diagnostics become nine E0277 parent-report ingress
+obligations at the edge's signature/return contract. Writing the already-selected
+concrete Child/Descendants/Failures instead of Self projections still fails with
+the same nine diagnostics in debug and optimization. A read-only reviewer
+confirms this does not justify a generic Sends parameter or extra ingress bound.
+The port and reexport are byte-restored; the two-report/timer extension was not
+executed and no such success is claimed. Actual production/API/state deltas0;
+private existing bindings/startup/retirement remain5/2/24, zero modules or event
+alternatives. No custody, actor law or concrete host was changed. Disposition:
+reopen; exact falsifier in DEAD_ENDS.md and scoped COMMUNICATION-RESULTS.json.
 
 ### Dependency delivery and exact gates
 

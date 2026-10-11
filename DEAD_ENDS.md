@@ -528,3 +528,54 @@ Cross-check pure Actions, atomic-runtime-settlement, execution-ownership
 DG-PROJECTION and normalized atomic laws. Disposition: reopen the proposed
 parent-readiness implication, not the positive own-only nominal representation.
 Evidence: /private/tmp/bombay-retirement-data.l5tbw4o8/{RESULTS.md,CHECKPOINT.json,COMMANDS.md}.
+
+## Creator-generic factories selected by associated Base equality
+
+The exact closed recursive child schemas and native loan execute successfully;
+that does not prove arbitrary decorated creator selection. A genuine root safety
+timer keeps the same Base-owned child role but the original concrete factory
+rejects its changed creator type. The private comparison makes only creator C
+generic per concrete Base/Role, leaving all child task types, raw descendants,
+failure products and three source-custody equations concrete/body-local.
+
+Root and Node operations nevertheless overlap (E0119): distinct associated
+`C::Base` equalities do not establish disjoint native implementations. The child
+task also retains C::Birth in its typed source context, exposing E0310 lifetime
+premises absent from the candidate. Both profiles reject it. No marker, wrapper,
+source bound or lifetime restriction was added to repair these diagnostics.
+The three candidate implementations were removed. Handwriting Trace does not
+prove automatic report-payload inference from arbitrary composed sends.
+
+Disposition: reopen creator selection. Actual production/test/API/state/module
+deltas zero; private runtime control sums remain5/2/24 and initialization/order/
+source custody remain unchanged. The failed probe adds no actor or transition
+authority, runtime registry, erased protocol, semantic flag or caller placeholder.
+Cross-check: DX02/03/07/08, pure birth authoring, existing role resolution,
+timer initialization/cancellation, source custody and native retirement laws.
+Evidence: /private/tmp/bombay-scoped-application-p0fuke2_/
+CREATOR-REJECTED.rs and CREATOR-REJECTED-{DEBUG,OPTIMIZED}.log. The corrected
+caller baseline records only the missing decorated-creator operation; initial
+timer constructor/reaction mistakes are not counted as semantic evidence.
+
+## Child communications proved through a concrete sends supertrait
+
+The finite child host is the same operational ApplicationCapabilities used by
+the native kernel, independently of outer terminal/origin projection. A public
+ChildCommunications supertrait reuses exact InterpretSends and associated
+SourceSettlementCustody equality, leaving creation/full Commit in concrete
+bodies. The external graph is red before edits on three absent-trait E0405s.
+The candidate owner itself compiles, but its foreign concrete-child edges
+still need nine E0277 parent-report ingress proofs. Replacing Self projections
+with the already-assigned concrete Child/Descendants/Failures leaves the same
+failure in both profiles. This does not prove that another generic parameter
+would work or justify adding one merely to alter solver behavior.
+
+The prototype port and export are byte-restored. The proposed two-report/timer
+extension was never executed; no alias or complete-custody success is claimed.
+Disposition: reopen the operational predicate. Actual production/test/API/state
+deltas0; private binding/startup/retirement sums5/2/24, no added module, branch,
+authority, repeated cause, flag, erasure or structural caller obligation.
+Cross-check: original actual native host, typed report/source qualification,
+exact sends/source custody, pure birth authoring and DX02/03/08. Evidence:
+/private/tmp/bombay-scoped-application-p0fuke2_/COMMUNICATION-LAW.md,
+COMMUNICATION-RESULTS.json and COMMUNICATION-CONCRETE[-OPTIMIZED].log.
