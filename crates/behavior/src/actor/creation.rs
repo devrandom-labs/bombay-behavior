@@ -470,6 +470,11 @@ pub enum AllocationRejection {
 /// Complete semantic rejection of one staged fresh creation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum CreationRejection {
+    /// This correlation was already recorded in the same static child
+    /// occurrence. The interpreter rejects the original request before fresh
+    /// allocation and preserves the existing binding.
+    #[error("the creation correlation is already recorded in this child occurrence")]
+    CorrelationAlreadyRecorded,
     /// Fresh address allocation failed.
     #[error("fresh allocation failed: {0}")]
     Allocation(AllocationRejection),
