@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.24.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.24.0...bombay-behavior-actors-v0.24.1) - 2026-10-12
+## [0.25.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.24.0...bombay-behavior-actors-v0.25.0) - 2026-10-12
 
-### Other
+### Changed
 
-- Infer initial worker preparation from factory return values ([#94](https://github.com/devrandom-labs/bombay-behavior/pull/94))
+- **Breaking:** fixed supervisors, FIFO pools and keyed pools infer initial
+  preparation from direct `WorkerSubmission` or fallible `Result` factories.
+  The explicit constructor error generic becomes the preparation return type;
+  use inferred `.build()` and constructor arguments. Rejection retains the
+  original factory, prepared prefix, rejected role, reason and remaining roles.
+  ([#94](https://github.com/devrandom-labs/bombay-behavior/pull/94))
 
 ## [0.24.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.23.0...bombay-behavior-actors-v0.24.0) - 2026-10-11
 
