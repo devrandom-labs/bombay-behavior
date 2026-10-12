@@ -10,8 +10,8 @@ use behavior_actors::atomic::{
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
     ActionItemResult, ChildCreationOutcome, ChildReport, CreateChild, CreationId,
-    CreationSettlement, Creations, CreationsSettled, EstablishedActor, ItemSettlement, Never,
-    SettledItem, Step,
+    CreationSettlement, Creations, CreationsSettled, EstablishedActor, ItemSettlement, SettledItem,
+    Step,
 };
 
 use crate::proxy_control::admit_proxy_operation;
@@ -33,8 +33,8 @@ where
     pub(crate) worker: WorkerAttempt,
 }
 
-fn initial_worker(_: &Role) -> Result<WorkerSubmission<Worker, ImmediateActivation>, Never> {
-    Ok(WorkerSubmission::immediate(Worker::new(0)))
+fn initial_worker(_: &Role) -> WorkerSubmission<Worker, ImmediateActivation> {
+    WorkerSubmission::immediate(Worker::new(0))
 }
 
 fn committed_proxy(
@@ -74,7 +74,7 @@ where
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::<Infallible>::terminate(),
     )
-    .build::<Worker, ImmediateActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker is prepared"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed-supervisor initialization is pure"));
