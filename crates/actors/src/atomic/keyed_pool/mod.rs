@@ -23,11 +23,11 @@ use super::pool::{
     AssignWorker, Assignment, BacklogCapacity, CompletesAssignments, CustomerDelivery,
     Interruption, PoolRecovery, PoolRecoveryState, ShutdownSequence, SubmissionId,
 };
-use super::worker::{InitialWorkerRejection, prepare_initial_workers};
+use super::worker::{InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, BeginActivation, InitializeWorker,
     OrderedRoles, PrepareWorkers, PreparedWorker, WorkerActivation, WorkerAttempt,
-    WorkerInitializationReport, WorkerPreparation, WorkerSource, WorkerSubmission,
+    WorkerInitializationReport, WorkerPreparation, WorkerSource,
 };
 
 mod assignment;
@@ -326,6 +326,9 @@ pub struct KeyedConstructionRejected<Factory, Selector, Role, W, P, Rejection, S
 }
 
 /// Construct one keyed pool after preparing every declared worker in order.
+/// The factory may return `WorkerSubmission` directly or a fallible `Result`.
+/// Rejection returns the original factory, prepared prefix, role, refusal and
+/// untouched suffix together with the selector and every construction policy.
 #[expect(
     clippy::too_many_arguments,
     reason = "every argument is one explicit KeyedPool policy pending the recorded builder comparison"
@@ -336,7 +339,7 @@ pub fn keyed<
     Role,
     W,
     P,
-    Rejection,
+    Preparation,
     Source,
     Diagnostics,
     Key,
@@ -355,10 +358,20 @@ pub fn keyed<
     diagnostics: DiagnosticDisposition<Diagnostics>,
 ) -> Result<
     KeyedPool<Role, W, P, Source, Selector, Diagnostics, Key, Job, WorkerResult>,
-    KeyedConstructionRejected<Factory, Selector, Role, W, P, Rejection, Source, Diagnostics>,
+    KeyedConstructionRejected<
+        Factory,
+        Selector,
+        Role,
+        W,
+        P,
+        Preparation::Rejection,
+        Source,
+        Diagnostics,
+    >,
 >
 where
-    Factory: FnMut(&Role) -> core::result::Result<WorkerSubmission<W, P>, Rejection>,
+    Factory: FnMut(&Role) -> Preparation,
+    Preparation: InitialWorkerPreparation<Worker = W, Plan = P>,
     Selector: Fn(&Key) -> Role,
     Role: Eq,
     W: Behavior,

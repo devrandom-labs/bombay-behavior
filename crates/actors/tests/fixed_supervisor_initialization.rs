@@ -435,10 +435,8 @@ fn roles() -> OrderedRoles<SearchRole> {
     .expect("search roles are unique")
 }
 
-fn initial_worker(
-    role: &SearchRole,
-) -> Result<WorkerSubmission<SearchWorker, SearchActivation>, Never> {
-    Ok(WorkerSubmission::activated(worker(role), SearchActivation))
+fn initial_worker(role: &SearchRole) -> WorkerSubmission<SearchWorker, SearchActivation> {
+    WorkerSubmission::activated(worker(role), SearchActivation)
 }
 
 fn commit_proxy_births(
@@ -482,7 +480,7 @@ fn first_proxy_dispatched(
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits proxy births"));
@@ -536,7 +534,7 @@ fn routed_start(
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::deliver_to(diagnostics),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits proxy births"));
@@ -847,7 +845,7 @@ fn automatic_recovery_has_one_named_worker_preparation_lane() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits reservations"));
@@ -866,7 +864,7 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits three proxy births"));
@@ -939,7 +937,7 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits three proxy births"));
@@ -1012,7 +1010,7 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
             ActorDrainPolicy::WaitForActorGraph,
             DiagnosticDisposition::terminate(),
         )
-        .build::<SearchWorker, SearchActivation, Never>()
+        .build()
         .unwrap_or_else(|_| panic!("every initial worker prepares"))
         .initialize()
         .unwrap_or_else(|_| panic!("fixed initialization emits three proxy births"));
@@ -1236,12 +1234,12 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
                 TrackedRole::Primary => Arc::clone(&primary_tracker),
                 TrackedRole::Replica => Arc::clone(&replica_tracker),
             };
-            Ok::<_, Never>(WorkerSubmission::activated(
+            WorkerSubmission::activated(
                 TrackedWorker { drops },
                 TrackedActivation {
                     readiness_drops: None,
                 },
-            ))
+            )
         },
         roles,
         ActivationPolicy::new(1).expect("activation capacity is positive"),
@@ -1250,7 +1248,7 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<TrackedWorker, TrackedActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("both tracked workers prepare"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits proxy births"));
@@ -1343,14 +1341,14 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
             let initial_worker_drops = Arc::clone(&initial_worker_drops);
             let readiness_drops = Arc::clone(&readiness_drops);
             move |_: &TrackedRole| {
-                Ok::<_, Never>(WorkerSubmission::activated(
+                WorkerSubmission::activated(
                     TrackedWorker {
                         drops: Arc::clone(&initial_worker_drops),
                     },
                     TrackedActivation {
                         readiness_drops: Some(Arc::clone(&readiness_drops)),
                     },
-                ))
+                )
             }
         },
         OrderedRoles::new(TrackedRole::Primary, []).expect("one tracked role is unique"),
@@ -1367,7 +1365,7 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<TrackedWorker, TrackedActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the tracked worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one tracked proxy"));
@@ -1827,7 +1825,7 @@ where
         actor_drain,
         diagnostics,
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy birth"));
@@ -2006,7 +2004,7 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy birth"));
@@ -2082,7 +2080,7 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
         DiagnosticDisposition::terminate(),
     )
     .publish_lifecycle(lifecycle.clone())
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy birth"));
@@ -2202,7 +2200,7 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits proxy births"));
@@ -4367,7 +4365,7 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits proxy births"));
@@ -4487,7 +4485,7 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy birth"));
@@ -5103,7 +5101,7 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::deliver_to(diagnostics.clone()),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits three proxy births"));
@@ -5523,7 +5521,7 @@ fn unavailable_report_before_proxy_creation_returns_complete() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy creation"));
@@ -5877,7 +5875,7 @@ async fn one_replacement_operation() -> (
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits one proxy birth"));
@@ -9229,7 +9227,7 @@ fn pending_proxy_births_are_observable_as_creating_proxy() {
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::terminate(),
     )
-    .build::<SearchWorker, SearchActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed initialization emits pending proxy births"));

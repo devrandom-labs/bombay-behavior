@@ -11,7 +11,7 @@ use behavior_actors::{Activate as _, Active};
 use behavior_core::{
     ActionItemResult, ChildCreationOutcome, ChildReport, CreateChild, CreationId,
     CreationSettlement, Creations, CreationsSettled, EstablishedActor, EstablishedRecipient,
-    ItemSettlement, MessageProtocol, Never, SettledItem, Step,
+    ItemSettlement, MessageProtocol, SettledItem, Step,
 };
 
 use crate::proxy_control::admit_proxy_operation;
@@ -53,13 +53,13 @@ where
     pub(crate) members: Vec<ReadyMember>,
 }
 
-fn initial_worker(role: &Role) -> Result<WorkerSubmission<Worker, ImmediateActivation>, Never> {
+fn initial_worker(role: &Role) -> WorkerSubmission<Worker, ImmediateActivation> {
     let worker = match role {
         Role::Search => Worker::new(1),
         Role::Index => Worker::new(2),
         Role::Spellcheck => Worker::new(3),
     };
-    Ok(WorkerSubmission::immediate(worker))
+    WorkerSubmission::immediate(worker)
 }
 
 fn committed_proxies(
@@ -101,7 +101,7 @@ where
         ActorDrainPolicy::WaitForActorGraph,
         DiagnosticDisposition::deliver_to(EstablishedRecipient::issued(WorkerEndpoint)),
     )
-    .build::<Worker, ImmediateActivation, Never>()
+    .build()
     .unwrap_or_else(|_| panic!("each declared role has an initial worker"))
     .initialize()
     .unwrap_or_else(|_| panic!("fixed-supervisor initialization is pure"));

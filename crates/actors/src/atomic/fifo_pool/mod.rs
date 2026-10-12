@@ -22,7 +22,7 @@ use crate::{
 
 use super::RoleName;
 use super::pool::worker::CreationBatchRejection;
-use super::worker::{InitialWorkerRejection, prepare_initial_workers};
+use super::worker::{InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, BeginActivation, InitializeWorker,
     OrderedRoles, PrepareWorkers, PreparedWorker, WorkerPreparation, WorkerSource,
@@ -3871,7 +3871,10 @@ pub struct FifoConstructionRejected<Factory, Role, W, P, Rejection, Source, Diag
 }
 
 /// Construct one FIFO pool after preparing every declared worker in order.
-pub fn fifo<Factory, Role, W, P, Rejection, Source, DiagnosticRoute, Job, WorkerResult>(
+/// The factory may return `WorkerSubmission` directly or a fallible `Result`.
+/// Rejection returns the original factory, prepared prefix, role, refusal and
+/// untouched suffix together with every construction policy.
+pub fn fifo<Factory, Role, W, P, Preparation, Source, DiagnosticRoute, Job, WorkerResult>(
     factory: Factory,
     roles: OrderedRoles<Role>,
     activation: ActivationPolicy,
@@ -3882,10 +3885,11 @@ pub fn fifo<Factory, Role, W, P, Rejection, Source, DiagnosticRoute, Job, Worker
     diagnostics: DiagnosticDisposition<DiagnosticRoute>,
 ) -> Result<
     FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult>,
-    FifoConstructionRejected<Factory, Role, W, P, Rejection, Source, DiagnosticRoute>,
+    FifoConstructionRejected<Factory, Role, W, P, Preparation::Rejection, Source, DiagnosticRoute>,
 >
 where
-    Factory: FnMut(&Role) -> core::result::Result<WorkerSubmission<W, P>, Rejection>,
+    Factory: FnMut(&Role) -> Preparation,
+    Preparation: InitialWorkerPreparation<Worker = W, Plan = P>,
     Role: Eq,
     W: Behavior,
     W::Protocol: behavior::Protocol<Msg = Assignment<Job>>,
