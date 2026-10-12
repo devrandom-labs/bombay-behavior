@@ -30,8 +30,8 @@ pub use preparation::{
 pub(in crate::atomic) use preparation::{
     PreparationTicket, WorkerPreparationExpectation, WorkerPreparationOutcome,
 };
-pub use roster::InitialWorkerRejection;
 pub(in crate::atomic) use roster::prepare_initial_workers;
+pub use roster::{InitialWorkerPreparation, InitialWorkerRejection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::atomic) enum StopKind {

@@ -14,10 +14,10 @@ use behavior::{
     Never, SendEffects, SourceActions, Step, User,
 };
 
-use super::worker::{InitialWorkerRejection, prepare_initial_workers};
+use super::worker::{InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers};
 use super::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, OrderedRoles, PreparedWorker,
-    ProxyOperation, RestartLimit, RestartRelease, RoleName, StableProxy, WorkerSubmission,
+    ProxyOperation, RestartLimit, RestartRelease, RoleName, StableProxy,
 };
 
 mod diagnostic;
@@ -307,7 +307,10 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
     FixedBuilder<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
 {
     /// Prepare every initial worker in declaration order or return all custody.
-    pub fn build<Worker, Plan, Rejection>(
+    /// The factory returns `WorkerSubmission` directly when preparation cannot
+    /// fail, or `Result<WorkerSubmission, Rejection>` for an actual refusal.
+    /// Its return value determines the rejection type without a separate slot.
+    pub fn build<Worker, Plan, Preparation>(
         self,
     ) -> Result<
         FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>,
@@ -316,14 +319,15 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
             Role,
             Worker,
             Plan,
-            Rejection,
+            Preparation::Rejection,
             Source,
             DiagnosticRoute,
             LifecycleRoute,
         >,
     >
     where
-        Factory: FnMut(&Role) -> Result<WorkerSubmission<Worker, Plan>, Rejection>,
+        Factory: FnMut(&Role) -> Preparation,
+        Preparation: InitialWorkerPreparation<Worker = Worker, Plan = Plan>,
         Role: Send + Sync,
         Source: WorkerSource<Role, Worker, Plan>,
         Worker: behavior::Behavior + Send,

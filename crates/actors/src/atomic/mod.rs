@@ -110,7 +110,8 @@ pub use worker::{
     WorkerInitializationReport,
 };
 pub use worker::{
-    ActivationPlan, ImmediateActivation, InitialWorkerRejection, PreparedWorker, WorkerAttempt,
-    WorkerCreationRejection, WorkerInitializationFailure, WorkerRecovery, WorkerSubmission,
+    ActivationPlan, ImmediateActivation, InitialWorkerPreparation, InitialWorkerRejection,
+    PreparedWorker, WorkerAttempt, WorkerCreationRejection, WorkerInitializationFailure,
+    WorkerRecovery, WorkerSubmission,
 };
 pub use worker::{StartingWorkerPreparation, WorkerPreparationStarted};
