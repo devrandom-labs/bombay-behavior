@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.26.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.25.0...bombay-behavior-actors-v0.26.0) - 2026-10-13
 
-### Other
+### Changed
 
-- reject previously recorded correlations explicitly ([#93](https://github.com/devrandom-labs/bombay-behavior/pull/93))
+- Select Core 0.26's explicit rejection of repeated creation correlations.
+  The shared workspace version advances with Core; this release adds no
+  Actors API change. ([#93](https://github.com/devrandom-labs/bombay-behavior/pull/93))
 
 ## [0.25.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.24.0...bombay-behavior-actors-v0.25.0) - 2026-10-12
 
