@@ -66,10 +66,12 @@ impl behavior::ActionItem for LocalRequest {
     type Prerequisite = Never;
 }
 
+type EmptyBirths = behavior::NoBirths;
+
 #[derive(Debug, PartialEq, Eq)]
 struct FirstChild;
 
-#[behavior::behavior(addr = MailAddr, message = Never)]
+#[behavior::behavior(addr = MailAddr, message = Never, births = EmptyBirths)]
 impl FirstChild {
     fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
         match message {}
@@ -227,7 +229,7 @@ impl Fallible {
 
 struct Generic<T>(core::marker::PhantomData<T>);
 
-#[behavior::behavior(addr = MailAddr, message = T, sends = { values: Vec<T> })]
+#[behavior::behavior(addr = MailAddr, message = T, sends = { values: Vec<T> }, births = EmptyBirths)]
 impl<T> Generic<T> {
     fn receive(&mut self, _: MailAddr, message: T) -> BehaviorActed<Self> {
         Ok(Actions::cont().send_values(message))
