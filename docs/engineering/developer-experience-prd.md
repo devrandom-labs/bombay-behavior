@@ -762,7 +762,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
-| DX10 | WorkerFactory has bounded inferred fixed/FIFO, failure/prefix, wrapper, memory-layout and denial evidence; named RecoveryPolicy is implemented locally:104 focused owner tests pass in both profiles, all16 real replacement/refusal/wrapper executions pass on1.99/1.96; all ten final owner gates pass963 tests. Registry delivery and other families remain open. Published0.25.0 from2bb4510 accepts direct or fallible initial factories through the existing fixed/FIFO/keyed constructors. Pure custody/inverse tests,963 pinned owner tests/ten native gates and five complete downstream journeys in eight configurations pass;765 fixed assertions preserved. Before-source denials prove the owner gap | Open: final registry consumer gates, dynamic/proxy construction and measured policy syntax across all five families |
+| DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
@@ -779,7 +779,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Actual counter main98 lines, FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks |
-| DX27 | Published Core/Actors0.26.0 and macros0.14.2 at98983b4: owner ten native gates,964 tests, archive preflight, exact CI and normal release pass. Bombay selects those registry versions without patches; actual207 owner sources match. Correlation native journey passes both compilers/profiles and its optimized defect inverse fails. Prior0.25/scope/WorkerFactory full gates retain their revision limits | Adoption passes all21 native gates in2306.566 seconds,646 optimized tests and current/MSRV debug/release archive journeys; open: unpublished policy changes and remaining final programme consumers |
+| DX27 | Published Core/Actors0.26.0 and macros0.14.2 at98983b4: owner ten native gates,964 tests, archive preflight, exact CI and normal release pass. Bombay selects those registry versions without patches; actual207 owner sources match. Correlation native journey passes both compilers/profiles and its optimized defect inverse fails. Prior0.25/scope/WorkerFactory full gates retain their revision limits | Adoption passes all21 native gates in2306.566 seconds,646 optimized tests and current/MSRV debug/release archive journeys; policy headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 current/MSRV archive journeys. Open: policy publication, documentation pruning in its delivery branch and remaining final programme consumers |
 | DX28 | Initial pruning preserved; one canonical guide is included through Cargo readme metadata. Complete leaf Application/joined cleanup executes in workspace and extracted runtime/engine/macros on all eight configurations;59 local links resolve | Open: compact reconciliation, rendered external links and final documentation gates. Scope guide executes in all eight workspace/archive configurations; stale normative version prose delegates to the current selection record |
 
 ### Retained contracts and evidence
@@ -1358,3 +1358,201 @@ Whole adoption: production+11/-2/net9;
 tests+334/-5/net329; public types+0/-0; no new production module or retained field.
 The captured source predates only this final prose update; runtime, tests, locks,
 manifest bindings, compiled guide and gates remain byte-identical.
+
+Policy delivery refresh (DX10/24/27, pre-edit): replay the already-proven
+RecoveryPolicy1a4937b, owner hierarchy/configuration6b25868 and complete FIFO
+worker-refusal projectiond287f85 onto current published98983b4. Keep the original
+proof branches intact and use a new feature worktree. This changes no law or
+caller syntax beyond those recorded above. The new base adds the correlation
+reason and pure birth-alias macro proof, so prior0.25 checks do not certify it.
+Inspect conflicts by ownership/provenance; retain no compiler-driven bounds,
+aliases or shims. Rerun focused owner and actual Bombay3a80848 downstream
+journeys before extending configuration to directory/router. Preserve the
+owning PRD/evidence and deleted historical records in eventual delivery.
+
+The0.26 consumer refresh exposed an incomplete old six-file inventory: its
+private runtime also renamed Entity phases in other files. This is unrelated
+to worker policy consumption and is excluded from the retained refresh. The
+new proof restores Entity byte-for-byte to3a80848 and changes only five owning
+worker/policy consumer files. The first refreshed compile fails two E0599 phase
+names before that restoration; it is not an owner gap and justifies no new
+bound, type, route or visibility. Original proof sources/logs remain preserved.
+
+FIFO projection refresh: its independently proven commit predates the hierarchy
+change. The first actual unit build rejects three old atomic imports in the
+appended projection regressions (E0432/E0433). Mechanically map those imports to
+the existing private pool worker and public worker owners, using ImmediateStartup.
+Keep both original pointer/custody oracles, production projection, all error and
+protocol alternatives, and every bound unchanged; no alias or forwarding module.
+
+Directory/router configuration (DX10, pre-edit): the actual committed native
+dynamic start/cancel/exact-rejection/stop/join and keyed affinity/rejection/unbind/
+join journeys pass on refreshed owners. Retained actors measure152/264 bytes.
+Request `supervisor::directory::new(directory::Config { entries, startup, exit,
+shutdown, lifecycle, diagnostics })` and `pool::router::new(factory, roles,
+selector, router::Config { startup, recovery, backlog, bindings, interruption,
+shutdown, diagnostics })`. This is deliberate API policy, not actor-model law.
+Config owns simultaneous existing choices, no actor state; all bounds and
+validated values retain their exact laws. Dynamic remains infallible; keyed
+rejection owns workers + original selector + original Config, including prepared
+prefix and untouched suffix. Successful construction consumes Config into the
+existing flat actor fields. Reuse the current constructors and ordered preparation;
+move construction to private config children, remove the old functions/root
+spellings and seven repeated keyed rejection fields. No shim, trait, default,
+extra callback, source capability, dependency or interpreter change. Expected
+two public products/two construction modules, roughly net±80 production lines.
+Write native RED before production, then focused pure complete rejection and
+initialization; prove these exact journeys/failures before catalogue migration.
+
+Control state: dynamic availability Accepting | ShuttingDown plus its current
+service map; entry phases CreatingProxy | ShuttingDownProxyCreation |
+DrainingProxyCreationStop | WaitingForStartup | WaitingForProxyInput |
+WaitingForProxyOutcome | CancellingProxyCreation | StoppingProxyCreation |
+Available | ReplacementQueued | ReplacementAwaitingReceipt |
+ReplacementAwaitingOutcome | Stopping | Retiring. Each phase owns its exact
+current submission, issued operation/witness, proxy, readiness or pending
+retirement, not another actor dispatcher. Service Ready | Empty retains current
+worker/readiness or previous attempt; change Committed | Cancelled retains the
+current disposition. Shutdown AwaitingSettlement | Accepted | Rejected owns
+current issued witness/operation or no authority; retirement owns exact work and
+input custody. Keyed control remains Constructed | Operating | Retiring | Stopped |
+ForcedRetirement; current role queues/map/bindings and worker/source/grant/retirement
+phases retain every existing payload. Admission Assign | Queue | QueueFull |
+Unavailable and management Bindable | Unavailable express current capacity/
+worker availability; binding refusal AlreadyBound | CapacityExhausted |
+GenerationsExhausted returns the exact original key. These complete source
+alternatives/bodies stay unchanged. Source before/after counts are captured in CONFIG-BEFORE/AFTER.json: directory
+9→10 modules,4199→4239 lines,26→27 public declarations,84 matches/249 arms unchanged;
+router11→12 modules,9051→9069 lines,20→21 public declarations,151 matches/363 arms
+unchanged. Root states and actor fields are byte-identical, all18 existing child
+files unchanged. Only two construction products/private config modules are added;
+old constructors and seven repeated rejection fields are removed. Every surviving
+state owns the same current value enumerated here, not arrival history. Residue
+scan finds no new cause, cardinality, authority, semantic boolean or structural
+caller requirement. Provenance is the two pre-edit missing-API native witnesses
+and complete pure preparation/refusal/initialization test. Both owner profiles
+pass; complete native journeys pass current/MSRV debug/release. Original selector
+and diagnostic heap pointers survive rejection; all ten effect lanes are checked.
+Optimized policy-loss inverse fails for Fail versus original Retry; source restores
+and both tests pass again. CONFIG-MATRIX/INVERSE retain exact commands/results.
+Cross-checks use actor-laws/dynamic-supervisor.md, actor-laws/keyed-pool.md,
+atomic-runtime-settlement.md, atomic-actor-architecture.md and preparation/initialization
+contracts.
+Retained as7f69ef3:36 constructor calls in12 files migrate only the proven syntax;
+all284 affected owner tests pass in debug/release. Strict all-target actors Clippy
+and every fuzz target compile. Pinned fuzz formatting also corrects six existing
+fixed-supervisor files, with no semantic edits. Final batch ledger: production
++206/-148/net58; tests+674/-372/net302; docs+65/-57/net8; public types+2/-0.
+Full owner/package/denial gates and registry delivery remain open. Disposition: pass; caller migration follows, full gates still pending. Cross-check dynamic, keyed, proxy, preparation, total settlement,
+initialization and retirement laws. No new state, branch, history, cause,
+cardinality assumption or structural caller syntax is proposed; precheck pass.
+
+
+Pool recovery configuration (DX10, pre-edit): use
+`pool::PoolRecovery::permanent(source, pool::RecoveryPolicy { limit, delay, failure })`
+and the same transient spelling. This is deliberate API policy: source remains
+an affine worker capability; eligibility stays in the existing exhaustive
+Permanent | Transient | Temporary sum. Temporary(failure) remains source-free.
+Reuse the existing const constructors and consume the named product into their
+unchanged flat limit/release/failure fields; no retained wrapper, allocation,
+strategy placeholder, trait, bound, default, interpreter or dependency. Pools
+have one-role recovery rather than fixed supervision's coordinated strategy;
+the two owning policies therefore preserve their distinct third choice.
+Write the missing named-product native compile witness before production, then
+prove the actual FIFO replacement/customer/shutdown/join journey and all owner
+policy/recovery failures before migrating the other callers. Expected one public
+three-field product in existing private pool/policy.rs, about net30 production
+lines, no new modules. Pool control, per-role worker phases, preparation source,
+restart schedule/timer and customer retirement custody remain unchanged. Source
+Available | AwaitingReturn owns the actual capability or its outstanding return;
+PrepareWorker | WaitForSource | RetireRole | StopPool names the existing decision.
+No state/history/cause/cardinality/authority/structural syntax is added. RECOVERY-BEFORE/AFTER captures25 modules unchanged,19711→19729 lines,
+47→48 public declarations,388 matches/936 arms unchanged. All23 unrelated children
+and the entire private source/decision/transition tail are byte-identical.
+The native pre-edit witness fails only missing RecoveryPolicy and the old four-
+argument contract (E0432/E0061). After implementation its complete FIFO replacement,
+customer retry, shutdown and joined retirement pass current/MSRV debug/release;
+retained actor remains272 bytes. Policy consumes into the exact old fields; no
+new runtime state, source copy or allocation. Complete enums/current values and
+all direct worker/queue/retirement machinery remain as recorded. Residue audit
+finds no new history, repeated cause, false cardinality, authority, semantic boolean
+or structural caller syntax. Disposition: pass. Mechanical caller migration and
+full gates follow; RECOVERY-NATIVE-MATRIX records exact commands/results. Cross-check FIFO/keyed laws, initial preparation and native
+worker-source interpreter. Retained asdc6e186:39 calls in four test files migrate
+only named fields. All343 affected owner tests pass in debug/release, including
+transient eligibility, independent worker/source refusal, restart denial,
+delayed replacement, exact timers and complete retirement. Optimized normal-stop
+inverse fails zero versus one source request; exact source restores and the test
+passes. Its initial verifier expected different assertion wording; the recorded
+log/result is explicitly corrected, not counted as a green runner. Batch ledger:
+production+31/-13/net18; tests+210/-127/net83; docs+34/-0/net34; public types+1/-0.
+At dc6e186 all ten fresh native Nix gates pass in269.965 seconds, including
+969 optimized workspace tests, rustdoc/static denials, macros, Clippy, formatting,
+package inventory, audit and dependency policy. Separate pinned nextest passes969
+in39.777 seconds. Actual three-package archive preflight passes in13.469 seconds;
+all143 packaged production Rust files match the tested source. All28 complete
+fixed/prefix/both-wrapper/FIFO/directory/keyed journeys pass those owner archives
+on current/MSRV debug/release, retaining344/272/152/264 bytes. The first archive
+adapter miswrote its macro package path; correcting complete quoted paths changes
+no production source, bound or fixture oracle. No signing/disk waiver. Linux and
+x86_64-Darwin remain unexecuted. These checks certify dc6e186 before the subsequent
+proxy/startup rename; final-name gates/package refresh and registry delivery stay
+open. Disposition: pass.
+
+
+Startup vocabulary completion (DX10/19/28, pre-edit): the existing generic
+`StableProxy::activated()` returns Dormant and starts nothing. Canonical caller
+syntax is `StableProxy::new().initialize()`; the selected worker submission later
+supplies its concrete startup plan. Preserve `immediate()` for the distinct
+ImmediateStartup selection. This is deliberate naming policy: the pure core
+Activate/initialization contract remains unchanged. Rename the empty constructor,
+not its types, bounds, storage, initial state, effects or readiness law; remove
+activated with no alias or added Default implementation. A local naming-lint
+exception, if needed, explains the one owning construction path rather than
+adding a second API to satisfy a diagnostic.
+Write the existing complete roster construction/custody witness with new before
+production and require its missing-method RED. Reuse the existing dormant
+construction, both real supervisor births and startup settlement machinery.
+Prove fixed/directory/customer/refusal/drain/join downstream before caller
+migration. Rename only worker-startup operation identifiers and their actual
+references, including the private correlation test modules; avoid blanket local
+variable replacement and preserve distinct pending startup custody. Source
+captures precede edits; expected no public type/trait/module or retained field,
+one public method renamed, no new transition, roughly net≤20 production lines.
+Proxy root Dormant | Starting | Ready | EmptyInitial | EmptyAfter | Replacing |
+ShuttingDown | Stopped retains identical worker, attempt, predecessor, creation,
+shutdown and retirement payloads. WaitingForStart | Running owns the same issued
+startup grant; pending/returned departure joins preserve all affine outcomes.
+Pools and supervisors keep their exact already-recorded root/per-role sums,
+selection, capacity and source/restart/terminal custody. Cross-check proxy,
+worker-startup, total settlement, initialization and retirement laws. No state,
+history, repeated cause, false cardinality, nested authority, semantic boolean
+or structural syntax is proposed. Postcheck pass: the inferred public witness
+fails only E0599 for new before production, then all five construction/custody
+cases pass debug/release. Complete native fixed replacement/refusal/drain/join
+and directory start/cancel/exact-rejection/stop/join pass current/MSRV both profiles;
+retained actors remain344/152 bytes. All686 Actors tests pass in each profile.
+Core Activate and every control sum/payload remain byte-identical; private startup
+functions only rename their existing operations/references. Modules6/25/31/6
+remain unchanged; proxy8017→8018 lines, pool19729→19727, supervisor14831 and
+worker2253 unchanged; public declarations16/48/56/27 and matches/arms176/438,
+388/936,391/997,26/48 unchanged. Every surviving alternative owns the identical
+current value described above; no added history/cause/cardinality/authority,
+semantic boolean or structural caller syntax. Strict library Clippy passes with
+no Default implementation or lint exception. Batch ledger: production+90/-91/net-1;
+tests+27/-27/net0; docs+10/-9/net1; public types+0/-0; one public method renamed.
+The naming example in AGENTS uses proxy/worker/startup.rs; global standing
+preferences remain persisted. STARTUP-BEFORE/AFTER/RENAMES/MIGRATION and complete
+owner/native logs preserve the checks. At retained headbc7718c, fresh separate nextest passes969 tests in40.893 seconds;
+all ten native Nix gates pass in253.184 seconds, including969 optimized tests,
+all applicable denials/macros, docs, formatting, Clippy, dependency and package
+inventory checks. Actual archive preflight passes in11.072 seconds; the release
+skill preflight passes all four Cargo workspaces in6.140 seconds. All143 packaged
+production Rust files match the exact tested source. Final24 archive commands
+execute28 complete journeys in305.341 seconds on current/MSRV debug/release,
+including both wrapper orders and complete refusal/retirement, with unchanged
+344/152/272/264-byte retained actors. No signing/disk waiver; Linux/x86_64-Darwin
+remain unexecuted. Caller argument counts directory6→1, router10→4 and automatic
+pool recovery4→2; no runtime allocation or throughput improvement is claimed.
+Registry publication, delivery documentation pruning and the other open DX rows
+remain required; the persistent programme goal remains active.
