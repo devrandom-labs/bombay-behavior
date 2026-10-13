@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.1...bombay-behavior-macros-v0.14.2) - 2026-10-13
+
+### Fixed
+
+- *(macros)* derive empty birth eligibility from its capability ([#91](https://github.com/devrandom-labs/bombay-behavior/pull/91))
+
 ## [0.14.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.0...bombay-behavior-macros-v0.14.1) - 2026-10-11
 
 ### Fixed
