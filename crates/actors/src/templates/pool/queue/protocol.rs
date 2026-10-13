@@ -403,7 +403,8 @@ where
 /// cannot become application construction syntax. The selected diagnostic route
 /// or Bombay's terminal custodian receives the complete owned value. Applications
 /// can borrow the associated semantic role when one exists, or consume an original
-/// source rejection with [`Self::into_source_rejection`]. That projection retains
+/// worker or source rejection with [`Self::into_worker_rejection`] or
+/// [`Self::into_source_rejection`]. Each projection retains
 /// shared role ownership and returns every other complete diagnostic unchanged.
 pub struct FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>
 where
@@ -450,6 +451,34 @@ where
             FifoDiagnosticCause::Unexpected(_)
             | FifoDiagnosticCause::WorkersReturned(_)
             | FifoDiagnosticCause::UnmatchedWorkerReturn { .. } => None,
+        }
+    }
+
+    /// Consume the complete worker-rejection diagnostic, returning every other
+    /// diagnostic unchanged. The role retains its original shared allocation;
+    /// this operation does not clone a role or alter the pool's recovery policy.
+    /// The returned source is present only when the existing diagnostic owned it.
+    pub fn into_worker_rejection(
+        self,
+    ) -> Result<
+        (
+            Arc<Role>,
+            WorkerAttempt,
+            ChildStopped<BehaviorAddr<W>>,
+            Option<Source>,
+            Source::WorkerRejection,
+        ),
+        Self,
+    > {
+        match self.cause {
+            FifoDiagnosticCause::WorkerPreparationFailed {
+                role,
+                previous,
+                stopped,
+                returned_source,
+                error: WorkerPreparationError::WorkerRejected(reason),
+            } => Ok((role.into_role(), previous, stopped, returned_source, reason)),
+            cause => Err(Self { cause }),
         }
     }
 
@@ -1231,3 +1260,124 @@ mod live_activation_correlation {
 #[cfg(test)]
 #[path = "creation_custody.rs"]
 mod creation_custody;
+
+#[cfg(test)]
+mod rejection_custody {
+    use super::{FifoDiagnostic, FifoDiagnosticCause};
+    use crate::atomic::pool::worker::WorkerPreparationError;
+    use crate::atomic::pool::worker::activation_pool_correlation::ActivationWorker;
+    use crate::atomic::{ImmediateActivation, RoleName, WorkerAttempt, WorkerSource};
+    use crate::{ChildStopped, Exit};
+    use behavior::CreationSequence;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    struct WorkerWorkshop {
+        retained: Box<Vec<u64>>,
+    }
+
+    impl WorkerSource<u64, ActivationWorker, ImmediateActivation> for WorkerWorkshop {
+        type WorkerRejection = Box<Vec<u64>>;
+        type SourceRejection = Box<Vec<u64>>;
+    }
+
+    #[test]
+    fn fifo_worker_rejection_survives_the_wrong_source_projection() {
+        let role = RoleName::new(197_u64);
+        let original_role = role.clone().into_role();
+        let source = WorkerWorkshop {
+            retained: Box::new(vec![211_u64, 223]),
+        };
+        let source_pointer = source.retained.as_ptr();
+        let reason = Box::new(vec![227_u64, 229]);
+        let reason_pointer = reason.as_ptr();
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original stopped worker");
+        let previous = WorkerAttempt::issued(creation);
+        let original_attempt = previous.clone();
+        let at = Instant::now();
+        let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
+        let diagnostic = FifoDiagnostic::<
+            _,
+            ActivationWorker,
+            ImmediateActivation,
+            WorkerWorkshop,
+            u8,
+            u16,
+        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
+            role,
+            previous,
+            stopped,
+            returned_source: Some(source),
+            error: WorkerPreparationError::WorkerRejected(reason),
+        });
+        let diagnostic = match diagnostic.into_source_rejection() {
+            Err(original) => original,
+            Ok(_) => panic!("the other rejection category cannot be accepted"),
+        };
+        let (role, previous, stopped, returned_source, reason) = diagnostic
+            .into_worker_rejection()
+            .unwrap_or_else(|_| panic!("the original rejection survives"));
+        assert!(Arc::ptr_eq(&role, &original_role));
+        assert_eq!(*role, 197);
+        assert_eq!(previous, original_attempt);
+        assert_eq!(stopped.child, creation);
+        assert_eq!(stopped.outcome, Ok(Exit::Normal));
+        assert_eq!(stopped.at, at);
+        let source = returned_source.expect("the same diagnostic still owns its source");
+        assert_eq!(source.retained.as_ptr(), source_pointer);
+        assert_eq!(*source.retained, [211, 223]);
+        assert_eq!(reason.as_ptr(), reason_pointer);
+        assert_eq!(*reason, [227, 229]);
+    }
+
+    #[test]
+    fn fifo_source_rejection_survives_the_wrong_worker_projection() {
+        let role = RoleName::new(197_u64);
+        let original_role = role.clone().into_role();
+        let source = WorkerWorkshop {
+            retained: Box::new(vec![211_u64, 223]),
+        };
+        let source_pointer = source.retained.as_ptr();
+        let reason = Box::new(vec![227_u64, 229]);
+        let reason_pointer = reason.as_ptr();
+        let mut creations = CreationSequence::new();
+        let creation = creations.issue().expect("one original stopped worker");
+        let previous = WorkerAttempt::issued(creation);
+        let original_attempt = previous.clone();
+        let at = Instant::now();
+        let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
+        let diagnostic = FifoDiagnostic::<
+            _,
+            ActivationWorker,
+            ImmediateActivation,
+            WorkerWorkshop,
+            u8,
+            u16,
+        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
+            role,
+            previous,
+            stopped,
+            returned_source: Some(source),
+            error: WorkerPreparationError::SourceRejected(reason),
+        });
+        let diagnostic = match diagnostic.into_worker_rejection() {
+            Err(original) => original,
+            Ok(_) => panic!("the other rejection category cannot be accepted"),
+        };
+        let (role, previous, stopped, returned_source, reason) = diagnostic
+            .into_source_rejection()
+            .unwrap_or_else(|_| panic!("the original rejection survives"));
+        assert!(Arc::ptr_eq(&role, &original_role));
+        assert_eq!(*role, 197);
+        assert_eq!(previous, original_attempt);
+        assert_eq!(stopped.child, creation);
+        assert_eq!(stopped.outcome, Ok(Exit::Normal));
+        assert_eq!(stopped.at, at);
+        let source = returned_source.expect("the same diagnostic still owns its source");
+        assert_eq!(source.retained.as_ptr(), source_pointer);
+        assert_eq!(*source.retained, [211, 223]);
+        assert_eq!(reason.as_ptr(), reason_pointer);
+        assert_eq!(*reason, [227, 229]);
+    }
+}
