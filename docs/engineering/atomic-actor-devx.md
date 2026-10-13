@@ -250,8 +250,8 @@ types. Those interpreter-facing products remain hidden behind the supervisor's
 own recovery transition and the generic action-settlement path.
 
 `Recovery` owns the complete automatic-recovery choice. Canonical construction
-is `Recovery::permanent(source, strategy, limit, release)`,
-`Recovery::transient(source, strategy, limit, release)`, or
+is `Recovery::permanent(source, RecoveryPolicy { strategy, limit, delay })`,
+`Recovery::transient(source, RecoveryPolicy { strategy, limit, delay })`, or
 `Recovery::temporary()`. Permanent and transient recovery retain the concrete
 worker source that Bombay will invoke outside Behavior. Temporary recovery
 carries neither a source nor ignored strategy, budget, or release values. The

@@ -66,19 +66,31 @@ pub enum Strategy {
     RestForOne,
 }
 
+/// Member selection, restart allowance, and delay for automatic recovery.
+///
+/// These choices are independent of the worker source and eligibility selected
+/// by [`Recovery::permanent`] or [`Recovery::transient`]. Each delay has already
+/// been validated by [`RestartRelease`]; constructing this product performs no
+/// work, starts no worker, and changes no restart budget.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecoveryPolicy {
+    /// Select the ordered roles that participate in a recovery.
+    pub strategy: Strategy,
+    /// Bound replacement workers admitted in one sliding window.
+    pub limit: RestartLimit,
+    /// Select when admitted replacements may be released.
+    pub delay: RestartRelease,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RecoveryDecision<Source> {
     Permanent {
         source: Source,
-        strategy: Strategy,
-        limit: RestartLimit,
-        release: RestartRelease,
+        policy: RecoveryPolicy,
     },
     Transient {
         source: Source,
-        strategy: Strategy,
-        limit: RestartLimit,
-        release: RestartRelease,
+        policy: RecoveryPolicy,
     },
     Temporary,
 }
@@ -92,37 +104,17 @@ pub struct Recovery<Source> {
 impl<Source> Recovery<Source> {
     /// Recover after normal or abnormal worker stop through this source.
     #[must_use]
-    pub const fn permanent(
-        source: Source,
-        strategy: Strategy,
-        limit: RestartLimit,
-        release: RestartRelease,
-    ) -> Self {
+    pub const fn permanent(source: Source, policy: RecoveryPolicy) -> Self {
         Self {
-            decision: RecoveryDecision::Permanent {
-                source,
-                strategy,
-                limit,
-                release,
-            },
+            decision: RecoveryDecision::Permanent { source, policy },
         }
     }
 
     /// Recover only after abnormal worker stop through this source.
     #[must_use]
-    pub const fn transient(
-        source: Source,
-        strategy: Strategy,
-        limit: RestartLimit,
-        release: RestartRelease,
-    ) -> Self {
+    pub const fn transient(source: Source, policy: RecoveryPolicy) -> Self {
         Self {
-            decision: RecoveryDecision::Transient {
-                source,
-                strategy,
-                limit,
-                release,
-            },
+            decision: RecoveryDecision::Transient { source, policy },
         }
     }
 }

@@ -18,8 +18,8 @@ use std::time::Duration;
 use behavior_actors::atomic::{
     CapabilityResult, DiagnosticAction, FixedCommand, FixedDiagnostic, FixedSupervisor,
     FixedSupervisorEvent, ImmediateActivation, ProxyControl, ProxyInputReceipt, ProxyOutcome,
-    Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerAttempt,
-    WorkerSource, WorkerSubmission,
+    Recovery, RecoveryPolicy, RestartLimit, RestartRelease, StableProxy, Strategy,
+    UnavailablePhase, WorkerAttempt, WorkerSource, WorkerSubmission,
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
@@ -414,9 +414,11 @@ fn return_cross_report(
 fn exercise(inputs: &[u8]) {
     let ready = ready_three_role_roster(Recovery::permanent(
         Workshop,
-        Strategy::OneForOne,
-        RestartLimit::new(3, Duration::from_secs(60)),
-        RestartRelease::immediate(),
+        RecoveryPolicy {
+            strategy: Strategy::OneForOne,
+            limit: RestartLimit::new(3, Duration::from_secs(60)),
+            delay: RestartRelease::immediate(),
+        },
     ));
     let mut supervisor = ready.supervisor;
     let mut recoveries = BTreeMap::new();

@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use behavior_actors::atomic::{
     CapabilityResult, DiagnosticAction, FixedDiagnostic, FixedSupervisorEvent, ImmediateActivation,
-    Recovery, RestartLimit, RestartRelease, Strategy, UnavailablePhase, WorkerSource,
-    WorkerSubmission,
+    Recovery, RecoveryPolicy, RestartLimit, RestartRelease, Strategy, UnavailablePhase,
+    WorkerSource, WorkerSubmission,
 };
 use behavior_actors::{
     ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
@@ -82,9 +82,11 @@ fn exercise(inputs: &[u8]) {
     let delay = Duration::from_secs(3);
     let recovering = search_recovery(Recovery::permanent(
         DelayedWorkshop,
-        Strategy::OneForOne,
-        RestartLimit::new(3, Duration::from_secs(60)),
-        RestartRelease::constant(delay).expect("the delay is positive"),
+        RecoveryPolicy {
+            strategy: Strategy::OneForOne,
+            limit: RestartLimit::new(3, Duration::from_secs(60)),
+            delay: RestartRelease::constant(delay).expect("the delay is positive"),
+        },
     ));
     let mut supervisor = recovering.supervisor;
     let proxy_actor = recovering.proxy;

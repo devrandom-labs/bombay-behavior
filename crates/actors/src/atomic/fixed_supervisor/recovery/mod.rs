@@ -30,7 +30,7 @@ use super::restart::{RecoveryDenialReason, RestartAdmission, RestartBudget, admi
 use super::role::RosterPosition;
 use super::shutdown::FixedShutdown;
 use super::shutdown::{FixedProxyOwnership, FixedShutdownMember};
-use super::{Recovery, RecoveryDecision, RestartLimit, RestartRelease, Strategy};
+use super::{Recovery, RecoveryDecision, RecoveryPolicy, RestartLimit, RestartRelease, Strategy};
 use correlation::{AcceptedRecoveryCorrelations, RecoveryCorrelations, RecoveryTimer};
 
 use super::super::schedule::ScheduleKey;
@@ -159,16 +159,19 @@ impl<Source, PreparationReturn> From<Recovery<Source>>
         match recovery.decision {
             RecoveryDecision::Permanent {
                 source,
-                strategy,
-                limit,
-                release,
+                policy:
+                    RecoveryPolicy {
+                        strategy,
+                        limit,
+                        delay,
+                    },
             } => Self {
                 state: SupervisorRecoveryState::Automatic(AutomaticRecovery {
                     settings: RecoverySettings {
                         eligibility: AutomaticEligibility::Permanent,
                         strategy,
                         limit,
-                        release,
+                        release: delay,
                     },
                     source: WorkerSourceCustody::Available(source),
                     budget: RestartBudget::empty(),
@@ -177,16 +180,19 @@ impl<Source, PreparationReturn> From<Recovery<Source>>
             },
             RecoveryDecision::Transient {
                 source,
-                strategy,
-                limit,
-                release,
+                policy:
+                    RecoveryPolicy {
+                        strategy,
+                        limit,
+                        delay,
+                    },
             } => Self {
                 state: SupervisorRecoveryState::Automatic(AutomaticRecovery {
                     settings: RecoverySettings {
                         eligibility: AutomaticEligibility::Transient,
                         strategy,
                         limit,
-                        release,
+                        release: delay,
                     },
                     source: WorkerSourceCustody::Available(source),
                     budget: RestartBudget::empty(),

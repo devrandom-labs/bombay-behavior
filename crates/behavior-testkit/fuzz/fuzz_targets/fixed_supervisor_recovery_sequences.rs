@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use behavior_actors::atomic::{
     CapabilityResult, FixedSupervisorEvent, ImmediateActivation, ProxyOutcome, Recovery,
-    RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerSource,
-    WorkerSubmission,
+    RecoveryPolicy, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase,
+    WorkerSource, WorkerSubmission,
 };
 use behavior_core::{
     ActionItemResult, ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never,
@@ -99,9 +99,11 @@ impl ExpectedService {
 fn exercise(inputs: &[u8]) {
     let recovering = search_recovery(Recovery::permanent(
         Workshop,
-        Strategy::OneForOne,
-        RestartLimit::new(3, Duration::from_secs(60)),
-        RestartRelease::immediate(),
+        RecoveryPolicy {
+            strategy: Strategy::OneForOne,
+            limit: RestartLimit::new(3, Duration::from_secs(60)),
+            delay: RestartRelease::immediate(),
+        },
     ));
     let mut supervisor = recovering.supervisor;
     let mut proxy = recovering.proxy;

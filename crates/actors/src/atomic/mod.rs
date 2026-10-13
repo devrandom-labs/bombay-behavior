@@ -69,9 +69,9 @@ pub use fixed_supervisor::{
     CapabilityResult, FailureReaction, FixedBuilder, FixedCommand, FixedConstructionRejected,
     FixedDiagnostic, FixedLifecycle, FixedLifecycleEvent, FixedSnapshot, FixedSupervisor,
     FixedSupervisorError, MemberStatus, ProxyInputFailure, ProxyOutcomeFailure, Recovery,
-    RecoveryDenialReason, RecoveryDenied, RestartScheduleFailure, Strategy, UnavailablePhase,
-    WorkerPreparationFailure, WorkerPreparationFailureReason, WorkerSource, WorkerUnavailable,
-    fixed,
+    RecoveryDenialReason, RecoveryDenied, RecoveryPolicy, RestartScheduleFailure, Strategy,
+    UnavailablePhase, WorkerPreparationFailure, WorkerPreparationFailureReason, WorkerSource,
+    WorkerUnavailable, fixed,
 };
 #[doc(hidden)]
 pub use fixed_supervisor::{FixedLifecycleRoute, FixedSupervisorEvent, FixedSupervisorRequests};

@@ -208,8 +208,8 @@ common concrete public protocol. Different public protocols are different
 supervisors, not one erased envelope.
 
 The canonical recovery value is constructed as
-`Recovery::permanent(source, strategy, limit, release)`,
-`Recovery::transient(source, strategy, limit, release)`, or
+`Recovery::permanent(source, RecoveryPolicy { strategy, limit, delay })`,
+`Recovery::transient(source, RecoveryPolicy { strategy, limit, delay })`, or
 `Recovery::temporary()`. The first two variants own the concrete source that
 crosses the worker-preparation action. The temporary alternative has no source,
 strategy, limit, or release field and requires no placeholder or annotation.

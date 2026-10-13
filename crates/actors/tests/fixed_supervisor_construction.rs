@@ -14,7 +14,8 @@ use behavior::{
 use behavior_actors::atomic::{
     ActivationPlan, ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction,
     OrderedRoles, ProxyControl, ProxyControlAdmission, ProxyOperation, ProxyPhase, Recovery,
-    RestartLimit, RestartRelease, StableProxy, Strategy, WorkerSource, WorkerSubmission, fixed,
+    RecoveryPolicy, RestartLimit, RestartRelease, StableProxy, Strategy, WorkerSource,
+    WorkerSubmission, fixed,
 };
 use behavior_actors::{Activate, Active};
 
@@ -132,10 +133,12 @@ fn restart_limit() -> RestartLimit {
 fn recovery() -> Recovery<SearchWorkerSource> {
     Recovery::permanent(
         SearchWorkerSource { authority: 17 },
-        Strategy::RestForOne,
-        restart_limit(),
-        RestartRelease::linear(Duration::from_secs(2), Duration::from_secs(30))
-            .expect("release durations are ordered and positive"),
+        RecoveryPolicy {
+            strategy: Strategy::RestForOne,
+            limit: restart_limit(),
+            delay: RestartRelease::linear(Duration::from_secs(2), Duration::from_secs(30))
+                .expect("release durations are ordered and positive"),
+        },
     )
 }
 
@@ -198,9 +201,11 @@ fn transient_recovery_infers_its_worker_source() {
         ActivationPolicy::new(1).expect("activation capacity is positive"),
         Recovery::transient(
             SearchWorkerSource { authority: 29 },
-            Strategy::OneForOne,
-            restart_limit(),
-            RestartRelease::immediate(),
+            RecoveryPolicy {
+                strategy: Strategy::OneForOne,
+                limit: restart_limit(),
+                delay: RestartRelease::immediate(),
+            },
         ),
         FailureReaction::RetireMember,
         ActorDrainPolicy::WaitForActorGraph,
