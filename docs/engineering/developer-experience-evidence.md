@@ -203,19 +203,6 @@ Bombay replaces the 13,280-line EXEC campaign with a compact execution contract 
 - Previously rejected placeholders, inferred provenance and structural caller work remain prohibited by AGENTS and DEAD_ENDS; replacing a dated audit does not reopen them as acceptable shortcuts.
 - EXEC retains caller-host execution, exact work/output and cleanup custody, opacity of native panic payloads, independent observation authority, actual result acquisition before producer destruction, and cooperative-host limits. DX04–05, DX16 and DX21 must preserve those distinctions. Its archived delivery record is historical evidence, not a fresh test certificate.
 
-## Implementation evidence
-
-The owning PRD contains the sole DX01–DX28 checklist, experiment provenance,
-measurements and current verification. The early retained consumption stage
-passed its focused corpus and all 21 Bombay/ten Behavior native checks (920
-owner tests); those results precede later production changes and acceptance
-fixtures. They do not certify the current branches. Current owner delivery and
-version-preview gates, the registry API mismatch in Bombay, and private recursive
-execution proofs are recorded in the owning PRD. On 2026-10-11 the user approved
-one explicit application topology declaration, deriving structural spaces and
-complete recursive custody. Public assembly and remaining selected criteria
-remain open. The record below describes the initial documentation commits.
-
 ## Initial documentation validation
 
 Executed on the documentation branches, 2026-10-08:
@@ -250,3 +237,61 @@ Counts include this PRD and evidence, retained-contract condensation, navigation
 and history-link repairs. Production, tests and public API deltas are all zero.
 The Git diff is the authoritative change record; the deleted material remains
 recoverable at the pinned baselines.
+
+## Tooling review
+
+#### Selected tools
+
+The selected approach follows the
+[Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html)
+on conventional interfaces, useful diagnostics, documentation and appropriate
+generality. It does not use guideline names to justify a new abstraction.
+
+Use the already selected [`thiserror` 2.0.20](https://docs.rs/thiserror/2.0.20/thiserror/)
+for standard error implementations and truthful source relationships.
+Use [`trybuild` 1.0.121](https://docs.rs/trybuild/1.0.121/trybuild/) for caller
+syntax and diagnostic regression fixtures. Keep the existing property,
+concurrency, fuzz and mutation tools in their owning test layer. Tokio continues
+to own executor construction; ordinary Rust `impl Future` keeps static dispatch.
+Crate upgrades require a separate compatibility reason, not a desire to shorten
+the manifest. No new crate is a prerequisite for the initial application and
+terminal experiments.
+
+The requested crates.io/[Awesome Rust](https://github.com/rust-unofficial/awesome-rust)
+review inspected current registry metadata and downloaded published sources.
+No dependency was added. The bounded comparisons are:
+
+| Candidate | Responsibility and disposition |
+| --- | --- |
+| [`frunk_core` 0.5.0](https://docs.rs/frunk_core/0.5.0/frunk_core/) | Typed heterogeneous products/sums. Substituting actual HCons/Coproduct into the descendant eligibility equation still produces E0275 in both profiles; it does not prove recursive metadata. Core already owns the closed occurrence product. |
+| [`recursion` 0.5.4](https://docs.rs/recursion/0.5.4/recursion/) | Stack-safe traversal of a defined recursive data family. Traversal is distinct from proving the family's types and child interpreter eligibility; no owner machinery deletion is demonstrated. |
+| [`recursion-schemes` 0.1.3](https://docs.rs/recursion-schemes/0.1.3/src/recursion_schemes/recursive.rs.html) | `Fix` stores `Box<F::Layer<Fix<F>>>`. Keeping exact current child payloads retains the eligibility cycle; replacing recursive positions by X requires a different, proven closed actor frame. It supplies no child interpreter proof. Partial expansion uses an erased callback. No adoption. |
+| [`enum_dispatch` 0.3.13](https://docs.rs/enum_dispatch/0.3.13/enum_dispatch/) | Generates static delegation, but its generated TryInto rejection returns a string and drops the other variant. An independent original-worker Drop witness fails in debug and optimized builds. Rejected for custody-bearing sums. |
+| [`enum-as-inner` 0.7.0](https://docs.rs/enum-as-inner/0.7.0/enum_as_inner/) | Checked consuming access returns Err(original), but the derive also generates unchecked unsafe accessors. It expands the public surface and does not select recursive custody. No adoption. |
+| [`auto_enums` 0.8.10](https://docs.rs/auto_enums/0.8.10/auto_enums/) | Generates closed Future/Iterator delegation. It does not discharge child-host capability requirements; no repeated owner implementation has been shown to justify another macro dependency. |
+| [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. The three existing u64 newtypes MailAddr, TimerId and TimerGeneration have six five-line conversion impls; these are bounded boilerplate candidates, not an assembly fix. No dependency/build-cost or deletion experiment is retained; thiserror remains the error owner. |
+| [`async-recursion` 1.2.0](https://crates.io/crates/async-recursion/1.2.0) | Fresh registry/source recheck: src/expand.rs still emits `Pin<Box<dyn Future>>`; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
+| [`bon` 3.10.2](https://docs.rs/bon/3.10.2/bon/) | Awesome Rust lists its checked builders. Named field construction does not establish recursive child custody or interpreter eligibility; adding a required-field typestate builder would conflict with the selected owning constructors and ordinary Application spine. No adoption. |
+| [`lru`](https://docs.rs/lru/latest/lru/struct.LruCache.html) / [`priority-queue`](https://github.com/garro95/priority-queue) | Catalogue source check: Cache deliberately supports Eq keys and exposes a recency slice; lru requires Hash and would change that contract. PriorityQueue already uses BinaryHeap for immutable priorities and checked FIFO ties; priority changes are not its law. Reconsider only with a measured scale or mutable-priority requirement. Neither addresses Application assembly. |
+
+Published-source comparisons and pinned 1.99 debug/optimized falsifiers are in
+/private/tmp/bombay-devx-crate-review/. These are library evaluations, not
+Bombay acceptance tests. Existing thiserror, trybuild, Tokio and standard owned
+sums/products remain the selected tools.
+
+Deeper stable-language review (user requested): primary compiler/API sources
+and40 executable language cases across pinned Rust1.95/1.99 and debug/optimized
+profiles distinguish useful techniques from missing proof. These are feature
+availability/falsifier tests, not actor acceptance or production changes.
+
+| Technique | Executable result and responsibility |
+| --- | --- |
+| Nominal coinduction versus conditional native predicates | Recursive nominal custody is Send and preserves its original payload; an ordinary trait whose applicability requires itself denies E0275 on both compilers. The [compiler coinduction guide](https://rustc-dev-guide.rust-lang.org/solve/coinduction.html) explicitly separates recursive calls inside concrete bodies from cycles in where clauses. This supports the existing native-port cut; it supplies no custom execution auto trait. |
+| Stable autoref selection | Concrete NoBirths selects its empty case; the same value passed through a generic function selects the generic alternative on both compilers. The [original pattern author's limitation](https://github.com/dtolnay/case-studies/blob/master/autoref-specialization/README.md#limitations) matches this witness. Concrete macro-site selection cannot supply generic recursive eligibility. |
+| GAT families and precise opaque capture | A declared type family preserves affine input allocation; use<> lets a returned Send/static task avoid capturing its temporary non-Send owner on both compilers. [GAT RFC](https://rust-lang.github.io/rfcs/1598-generic_associated_types.html), [capture rules](https://doc.rust-lang.org/edition-guide/rust-2024/rpit-lifetime-capture.html). These select/loan known values rather than discover a graph or prove child interpretation. |
+| Concrete boxed async recursion | A concrete recursive future passes Send/static checking without erased futures on both compilers; [stable since1.77](https://blog.rust-lang.org/2024/03/21/Rust-1.77.0/). This repairs future size, independently of trait applicability. |
+| Opaque aliases/associated outputs and return-type notation | Type-alias impl Trait, opaque associated types and return-type notation each deny E0658 on1.95/1.99; root item fields spelled _ deny E0121. [TAIT](https://doc.rust-lang.org/unstable-book/language-features/type-alias-impl-trait.html), [opaque associated types](https://doc.rust-lang.org/unstable-book/language-features/impl-trait-in-assoc-type.html), [RTN](https://doc.rust-lang.org/unstable-book/language-features/return-type-notation.html). No nightly switch or visibility/bounds workaround is selected. |
+
+The language findings are bounded availability/falsifier evidence. The retained
+application design now uses the approved explicit topology and nominal recursive
+roles; none of these techniques alone proves automatic graph discovery.

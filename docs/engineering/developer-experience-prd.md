@@ -139,10 +139,12 @@ the same guide. Do not add a second worker facade solely to shorten its import.
 Advanced implementation ports remain available where they own a real contract;
 they are not competing beginner recipes.
 
-For standalone atomic families, keep the current owning `fixed`, `dynamic`,
-`fifo` and `keyed` functions as the constructor entry points. Simplify their
-policy arguments and inferred results there; do not introduce parallel builders
-or same-actor extension methods. Keep `MessageAdapterWithRoute::new` for the
+For standalone families, use the owning `supervisor::roster::new`,
+`supervisor::directory::new`, `pool::queue::new`, `pool::router::new` and
+`proxy::StableProxy::new` constructors. Policy-heavy constructors take their
+owning `Config`; automatic recovery takes the owning `RecoveryPolicy`. These
+consume real choices into existing actor storage. No parallel builder or
+same-actor extension method is selected for a standalone actor. Keep `MessageAdapterWithRoute::new` for the
 standalone protocol hop, with its concrete destination determining routing.
 Progressive disclosure is the caller contract: start with familiar actor,
 message, queue, worker and supervisor terms, inferred types and explicit real
@@ -341,7 +343,7 @@ Audit all catalogue constructors using the coverage appendix. Fixed and FIFO
 currently take long positional policy lists; select named products only for
 genuinely coexisting policy, and consuming choices only when operations differ
 by phase. Keep one final spelling per family. Temporary recovery must not
-require an unused source; immediate activation must not require a dummy plan;
+require an unused source; immediate startup must not require a dummy plan;
 termination diagnostics must not require a dummy route. Required choices such
 as retry versus fail, shutdown drain and restart budget remain explicit.
 Acceptance: fixed, dynamic, FIFO and keyed construction infer concrete types
@@ -356,7 +358,7 @@ macro; applications never implement assignment settlement. Audit the repeated
 worker-source declaration and execution port for what can be inferred from the
 source, without moving async execution into Behavior. Initial source rejection
 and a later role rejection remain distinct because the latter owns a prepared
-prefix. Acceptance: immediate and async activation, source refusal, later
+prefix. Acceptance: immediate and async startup, source refusal, later
 failure, shutdown during preparation and late completion work through fixed
 supervision and a pool without no-op callbacks, cloned plans or fabricated
 receipts. Remove duplicated type plumbing, not the owned prefix.
@@ -679,69 +681,11 @@ applicable model/fuzz/mutation checks, published-package consumers, all-target
 examples and documentation links. Broaden testing only for changed or unresolved
 contracts. No compatibility claim follows from an owner-only green build.
 
-## Rust tooling selection
+## Tooling
 
-The selected approach follows the
-[Rust API Guidelines](https://rust-lang.github.io/api-guidelines/checklist.html)
-on conventional interfaces, useful diagnostics, documentation and appropriate
-generality. It does not use guideline names to justify a new abstraction.
-
-Use the already selected [`thiserror` 2.0.20](https://docs.rs/thiserror/2.0.20/thiserror/)
-for standard error implementations and truthful source relationships.
-Use [`trybuild` 1.0.121](https://docs.rs/trybuild/1.0.121/trybuild/) for caller
-syntax and diagnostic regression fixtures. Keep the existing property,
-concurrency, fuzz and mutation tools in their owning test layer. Tokio continues
-to own executor construction; ordinary Rust `impl Future` keeps static dispatch.
-Crate upgrades require a separate compatibility reason, not a desire to shorten
-the manifest. No new crate is a prerequisite for the initial application and
-terminal experiments.
-
-The requested crates.io/[Awesome Rust](https://github.com/rust-unofficial/awesome-rust)
-review inspected current registry metadata and downloaded published sources.
-No dependency was added. The bounded comparisons are:
-
-| Candidate | Responsibility and disposition |
-| --- | --- |
-| [`frunk_core` 0.5.0](https://docs.rs/frunk_core/0.5.0/frunk_core/) | Typed heterogeneous products/sums. Substituting actual HCons/Coproduct into the descendant eligibility equation still produces E0275 in both profiles; it does not prove recursive metadata. Core already owns the closed occurrence product. |
-| [`recursion` 0.5.4](https://docs.rs/recursion/0.5.4/recursion/) | Stack-safe traversal of a defined recursive data family. Traversal is distinct from proving the family's types and child interpreter eligibility; no owner machinery deletion is demonstrated. |
-| [`recursion-schemes` 0.1.3](https://docs.rs/recursion-schemes/0.1.3/src/recursion_schemes/recursive.rs.html) | Fix stores Box of F::Layer<Fix<F>>. Keeping exact current child payloads retains the eligibility cycle; replacing recursive positions by X requires a different, proven closed actor frame. It supplies no child interpreter proof. Partial expansion uses an erased callback. No adoption. |
-| [`enum_dispatch` 0.3.13](https://docs.rs/enum_dispatch/0.3.13/enum_dispatch/) | Generates static delegation, but its generated TryInto rejection returns a string and drops the other variant. An independent original-worker Drop witness fails in debug and optimized builds. Rejected for custody-bearing sums. |
-| [`enum-as-inner` 0.7.0](https://docs.rs/enum-as-inner/0.7.0/enum_as_inner/) | Checked consuming access returns Err(original), but the derive also generates unchecked unsafe accessors. It expands the public surface and does not select recursive custody. No adoption. |
-| [`auto_enums` 0.8.10](https://docs.rs/auto_enums/0.8.10/auto_enums/) | Generates closed Future/Iterator delegation. It does not discharge child-host capability requirements; no repeated owner implementation has been shown to justify another macro dependency. |
-| [`derive_more` 2.1.1](https://docs.rs/derive_more/2.1.1/derive_more/) | Derives standard conversions and checked variant extraction. The three existing u64 newtypes MailAddr, TimerId and TimerGeneration have six five-line conversion impls; these are bounded boilerplate candidates, not an assembly fix. No dependency/build-cost or deletion experiment is retained; thiserror remains the error owner. |
-| [`async-recursion` 1.2.0](https://crates.io/crates/async-recursion/1.2.0) | Fresh registry/source recheck: src/expand.rs still emits Pin<Box<dyn Future>>; excluded by the static-dispatch law. Ordinary Box allocation alone is not excluded. |
-| [`bon` 3.10.2](https://docs.rs/bon/3.10.2/bon/) | Awesome Rust lists its checked builders. Named field construction does not establish recursive child custody or interpreter eligibility; adding a required-field typestate builder would conflict with the selected owning constructors and ordinary Application spine. No adoption. |
-| [`lru`](https://docs.rs/lru/latest/lru/struct.LruCache.html) / [`priority-queue`](https://github.com/garro95/priority-queue) | Catalogue source check: Cache deliberately supports Eq keys and exposes a recency slice; lru requires Hash and would change that contract. PriorityQueue already uses BinaryHeap for immutable priorities and checked FIFO ties; priority changes are not its law. Reconsider only with a measured scale or mutable-priority requirement. Neither addresses Application assembly. |
-
-Published-source comparisons and pinned 1.99 debug/optimized falsifiers are in
-/private/tmp/bombay-devx-crate-review/. These are library evaluations, not
-Bombay acceptance tests. Existing thiserror, trybuild, Tokio and standard owned
-sums/products remain the selected tools.
-
-Deeper stable-language review (user requested): primary compiler/API sources
-and40 executable language cases across pinned Rust1.95/1.99 and debug/optimized
-profiles distinguish useful techniques from missing proof. These are feature
-availability/falsifier tests, not actor acceptance or production changes.
-
-| Technique | Executable result and responsibility |
-| --- | --- |
-| Nominal coinduction versus conditional native predicates | Recursive nominal custody is Send and preserves its original payload; an ordinary trait whose applicability requires itself denies E0275 on both compilers. The [compiler coinduction guide](https://rustc-dev-guide.rust-lang.org/solve/coinduction.html) explicitly separates recursive calls inside concrete bodies from cycles in where clauses. This supports the existing native-port cut; it supplies no custom execution auto trait. |
-| Stable autoref selection | Concrete NoBirths selects its empty case; the same value passed through a generic function selects the generic alternative on both compilers. The [original pattern author's limitation](https://github.com/dtolnay/case-studies/blob/master/autoref-specialization/README.md#limitations) matches this witness. Concrete macro-site selection cannot supply generic recursive eligibility. |
-| GAT families and precise opaque capture | A declared type family preserves affine input allocation; use<> lets a returned Send/static task avoid capturing its temporary non-Send owner on both compilers. [GAT RFC](https://rust-lang.github.io/rfcs/1598-generic_associated_types.html), [capture rules](https://doc.rust-lang.org/edition-guide/rust-2024/rpit-lifetime-capture.html). These select/loan known values rather than discover a graph or prove child interpretation. |
-| Concrete boxed async recursion | A concrete recursive future passes Send/static checking without erased futures on both compilers; [stable since1.77](https://blog.rust-lang.org/2024/03/21/Rust-1.77.0/). This repairs future size, independently of trait applicability. |
-| Opaque aliases/associated outputs and return-type notation | Type-alias impl Trait, opaque associated types and return-type notation each deny E0658 on1.95/1.99; root item fields spelled _ deny E0121. [TAIT](https://doc.rust-lang.org/unstable-book/language-features/type-alias-impl-trait.html), [opaque associated types](https://doc.rust-lang.org/unstable-book/language-features/impl-trait-in-assoc-type.html), [RTN](https://doc.rust-lang.org/unstable-book/language-features/return-type-notation.html). No nightly switch or visibility/bounds workaround is selected. |
-
-Source/logs/results: /private/tmp/bombay-native-type-laws-1b_kv8bk. Parallel
-read-only reviews agree that GATs/continuations carry existing evidence, while
-body-local concrete native operations break the applicability cycle. A narrower
-root-only inference candidate remains credible: infer the actual root value,
-leave every recursive child class concrete, and require only its genuine parent
-report admission. Actual LocalParentReports qualifies each ReportToParent payload
-separately; SourceAdmission owns one named source input and does not summarize
-an opaque child Sends product. Before any new lowering, prove that exact narrow
-operation with the counter and two-order recursive reports. Do not substitute
-the old whole-Commit guard, enumerate compiler-discovered payloads in application
-code or claim automatic derivation from this read-only review.
+Use ordinary Rust and the existing selected crates. The bounded
+[tooling review](developer-experience-evidence.md#tooling-review) preserves the
+requested registry and stable-language comparisons, not another API proposal.
 
 ## Completion and change record
 
@@ -910,654 +854,126 @@ control alternative or interpreter. WorkerPreparationStart remains Submitted |
 WorkerRejected | SourceRejected. The added first-call match selects only these
 existing outcomes. No arrival history, repeated cause, false cardinality, nested
 engine, semantic boolean, structural user type or placeholder survives.
-Full native Factory capture fails Clippy at an unnecessary drop_non_drop in
-the new unit test:18 gates pass, test/doc gates are cancelled. Replace that
-explicit drop with an owned unused binding. Separately retain the already-proven
-into_factory original-boxed-refusal test in the existing unit module, using its
-real one-role worker/activation fixture. No production/API/state change is
-selected; original pointer/data ownership and preparation timing laws remain
-the regressions. Final full gates, packaging and publication remain pending.
+The test-only Clippy correction and original-boxed-refusal fixture are retained.
+The identical-source retry passes all21 native gates in705.439 seconds; its failed
+ENOSPC predecessor remains a failure. Current registry adoption and guide/package
+checks are recorded below; local owner patches are not a registry release.
 
-#### Named configuration and naming — DX09/10/28
+#### Policy construction and startup — DX10/11/19/24/27
 
-The user approved named configuration for all policy-heavy templates, familiar
-domain language, progressive access to lower layers and renaming existing
-awkward APIs. Prefer short concrete nouns; owning modules provide context.
-Follow [Rust naming](https://rust-lang.github.io/api-guidelines/naming.html):
-files/modules snake_case, types/variants UpperCamelCase, normal constructors
-new and ownership conversions into_*. The [module reference](https://doc.rust-lang.org/reference/items/modules.html)
-and [Tokio runtime::Builder](https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html)
-show contextual naming. Preserve this repository's aggregate mod.rs convention.
-[Builder guidance](https://rust-lang.github.io/api-guidelines/type-safety.html)
-supports builders for complex incremental construction; it does not require a
-builder for an ordinary product of required choices. The plain-noun preference
-is project API policy, not a Rust language rule. A rename changes source,
-consumers, rustdoc, fixtures and migration guidance together; retain one spelling.
+Owning modules expose supervisor/roster, supervisor/directory, pool/queue,
+pool/router, proxy and worker. Parent modules curate public contracts; config
+children and state/settlement machinery remain private. Folder context supplies
+qualification, and worker preparation uses startup. Pure core Activate retains
+its existing initialization law. All five owning constructors are proven; no
+compatibility constructor, universal builder or extra trait is retained.
 
-Inventory from actual current constructors: fixed7 arguments, dynamic6, FIFO8,
-keyed10 are the primary positional policy owners. Factories, rosters, selectors
-and concrete typed routes remain distinct from immutable policy. PoolRecovery
-already exposes named Permanent/Transient variants; buffer/cache use validated
-configuration and workflow/barrier definition/membership products. Queue,
-latch, sequencer and rate-limiter need at most two ordinary values. CircuitBreaker
-needs a separate threshold/reset/timer policy audit. This inventory is remaining
-work, not acceptance for the whole catalogue.
+Named Config is simultaneous policy input, not actor state. Construction consumes
+it into existing flat fields. Fixed RecoveryPolicy owns strategy/limit/delay;
+pool RecoveryPolicy owns limit/delay/failure. Source and permanent/transient
+eligibility remain separate; temporary needs no source and immediate needs no
+unused plan. Dynamic construction is infallible. Keyed refusal returns workers,
+original selector and original Config: factory, prepared prefix, refused role,
+reason, untouched suffix and the original diagnostic route all survive.
+StableProxy::new constructs Dormant; a submitted worker supplies its startup plan.
 
-RecoveryPolicy owns strategy/limit/delay, independent of the affine source and
-permanent/transient eligibility. This is deliberate API policy preserving the
-existing fixed-supervisor selection, admission, timing and retirement law.
-The intended owning syntax is now implemented locally:
+Provenance and bounded checkpoints (full pre-edit records remain in owning PRD
+commit85ac933; retained code is Behaviorbc7718c):
 
-```rust
-Recovery::permanent(
-    source,
-    RecoveryPolicy {
-        strategy: Strategy::OneForOne,
-        limit: RestartLimit::new(1, Duration::from_secs(30)),
-        delay: RestartRelease::immediate(),
-    },
-)
-```
+| Change | Law, pre-edit witness and reused machinery | Retained measurement and disposition |
+| --- | --- | --- |
+| Fixed recovery | API policy; real registry E0432/E0061; pure complete construction and native replacement/refusal/wrapper trace. Reuse eligibility, validated release and flat RecoverySettings. | +40/-42/net-2 production, one public product. Nested storage344→352 is rejected; flat storage344. Root New/Operating/ShuttingDown/Terminating/Stopped and recovery/source alternatives unchanged. Pass. |
+| Roster/queue Config and hierarchy | API policy; actual inferred fixed/FIFO construction and full prepared prefix/refusal/drain/join; existing ordered preparation and public worker ports. | Original proof and .26 replay preserved at677b1e5/15c0536/4f87c1e. All five families retain exact types and custody. No new transition authority, runtime policy copy or placeholder. Pass. |
+| Directory/router Config | API policy; pre-edit native E0425/E0422 and pure router refusal/initialization RED. Reuse old construction and ordered preparation; remove positional constructors and seven repeated rejection fields. | Production+206/-148/net58; tests+674/-372/net302; two public products. Directory9→10 modules,4199→4239 lines,26→27 declarations,84 matches/249 arms unchanged. Router11→12 modules,9051→9069 lines,20→21 declarations,151 matches/363 arms unchanged. All18 other child files and actor fields/control sums byte-identical. Original selector/route pointers and all ten effect lanes checked; optimized Fail/Retry inverse catches policy loss. Pass. |
+| Pool RecoveryPolicy | API policy; real native E0432/E0061; complete FIFO replacement/customer/shutdown/join. Reuse const constructors and flat enum fields, never fixed supervision's unused strategy. | Production+31/-13/net18; tests+210/-127/net83; one public product, no module.25 modules;19711→19729 lines,47→48 declarations,388 matches/936 arms unchanged. All23 other children and private recovery tail byte-identical. All343 affected tests pass both profiles. Optimized normal-stop inverse catches zero versus one source request; restored source passes. Pass. |
+| Empty proxy/startup names | API policy; inferred StableProxy::new RED E0599 before production, five construction/custody cases and complete fixed/directory native journeys. Reuse dormant construction and existing startup settlement. | Production+90/-91/net-1; tests net0; one public method renamed, no type/trait/field/default/lint exception. Modules6/25/31/6; proxy8017→8018, pool19729→19727, supervisor14831 and worker2253 unchanged. Declarations16/48/56/27 and matches/arms176/438,388/936,391/997,26/48 unchanged. All686 Actors tests pass both profiles. Pass. |
+| FIFO worker rejection | Derived consuming projection; original role/source/error pointers survive both projection orders; owned inverse and native refusal/join. | Production+30/-1/net29, tests+121, one method. No new type/trait/bound/state. Eleven→12 matches and25→27 arms belong only to the projection. Every other cause returns Err(original). Pass. |
 
-Transient takes the same product; temporary remains source-free and needs no
-unused choices. RestartRelease remains the validated timing owner. No builder,
-default, extra validation, generic parameter, trait, bound or source capability
-is introduced. The real registry0.25 consumer RED has only E0432/E0061, and the
-focused owner construction RED has the same missing product/signature causes.
+Control/value audit: Dynamic availability Accepting/ShuttingDown owns the selected
+shutdown policy or deadline. Its14 entry phases retain only current submission,
+proxy, issued operation/witness, readiness or exact retirement. Service Ready/Empty
+owns worker/readiness or previous attempt; change Committed/Cancelled owns current
+disposition. Proxy shutdown AwaitingSettlement/Accepted/Rejected owns current
+witness/operation or no authority. Keyed Constructed/Operating/Retiring/Stopped/
+ForcedRetirement and FIFO Constructed/Operating/Draining/Stopped/ForcedRetirement
+retain their prepared roster, current worker/queue/bindings, deadline and terminal
+cause. Source Available/AwaitingReturn owns the capability or its outstanding
+return; PrepareWorker/WaitForSource/RetireRole/StopPool is the existing decision.
+Proxy Dormant/Starting/Ready/EmptyInitial/EmptyAfter/Replacing/ShuttingDown/Stopped
+retains exact worker, attempt, predecessor, creation, shutdown and retirement.
+WaitingForStart/Running owns the same startup grant; pending/returned departure
+joins retain all affine outcomes. Existing subordinate alternatives and payloads
+are source-identical. None becomes another Behavior or dispatcher.
 
-The policy replaces two repeated public-construction bundles. At runtime it is
-consumed into the existing flat RecoverySettings plus eligibility. Keeping the
-public product nested there increased the actual same supervisor344→352 bytes;
-that lowering is rejected in DEAD_ENDS.md. Unpacking restores344 bytes with the
-same complete native journey. There is no second stored policy copy. This is a
-retained-size measurement on1.99/aarch64-Darwin, not an allocation/throughput claim.
+All retained policy batches cross-check fixed/dynamic/keyed/FIFO/proxy laws,
+preparation, total settlement, initialization and retirement. Residue scans find
+no added arrival history, repeated cause, false cardinality, nested authority,
+semantic boolean, structural caller syntax or compiler-invented bound. Existing
+complete bodies and hashes, rather than another state label, establish unchanged
+subordinate values. All postcheck dispositions are pass; publication stays open.
 
-FixedRoster stays New | Operating | ShuttingDown | Terminating | Stopped;
-RecoveryDecision stays Permanent | Transient | Temporary; SupervisorRecoveryState
-stays Automatic | Temporary; source custody stays Available | PreparingWorkers |
-Retirement. Every existing owned worker/source/attempt/readiness/budget/
-correlation remains at its original owner. Match and arm counts are unchanged;
-no history, repeated cause, false cardinality, nested actor, boolean phase or
-structural caller syntax is added. Cross-check fixed eligibility/selection,
-restart/timer admission, initialization, full settlement and actor-graph drain.
+#### Creation correlation and registry binding — DX12/16/21/25/27
 
-After the bounded design proof,38 old calls in initialization and three existing
-fuzz traces mechanically adopt the product; all839 assertions are unchanged.
-Canonical syntax documents migrate together. The104 focused owner tests pass
-in debug/release on pinned1.95, and all eight real replacement/refusal/wrapper
-journeys pass1.99. All eight equivalent pinned1.96 journeys also pass; fuzz binaries compile.
-Final production+40/-42/net−2, tests+212/-131/net81, docs+4/-4/net0; one
-public product, no new module/trait/bound/dependency or transition branch. All ten
-final native gates pass in191.790 seconds, including963 tests and68 rustdoc
-denial diagnostics; all ten captured files match final source. No signing/disk
-waiver. The earlier flat gate passes in266.296 seconds; final capture also
-includes formatting of the three independent fuzz crates.
-No four-argument compatibility constructor is retained. The rejected nested
-candidate's interrupted Nix run is not a passing final gate. Bombay's working
-source is unchanged; its final WorkerFactory full check failed in1906.182 seconds from disk exhaustion during optimized workspace compilation. This is not a passing gate. Completed task-owned build caches are being removed before retry;
-private source patches do not count as registry delivery. The identical-source WorkerFactory retry passes all21 native Nix gates in705.439 seconds; all18 captured files match. The preceding1906.182-second ENOSPC attempt remains a failed gate, not a waiver.
+Creation correlation is not identity or replacement provenance. Fresh allocation
+is the research law (Agha et al.1997 pp19–20); creator-local correlation and
+rejection before allocation are derived/project policies. Bombay3a80848 uses six
+executable guard lines in the existing map. Duplicate correlation returns the
+original RoutedCreation with CorrelationAlreadyRecorded, preserving ID, child,
+kind and route. Accepted prefix and later sibling still execute and retire.
+No failed replacement yields a successful restart.
 
-Pending constructor configuration, before production (DX10): use the owning
-module's short Config name for extensive simultaneous choices. The real fixed
-replacement/refusal/wrapper consumer now requests
-`fixed(factory, roles, fixed::Config { activation, recovery, failure, shutdown,
-diagnostics }).build()`. Source and diagnostic route are the two real generic
-substitutions; Config introduces no bounds or defaults. Classify as deliberate
-API policy, preserving all existing pure initialization, selection, budget,
-delay, shutdown and complete refusal custody. Keep the final running supervisor's
-existing flat storage; consume the construction product before runtime. The
-existing builder's optional typed lifecycle publication remains its own genuine
-capability choice. Config replaces repeated constructor/builder/rejection policy
-bundles, and rejection returns the complete original product. Move the actual
-fixed owner to the matching fixed module rather than adding a forwarding module.
-Expected bounded design: one product, no trait/dependency/actor state/branch;
-roughly net±50 production lines plus file moves. First RED is the unchanged
-complete private fixed journey requesting the absent owning Config/three-argument
-constructor. Prove pure complete rejection, prefix, retirement, both wrapper
-orders and unchanged retained memory before any catalogue migration. Extend the
-same named-field standard independently to dynamic/FIFO/keyed where their actual
-policy equations require it; no one-role pool receives fixed roster strategy.
-Pre-edit native consumer RED rejects only the absent module/Config and seven-to-three argument change; the five owner construction regressions also reject those and the absent complete `config` return (E0433/E0061/E0609). Baseline fixed owner source (including internal tests):10,598 Rust lines,19 source files,28 public declarations,307 lexical matches and748 arms; control sum remains New | Operating | ShuttingDown | Terminating | Stopped. No subordinate sum or result alternatives change: all existing roster/member/recovery/retirement data remains owned by the same current values. Expected Config replaces5 builder fields and5 rejection fields, with the same worker-source and diagnostic capabilities; no new actor state or branch. Cross-check fixed-supervisor, worker preparation, proxy, Driver initialization/settlement and normalized atomic laws. Before checkpoint passes; post-proof measurements remain pending.
+RED0.25 lacks the typed reason; RED0.26 reproduces the occupied-map panic. Native
+birth/replacement/replay and both joined children pass current/MSRV both profiles;
+the optimized defect inverse restores that panic. CreationBinding stays Starting,
+RetiringStartup, Established, Rejected, StartupRejected. Those own original task/
+control, raw/projected retirement, installed endpoint/join, no child, or explicit
+kind/address/route and failure lanes. StartupRetirementCustody Raw/Projection and
+ChildAuthority Established/Unavailable retain their existing values. Driver and
+all24 retirement alternatives remain unchanged; no subordinate transition engine.
+Creation file2780→2789 lines,16 matches,8→9 conditionals,47 arms,3 enums and3 public
+declarations; child file1066 lines/10 matches/18 conditionals/31 arms/3 enums/16
+public declarations is byte-identical. Production+11/-2/net9; all adoption tests
++334/-5/net329; no new production module, retained field or public type. Pass.
 
-FIFO configuration proof, before production (DX10): the unrelated direct-worker
-pool uses `fifo(factory, roles, fifo::Config { activation, recovery, backlog,
-interruption, shutdown, diagnostics })`. Deliberate caller API policy; all six
-simultaneous choices preserve their existing values and laws. The existing
-`PoolRecovery` supplies real source eligibility; no fixed-roster strategy or
-placeholder is added. Construction prepares the ordered roster once, returning
-`workers + original Config` on refusal; success destructures Config into the
-existing flat FifoPool fields. Replace the six repeated constructor/rejection
-fields; move the actual owning fifo_pool directory to fifo and expose only its
-existing public contracts plus Config. One public product, no bound, trait,
-dependency, state, transition branch or interpreter change; expected net±30
-production lines plus ownership-preserving file moves. REDs: focused pure
-complete construction rejection/initial creation and the real native FIFO
-replacement/customer completion/retirement journey. Preserve heap identity of
-an owned diagnostic route on rejection. Baseline FIFO owner source (including internal tests/unreferenced historical custody file):6,055 Rust lines,6 source files,13 public declarations,143 lexical matches and352 arms. Control state remains Constructed | Operating | Draining | Stopped | ForcedRetirement; all subordinate phases and payload ownership remain unchanged. Corrected owner RED fails only E0061/E0433/E0609; native RED only E0061/E0433. The first owner test fixture used MailAddr without its required endpoint contract and is not accepted as RED evidence; the corrected test reuses the existing FIFO interpreter fixture. Fixed five owner tests and all eight
-native replacement/refusal/wrapper journeys already pass; broad catalogue
-migration waits for this second template and its complete journey.
+Actual source207 owner Rust files match published98983b4 (Core/Actors0.26.0,
+macros0.14.2), un-yanked with all tags and normal successful release. Workspace161,
+fuzz29 and packaged140 registry identities change only selected owners. The
+manifest binding regression first fails0.23 versus actual0.26, then checks both
+Driver/template headers against locked offline Cargo metadata. Both manifests
+retain the exact45-template/19-capability inventory. Ten manifest tests pass
+current/MSRV both profiles; test-only+46/-5/net41, no production/API change.
+The deliberately interrupted426.907-second stale-binding run is not a pass.
 
-Named configuration design checkpoint: both pure construction suites pass in
-both profiles (5 fixed +2 FIFO). All8 fixed native replacement/refusal/wrapper
-runs pass; the complete FIFO native customer/replacement/retirement journey
-passes debug/release. Actual retained sizes are fixed344 bytes and FIFO272
-bytes; fixed matches its recorded pre-change size. No runtime fields change.
-Both aggregate control sums and every subordinate sum/result payload remain
-unchanged. Fixed source including internal tests:10,598→10,557 lines,
-19→19 files,28→29 public declarations,307→307 lexical matches,748→748 arms;
-FIFO6,055→6,061 lines,6→6 files,13→14 public declarations,143→143 matches,
-352→352 arms. Source counts include internal tests; production-only deltas
-will be measured separately. The obsolete private builder test with a non-worker
-factory is deleted; real initialization and complete rejection tests replace it.
-Only Config, the two owning module spellings and the already-proven constructor/
-rejection fields change; runtime transition authority, initialization order,
-creation provenance, source/route capabilities and retirement ownership do not.
-Residue scan: no arrival history, repeated cause, false cardinality, nested
-transition authority, semantic boolean, default, placeholder, widened bound,
-new trait or structural caller path. Cross-check fixed/FIFO/proxy/preparation
-and Driver initialization/settlement laws and normalized atomic documents.
-Disposition pass for the bounded design. Begin mechanical fixed/FIFO caller
-migration with assertion counts, existing rejection values and API names
-preserved; no new semantic surface may be added during migration. Other
-policy-heavy families remain independent follow-up work.
+#### Verification, costs and delivery — DX19/25–28
 
-Source hierarchy and startup vocabulary, reopened by user (DX10/19/28):
-`atomic` and bare `fixed`/`fifo` are rejected as source ownership names. The user
-requires a tree of noun-named concerns whose parents curate public/private
-contracts. Replace the catch-all group with a private `templates` catalogue,
-curating public supervisor, pool, proxy and worker owners. Supervisor owns
-`roster` (fixed ordered membership) and `directory` (dynamic membership); pool
-owns `queue` (global FIFO admission) and `router` (keyed affinity). Move existing
-owners intact; configuration/construction moves into each owner's private
-`config.rs`, re-exporting Config and its sole constructor at that owner.
-Desired syntax is `supervisor::roster::new(factory, roles, roster::Config { … })`
-and `pool::queue::new(factory, roles, queue::Config { … })`. No parallel atomic
-or fixed/fifo namespace remains. Preserve qualified domain types; single-word
-filesystem nouns acquire meaning from their parents. Rust API naming and module
-privacy guidance support the convention; this is deliberate API/ownership
-policy, not an actor-model law. No lifecycle state, effect, source capability,
-visibility of authority constructors or interpreter proof may be widened.
-`startup` replaces application-worker activation terminology: StartupPlan,
-StartupLimit and ImmediateStartup, with WorkerSubmission::with_startup;
-creation, pure initialization and resulting readiness remain distinct.
-Pre-edit REDs must use the actual complete fixed/FIFO native journeys with the
-new owner paths and vocabulary, followed by the focused owner construction,
-macro facade/rename and denied-authority corpus. Existing transitions,
-preparation, proxy start, retirement and wrapper equations are reused unchanged.
-The focused owner RED uses the existing complete ordered initialization and
-original-config rejection tests; it rejects the absent public owners. Pool
-assignment/macro contracts belong to pool, proxy controls to proxy, worker
-startup/preparation/roles/restart choices to worker, drain policy to lifecycle,
-and diagnostic dispositions to diagnostic. Private templates retains the same
-internal authority scope as the old private children of atomic; public group
-re-exports introduce no access to issued grants/tickets. Startup vocabulary maps
-ActivationPlan→StartupPlan, ActivationPolicy→StartupLimit,
-ImmediateActivation→ImmediateStartup, BeginActivation→StartWorker,
-ActivationPermit→StartupPermit, ActivationStartRejection→StartupRejection,
-WorkerActivation/Grant/Outcome→WorkerStartup/Grant/Outcome. The owned plan's
-interpreter operation is start; WorkerSubmission::with_startup carries it without
-claiming readiness. Named runtime startup lanes remain in their existing order. The original
-startup grant and the optional pending startup custody are different values:
-retirement returns workers + role + original worker + original grant + outcome,
-while independently retaining the pending custody required by that outcome.
-A blanket local-variable rename collided with existing `startup` custody and
-fails E0308 in the exact return branch; preserve the grant as `grant`, without
-adding a type, bound, state or reconstructing its authority. The original
-retirement return equation remains authoritative.
-Macro-generated pool completion paths must target the real public pool owner,
-including facade precedence and renamed dependencies. No equivalent shim remains.
-Expected file moves plus curated group modules and configuration extraction;
-no new semantic types or traits beyond the already-proven two Config products.
-The previous short-path configuration gates pass all ten in287.363 seconds,
-but do not accept the rejected naming or satisfy the final hierarchy gates.
-The seven focused new-owner construction tests now pass. Before curation: delete
-the obsolete catch-all public forwarding exports; retain only crate-private
-aliases consumed by existing transitions. The shared validated-capacity error
-keeps one canonical public spelling, `behavior_actors::ZeroCapacity`. Move pool
-worker macro documentation to the pool owner and update its executable paths.
-Extract the existing Config, sole constructor, complete rejection and fixed
-builder into each owner’s private config child; parent re-exports preserve the
-proven caller surface. Child construction consumes the same factory + roles +
-Config and returns the exact same original product on refusal. No runtime field,
-state, branch, bound, authority visibility, trait or dependency changes.
-The focused new-owner suites pass7 tests in both profiles, warning-clean.
-All20 complete native journeys pass on1.99/1.96 in both profiles: replacement,
-owned prefix plus role refusal, both stash/shutdown orders, and FIFO customer
-completion/replacement/drain. Retained layouts remain344/272 bytes. These use
-an isolated copy of actual Bombay52a7005 with six source files mechanically
-adapting owner paths and the same startup interpreter; no tracked Bombay edit
-or registry delivery is claimed. All6 macro resolution/hygiene tests pass,
-including renamed/direct/facade precedence and missing-dependency rejection;
-all56 Actors rustdoc denials plus12 pass examples pass. The attempted whole
-macro-fixture workspace run included its deliberately failing missing-dependency
-member; it fails as expected and is not counted as a passing gate.
-Before mechanical migration: aggregate control sums and subordinate payloads,
-transition matches/arms and authority constructors are unchanged. Config stays
-construction-only; no runtime storage or second transition authority is added.
-Roster19→20 and queue6→7 source files reflect the two owned construction children;
-two supervisor/pool grouping modules curate existing owners. Delete catch-all
-flattened exports and obsolete duplicate construction fixtures; every surviving
-subordinate value retains its prior decision/return purpose. No semantic boolean,
-arrival history, repeated cause, false cardinality, structural caller path or
-new bound/trait/dependency is accepted. Cross-check fixed/FIFO/proxy/preparation,
-Driver settlement and normalized actor laws. Bounded design disposition pass;
-mechanical migration may apply this proven surface only. The migrated workspace
-passes964 nextest tests with zero skipped. Before final curation, the existing
-zero-capacity regression requests `directory::EntryCapacity`: retained directory
-entries are a supervisor policy, not worker startup. Keep `worker::StartupLimit`
-in a private worker limit child, move EntryCapacity into a private directory
-capacity child, reuse the exact validated positive-capacity value and typed
-ZeroCapacity error, and delete the mixed limit leaf. This is ownership/naming
-policy only: fields, validation, alternatives, branches and authority unchanged.
-Finish the same worker-startup vocabulary in worker-specific phase labels
-(Starting, ReadyForStartup and StartupRejected), with one-to-one label mapping;
-keep the unrelated pure Activate/Active initialization contract unchanged.
-In particular, emitted-but-unacknowledged startup is StartupRequested; actual
-accepted startup is Starting. Request refusal is StartupRefused and still owns
-the original StartWorker request + reason; plan rejection is StartupRejected
-and owns the plan’s exact rejection. These remain different existing alternatives,
-not a new phase or inferred acceptance. The directory-capacity RED fails E0603
-because the intended owning public path is not yet exported.
-The blanket Starting label is rejected: ProxyShutdown already uses Starting
-for pending fresh creation, while established-worker startup owns a different
-product (E0428). Before correction, its control alternatives are pending creation,
-worker return, failed-start return, predecessor return, successor return,
-initialization, startup and predecessor join. Preserve all eight exact products:
-rename only the pending-creation alternative WaitingForCreation; the established
-startup alternative remains Starting. Root ProxyState’s eight alternatives and
-WorkerStartPhase’s four alternatives stay intact. WorkerStartRetirement::Startup
-owns any WorkerStartupRetirement, including readiness or either refusal; it is
-not a rejection-only alternative. No type, bound, flag or alternative is added.
-All corresponding transition/late-shutdown/refusal assertions remain authoritative.
-The corrected phase names pass964 workspace tests and all20 native journeys
-on both supported compilers/profiles. Full final gates remain pending. Source
-(including internal tests/rustdoc) measures70→74 files,45,892→45,796 lines,
-154→156 public declarations,1,010→1,010 lexical matches,2,477→2,477 arms and
-969→969 internal assertions. Integration assertions3,435→3,454 add the focused
-configuration witnesses; existing transition assertions are preserved. Only the
-two Config products add domain types. Before final public curation, delete the
-proxy/roster re-exports of shared worker ports: WorkerSource, WorkerAttempt,
-startup and preparation contracts have one canonical worker owner; each family
-keeps only private imports of the contracts it consumes. This deletes duplicate
-public spellings without changing any type, authority visibility, transition,
-interpreter requirement or consumer syntax. Final production/test deltas and
-post-curation verification passes: all ten native Nix gates in89.598 seconds,
-with all captured source hashes unchanged. Nextest reports964 tests/zero skips;
-rustdoc preserves43 Core +56 Actors compile denials. All20 final native journeys
-pass on1.99/1.96 debug/release with retained sizes344/272. The independent
-interpreter workspace passes19 tests plus7 compile-denial fixtures; five
-snapshots changed only owner paths, private-scope text and source spans after
-inspection of their unchanged E0624/E0599/E0382/E0603 causes. No denial is weakened.
-The preceding51.806-second Nix failure exposed old shared-worker imports still
-using supervisor forwarding paths; those imports now name the actual worker
-owner. That failure is retained and not waived. Physical production-path diff
-(including internal tests/rustdoc) is+2619/-2715/net-96; tests/fuzz/benchmarks
-+2849/-2356/net493 before final snapshot metadata. One canonical worker owner
-replaces the forwarded public ports; only2 Config domain products are added,
-with no new state, trait, bound, dependency or actor transition. Both full
-control-state sums and every subordinate owned value remain as above. Cross-check
-fixed/FIFO/proxy/preparation and Driver settlement laws: final bounded
-configuration/naming disposition pass. Source-patched consumer proof does not
-claim publication or registry adoption; dynamic/keyed extensive-policy products,
-latest-main delivery and the remaining DX rows stay open.
+| Exact source | Executed verification | Scope limit |
+| --- | --- | --- |
+| Bombay3a80848, registry owners98983b4 | All21 fresh native gates in2306.566 seconds;646 optimized tests plus one existing ignored subprocess case; all459 source hashes match. Current/MSRV debug/release packaged correlation/fixed/FIFO/guide journeys;61 production and195 other packaged Rust files match. | Engine and Bombay macros are extracted unpublished packages; not registry-only Bombay publication. No signing/disk waiver. |
+| Behaviorbc7718c | Separate pinned nextest969 tests in40.893 seconds; all ten native Nix gates in253.184 seconds including969 optimized tests, denials/macros, rustdoc, Clippy, formatting, dependency and package checks. Actual archive preflight11.072 seconds; four-workspace release preflight6.140 seconds.143 packaged production files match. | Current candidate is draft PR98, semver-breaking; CI/review, policy publication and actual registry migration remain open. |
+| Ownerbc7718c archives + isolated actual3a80848 consumer source |24 commands execute28 complete fixed/prefix/both-wrapper/FIFO/directory/keyed journeys on1.99/1.96 debug/release in305.341 seconds, with original independent refusal and retirement oracles. | Five worker-owner/startup consumer files adapt the actual runtime; Entity stays byte-identical. Local patches do not prove registry delivery or full migrated Bombay gates. |
 
-#### Owner failures and delivery — DX12/24/27
+Actual counter main98 lines, FIFO184; equal77-dependency paired counter journeys
+use74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end
+heap. Scope adds8 measured peak bytes with equal blocks. Sample retained actors
+fixed/directory/FIFO/keyed remain344/152/272/264 bytes. Directory constructor
+arguments6→1, router10→4, automatic pool recovery4→2. No memory reduction, general
+comparison with erased systems or throughput improvement is claimed. Broader
+comparable compiler/runtime/resource measurements remain open. Memory is the
+user's priority; binary size is secondary.
 
-Before Bombay registry adoption: select published Core/Actors0.26.0 and macros
-0.14.2 without source patches; exact release98983b4 AGENTS blob4996c149 matches
-the inspected instructions. The native child interpreter still allocates before
-checking its creator-local map and `record_child_creation` panics on a duplicate.
-Reuse the existing complete native birth/replacement/replay witness as a real
-Bombay integration regression before changing dependencies or production. First
-RED must expose the unavailable typed reason at0.25; after adopting0.26, repeat
-RED against the unchanged runtime to reproduce the occupied-map panic.
-Research law: fresh allocation (Agha et al.1997 pp19–20); creator-local checked
-correlation and rejection-before-allocation are derived/project policies. Caller
-syntax remains ordinary typed Creations inside the one Application topology.
-Return the unchanged RoutedCreation (ID + child + provenance + route) with
-CorrelationAlreadyRecorded, leaving the recorded child/order/address untouched.
-Accepted prefix and independent later sibling still execute and retire; a
-rejected replacement produces no successful restart. Reuse the current HashMap,
-ItemSettlement::Rejected, source rows and terminal custody. No new state, type,
-trait, bound, dependency family or capability is justified. Expected one small
-pre-allocation guard plus public contract prose, one focused integration test,
-three dependency version/checksum changes and compact evidence. Native kernel
-control sums and every subordinate phase/value stay unchanged; precheck pass.
-Post-proof count/memory/provenance/denial and full native/package gates remain
-required. Expanded change-budget authorization already applies.
+Portable evidence is the retained tests, exact source/package hashes and linked
+CI; raw commands/counts/inverses are under
+/private/tmp/bombay-retirement-schema-kgazqjhv/worker-factory-source/policies-026
+and its parent. Historical full pre-edit evidence is preserved in commit85ac933,
+not restored as chronological files. Rust always runs in pinned Nix. Linux and
+x86_64-Darwin are unexecuted locally. Prior signing and ENOSPC failures remain
+failures, never permanent waivers; preserve other AI/global caches.
 
-The retained registry guard satisfies that law with six executable lines. Actual
-RED0.25 fails only the missing-reason assertions; RED0.26 reproduces the original
-occupied-map panic. Native birth/replacement/replay, accepted prefix/independent
-suffix and joined children pass1.99/1.96 debug/release. The optimized inverse
-removes exactly this guard from an exact current-source snapshot and restores
-that panic. Workspace nextest passes645 tests with one existing subprocess-only
-skip. All207 downloaded owner Rust files match published98983b4. Workspace161
-and fuzz29 registry identities change only the selected owner records.
-
-Post-checkpoint: CreationBinding remains Starting | RetiringStartup | Established |
-Rejected | StartupRejected. Starting owns original startup/task/control; retirement
-owns raw or projected task/reply; established owns endpoint/control/task/join;
-startup refusal owns explicit kind/address/route and all original failure lanes;
-Rejected owns no installed child. StartupRetirementCustody remains Raw | Projection
-and ChildAuthority remains Established | Unavailable. The complete actor Driver and
-all24 ActorRetirement alternatives stay unchanged; these subordinate values select
-no actor transition. No retained field or public spelling is added. Creation file
-lines2780→2789, lexical matches16→16, conditionals8→9, arms47→47, enums3→3,
-public declarations3→3; children file1066 lines, matches10, conditionals18, arms31,
-enums3 and public declarations16 remain byte-identical. Production+11/-2/net9
-(including contract prose); focused integration test+288/-0 with60 assertions.
-No arrival history, duplicated cause, false cardinality, nested transition authority,
-semantic boolean, caller structural path or extra bound is introduced. Reuse the
-original map rather than a second registry. Cross-check fresh-allocation law,
-creator-local correlation, explicit provenance, total creation settlement and
-Driver D-INIT/D-SETTLE/D-RETIRE: bounded model disposition pass. Final adoption passes all21 native gates in2306.566 seconds,646 optimized
-workspace tests and one existing ignored subprocess-only case. All459 captured
-source hashes match. Real package correlation/fixed/FIFO and guide journeys pass
-on1.99/1.96 debug/release; final archives retain61 byte-identical production Rust
-files and195 current other Rust files, with only three owner changes among140
-registry dependencies. Engine/Bombay macros are actual extracted unpublished
-packages, so no registry-only Bombay claim follows. Retained memory fields are
-unchanged; no unmeasured heap or speed improvement is claimed. No signing/disk
-waiver applies; Linux and x86_64 Darwin are unexecuted.
-
-
-Creation correlation is not actor identity or replacement provenance. Duplicate
-correlation returns the original request with a typed reason; accepted creation
-prefix and later suffix remain independent. Owner821380e/PR93 passes962 tests,
-strict Clippy and ten native gates. Complete native initial/replacement/replay
-failures and both joined children pass private source guards on both compilers/
-profiles. PR93 merged externally as6eb4f73 on2026-10-13; exact main CI38346109051 passes.
-PR91 merged under explicit authorization as79cae26 after fresh ten native gates,
-964 tests, archive preflight and exact-head CI38346558064. The generated release
-PR97 at8064f22 repairs all four workspace locks, README and changelogs without
-production changes; secondary registry identities17/29/34 have zero drift.
-Archive preflight and ten native gates pass in287.305 seconds; exact-head
-CI38350983446 passes. Under the existing authorization PR97 merged as98983b4;
-main CI38352087285 and normal Release38353101159 both pass. Registry publication
-is independently confirmed: Core/Actors0.26.0 and macros0.14.2 are available,
-un-yanked, with all three GitHub release tags. The exhaustive
-CreationRejection::CorrelationAlreadyRecorded break is documented. Bombay’s current adoption selects0.26.0/0.14.2 without patches; complete
-downstream verification is separate from this owner publication.
-
-FIFO diagnostic consumption at owner d287f85 is a derived ownership projection.
-`into_worker_rejection` returns original Arc role, previous WorkerAttempt,
-complete ChildStopped, optional source and exact worker refusal. All other
-causes return Err(original). Both worker/source projection orders preserve
-original role/source/error heap identities; the inverse fails the ownership
-oracle. PoolState remains Constructed | Operating | Draining | Stopped |
-ForcedRetirement, with all ten original diagnostic causes unchanged. Production
-+30/-1/net29; focused tests+121; one method, no new type/trait/bound/module or
-actor transition. Lexical matches11→12 and arms25→27 reflect only the consuming
-projection. No cause duplication, inferred provenance, historical state or
-second lifecycle authority survives. Cross-check FIFO/preparation, Driver
-settlement and exact retirement laws. Native ten owner gates pass965 tests in89
-binaries plus68 rustdoc denial diagnostics; no signing/disk waiver. The full
-private native FIFO refusal consumer owns the error and independently joins the
-root/worker. This API is committed but not published; there is no registry claim.
-
-Published owner changes were merged only under the user’s concrete authorization:
-PRs89/90, Communication11 (complete-input send_map), Behavior94/95 and91/97.
-FIFO projection and named policy releases still need concrete review/delivery.
-Feature work remains isolated from main and the other Bombay AI. Expanded
-cumulative change-budget authorization was given2026-10-09; the topology
-exception2026-10-11. Do not request those already-granted permissions again.
-
-#### Verification and costs — DX19/25–28
-
-Use pinned Nix only for Rust, both supported Bombay compilers1.99/1.96, both
-profiles and applicable feature choices. Required authoritative native gates
-are ten in Behavior and21 in Bombay. Prior Darwin signing and exhausted disk
-failures are neither passes nor permanent waivers. Latest retained pre-factory
-Bombay8011d49 capture passes21 gates in2244.019 seconds; WorkerFactory's separate
-live capture is pending. The final named-policy corrected capture passes all ten gates in191.790 seconds.
-Linux/x86-Darwin gates have not been executed locally. Exact source hashes/logs
-are retained; checks for an earlier or rejected candidate do not certify later
-working source. Package/archive consumers and minimal/renamed/diagnostic corpus
-remain explicit checklist obligations. Preserve other AI and global Nix caches.
-
-Actual ceremony measurements include counter main98 lines and FIFO184. Five
-paired complete counter journeys use identical77 registry dependencies and74
-allocation blocks each: peak122916→123644 bytes, unchanged end heap. Scope adds
-another measured8 peak bytes with equal blocks. No memory reduction or general
-comparison with erased/untyped systems is claimed. WorkerFactory's example
-removes33 lines and its two sampled callable layouts add no storage; named
-configuration restores the sample supervisor's original344-byte retained size.
-Broader compiler/runtime/resource comparisons remain open.
-
-Distillation preserves the normative requirements, selected directions, one
-DX01–DX28 checklist, current semantic contracts, source/consumer evidence,
-measured checkpoints, actual approval limits and explicit deferrals. Historical
-failed candidates remain in DEAD_ENDS.md only where their falsifier matters.
-The evidence appendix owns initial source/catalogue coverage; canonical user
-syntax belongs to Bombay's compiled user-facing guide. Network transport,
-durability, stable global identity and deployment are separately deferred.
-
-Verification binding correction (pre-edit): current Driver/template evidence still
-names0.23/d69f992b while the actual graph selects0.26/98983b4. Existing hard-coded
-manifest tests check mutual agreement but cannot detect that stale selection.
-Add a focused test comparing the existing manifest owner versions with locked,
-offline Cargo metadata; its expected RED is0.23 versus0.26. Then rebind manifest
-versions/revision, existing assertions and current guidance to the verified207
-registry sources. Reuse serde_json and the existing pinned Cargo; add no dependency,
-production type, state, bound or protocol. Check the template inventory against
-actual0.26 owners before retaining its new binding. The interrupted first Nix run
-is not a completed gate; rerun all21 checks after this correction.
-
-Binding RED fails for the intended0.23/0.26 mismatch. After updating the two
-manifest headers/evidence revisions, all ten Engine manifest tests pass; the new
-test also compares the template owner against the locked package graph. Actual
-registry source confirms every45 template and19 capability spelling/source and
-evidence location; this is presence/inventory evidence, not a new exhaustive
-semantic proof. Versions now name98983b4 and0.26/0.14.2. Test-only+46/-5/net41,
-with no production/API change. The first full run was deliberately interrupted
-after426.907 seconds for this correction; no pass is inferred. Final all21 gates
-execute the corrected metadata and original law mutations. Current/MSRV manifest
-suites pass all ten tests in both profiles. Bombay adoption is committed as3a80848 on its isolated feature branch.
-Whole adoption: production+11/-2/net9;
-tests+334/-5/net329; public types+0/-0; no new production module or retained field.
-The captured source predates only this final prose update; runtime, tests, locks,
-manifest bindings, compiled guide and gates remain byte-identical.
-
-Policy delivery refresh (DX10/24/27, pre-edit): replay the already-proven
-RecoveryPolicy1a4937b, owner hierarchy/configuration6b25868 and complete FIFO
-worker-refusal projectiond287f85 onto current published98983b4. Keep the original
-proof branches intact and use a new feature worktree. This changes no law or
-caller syntax beyond those recorded above. The new base adds the correlation
-reason and pure birth-alias macro proof, so prior0.25 checks do not certify it.
-Inspect conflicts by ownership/provenance; retain no compiler-driven bounds,
-aliases or shims. Rerun focused owner and actual Bombay3a80848 downstream
-journeys before extending configuration to directory/router. Preserve the
-owning PRD/evidence and deleted historical records in eventual delivery.
-
-The0.26 consumer refresh exposed an incomplete old six-file inventory: its
-private runtime also renamed Entity phases in other files. This is unrelated
-to worker policy consumption and is excluded from the retained refresh. The
-new proof restores Entity byte-for-byte to3a80848 and changes only five owning
-worker/policy consumer files. The first refreshed compile fails two E0599 phase
-names before that restoration; it is not an owner gap and justifies no new
-bound, type, route or visibility. Original proof sources/logs remain preserved.
-
-FIFO projection refresh: its independently proven commit predates the hierarchy
-change. The first actual unit build rejects three old atomic imports in the
-appended projection regressions (E0432/E0433). Mechanically map those imports to
-the existing private pool worker and public worker owners, using ImmediateStartup.
-Keep both original pointer/custody oracles, production projection, all error and
-protocol alternatives, and every bound unchanged; no alias or forwarding module.
-
-Directory/router configuration (DX10, pre-edit): the actual committed native
-dynamic start/cancel/exact-rejection/stop/join and keyed affinity/rejection/unbind/
-join journeys pass on refreshed owners. Retained actors measure152/264 bytes.
-Request `supervisor::directory::new(directory::Config { entries, startup, exit,
-shutdown, lifecycle, diagnostics })` and `pool::router::new(factory, roles,
-selector, router::Config { startup, recovery, backlog, bindings, interruption,
-shutdown, diagnostics })`. This is deliberate API policy, not actor-model law.
-Config owns simultaneous existing choices, no actor state; all bounds and
-validated values retain their exact laws. Dynamic remains infallible; keyed
-rejection owns workers + original selector + original Config, including prepared
-prefix and untouched suffix. Successful construction consumes Config into the
-existing flat actor fields. Reuse the current constructors and ordered preparation;
-move construction to private config children, remove the old functions/root
-spellings and seven repeated keyed rejection fields. No shim, trait, default,
-extra callback, source capability, dependency or interpreter change. Expected
-two public products/two construction modules, roughly net±80 production lines.
-Write native RED before production, then focused pure complete rejection and
-initialization; prove these exact journeys/failures before catalogue migration.
-
-Control state: dynamic availability Accepting | ShuttingDown plus its current
-service map; entry phases CreatingProxy | ShuttingDownProxyCreation |
-DrainingProxyCreationStop | WaitingForStartup | WaitingForProxyInput |
-WaitingForProxyOutcome | CancellingProxyCreation | StoppingProxyCreation |
-Available | ReplacementQueued | ReplacementAwaitingReceipt |
-ReplacementAwaitingOutcome | Stopping | Retiring. Each phase owns its exact
-current submission, issued operation/witness, proxy, readiness or pending
-retirement, not another actor dispatcher. Service Ready | Empty retains current
-worker/readiness or previous attempt; change Committed | Cancelled retains the
-current disposition. Shutdown AwaitingSettlement | Accepted | Rejected owns
-current issued witness/operation or no authority; retirement owns exact work and
-input custody. Keyed control remains Constructed | Operating | Retiring | Stopped |
-ForcedRetirement; current role queues/map/bindings and worker/source/grant/retirement
-phases retain every existing payload. Admission Assign | Queue | QueueFull |
-Unavailable and management Bindable | Unavailable express current capacity/
-worker availability; binding refusal AlreadyBound | CapacityExhausted |
-GenerationsExhausted returns the exact original key. These complete source
-alternatives/bodies stay unchanged. Source before/after counts are captured in CONFIG-BEFORE/AFTER.json: directory
-9→10 modules,4199→4239 lines,26→27 public declarations,84 matches/249 arms unchanged;
-router11→12 modules,9051→9069 lines,20→21 public declarations,151 matches/363 arms
-unchanged. Root states and actor fields are byte-identical, all18 existing child
-files unchanged. Only two construction products/private config modules are added;
-old constructors and seven repeated rejection fields are removed. Every surviving
-state owns the same current value enumerated here, not arrival history. Residue
-scan finds no new cause, cardinality, authority, semantic boolean or structural
-caller requirement. Provenance is the two pre-edit missing-API native witnesses
-and complete pure preparation/refusal/initialization test. Both owner profiles
-pass; complete native journeys pass current/MSRV debug/release. Original selector
-and diagnostic heap pointers survive rejection; all ten effect lanes are checked.
-Optimized policy-loss inverse fails for Fail versus original Retry; source restores
-and both tests pass again. CONFIG-MATRIX/INVERSE retain exact commands/results.
-Cross-checks use actor-laws/dynamic-supervisor.md, actor-laws/keyed-pool.md,
-atomic-runtime-settlement.md, atomic-actor-architecture.md and preparation/initialization
-contracts.
-Retained as7f69ef3:36 constructor calls in12 files migrate only the proven syntax;
-all284 affected owner tests pass in debug/release. Strict all-target actors Clippy
-and every fuzz target compile. Pinned fuzz formatting also corrects six existing
-fixed-supervisor files, with no semantic edits. Final batch ledger: production
-+206/-148/net58; tests+674/-372/net302; docs+65/-57/net8; public types+2/-0.
-Full owner/package/denial gates and registry delivery remain open. Disposition: pass; caller migration follows, full gates still pending. Cross-check dynamic, keyed, proxy, preparation, total settlement,
-initialization and retirement laws. No new state, branch, history, cause,
-cardinality assumption or structural caller syntax is proposed; precheck pass.
-
-
-Pool recovery configuration (DX10, pre-edit): use
-`pool::PoolRecovery::permanent(source, pool::RecoveryPolicy { limit, delay, failure })`
-and the same transient spelling. This is deliberate API policy: source remains
-an affine worker capability; eligibility stays in the existing exhaustive
-Permanent | Transient | Temporary sum. Temporary(failure) remains source-free.
-Reuse the existing const constructors and consume the named product into their
-unchanged flat limit/release/failure fields; no retained wrapper, allocation,
-strategy placeholder, trait, bound, default, interpreter or dependency. Pools
-have one-role recovery rather than fixed supervision's coordinated strategy;
-the two owning policies therefore preserve their distinct third choice.
-Write the missing named-product native compile witness before production, then
-prove the actual FIFO replacement/customer/shutdown/join journey and all owner
-policy/recovery failures before migrating the other callers. Expected one public
-three-field product in existing private pool/policy.rs, about net30 production
-lines, no new modules. Pool control, per-role worker phases, preparation source,
-restart schedule/timer and customer retirement custody remain unchanged. Source
-Available | AwaitingReturn owns the actual capability or its outstanding return;
-PrepareWorker | WaitForSource | RetireRole | StopPool names the existing decision.
-No state/history/cause/cardinality/authority/structural syntax is added. RECOVERY-BEFORE/AFTER captures25 modules unchanged,19711→19729 lines,
-47→48 public declarations,388 matches/936 arms unchanged. All23 unrelated children
-and the entire private source/decision/transition tail are byte-identical.
-The native pre-edit witness fails only missing RecoveryPolicy and the old four-
-argument contract (E0432/E0061). After implementation its complete FIFO replacement,
-customer retry, shutdown and joined retirement pass current/MSRV debug/release;
-retained actor remains272 bytes. Policy consumes into the exact old fields; no
-new runtime state, source copy or allocation. Complete enums/current values and
-all direct worker/queue/retirement machinery remain as recorded. Residue audit
-finds no new history, repeated cause, false cardinality, authority, semantic boolean
-or structural caller syntax. Disposition: pass. Mechanical caller migration and
-full gates follow; RECOVERY-NATIVE-MATRIX records exact commands/results. Cross-check FIFO/keyed laws, initial preparation and native
-worker-source interpreter. Retained asdc6e186:39 calls in four test files migrate
-only named fields. All343 affected owner tests pass in debug/release, including
-transient eligibility, independent worker/source refusal, restart denial,
-delayed replacement, exact timers and complete retirement. Optimized normal-stop
-inverse fails zero versus one source request; exact source restores and the test
-passes. Its initial verifier expected different assertion wording; the recorded
-log/result is explicitly corrected, not counted as a green runner. Batch ledger:
-production+31/-13/net18; tests+210/-127/net83; docs+34/-0/net34; public types+1/-0.
-At dc6e186 all ten fresh native Nix gates pass in269.965 seconds, including
-969 optimized workspace tests, rustdoc/static denials, macros, Clippy, formatting,
-package inventory, audit and dependency policy. Separate pinned nextest passes969
-in39.777 seconds. Actual three-package archive preflight passes in13.469 seconds;
-all143 packaged production Rust files match the tested source. All28 complete
-fixed/prefix/both-wrapper/FIFO/directory/keyed journeys pass those owner archives
-on current/MSRV debug/release, retaining344/272/152/264 bytes. The first archive
-adapter miswrote its macro package path; correcting complete quoted paths changes
-no production source, bound or fixture oracle. No signing/disk waiver. Linux and
-x86_64-Darwin remain unexecuted. These checks certify dc6e186 before the subsequent
-proxy/startup rename; final-name gates/package refresh and registry delivery stay
-open. Disposition: pass.
-
-
-Startup vocabulary completion (DX10/19/28, pre-edit): the existing generic
-`StableProxy::activated()` returns Dormant and starts nothing. Canonical caller
-syntax is `StableProxy::new().initialize()`; the selected worker submission later
-supplies its concrete startup plan. Preserve `immediate()` for the distinct
-ImmediateStartup selection. This is deliberate naming policy: the pure core
-Activate/initialization contract remains unchanged. Rename the empty constructor,
-not its types, bounds, storage, initial state, effects or readiness law; remove
-activated with no alias or added Default implementation. A local naming-lint
-exception, if needed, explains the one owning construction path rather than
-adding a second API to satisfy a diagnostic.
-Write the existing complete roster construction/custody witness with new before
-production and require its missing-method RED. Reuse the existing dormant
-construction, both real supervisor births and startup settlement machinery.
-Prove fixed/directory/customer/refusal/drain/join downstream before caller
-migration. Rename only worker-startup operation identifiers and their actual
-references, including the private correlation test modules; avoid blanket local
-variable replacement and preserve distinct pending startup custody. Source
-captures precede edits; expected no public type/trait/module or retained field,
-one public method renamed, no new transition, roughly net≤20 production lines.
-Proxy root Dormant | Starting | Ready | EmptyInitial | EmptyAfter | Replacing |
-ShuttingDown | Stopped retains identical worker, attempt, predecessor, creation,
-shutdown and retirement payloads. WaitingForStart | Running owns the same issued
-startup grant; pending/returned departure joins preserve all affine outcomes.
-Pools and supervisors keep their exact already-recorded root/per-role sums,
-selection, capacity and source/restart/terminal custody. Cross-check proxy,
-worker-startup, total settlement, initialization and retirement laws. No state,
-history, repeated cause, false cardinality, nested authority, semantic boolean
-or structural syntax is proposed. Postcheck pass: the inferred public witness
-fails only E0599 for new before production, then all five construction/custody
-cases pass debug/release. Complete native fixed replacement/refusal/drain/join
-and directory start/cancel/exact-rejection/stop/join pass current/MSRV both profiles;
-retained actors remain344/152 bytes. All686 Actors tests pass in each profile.
-Core Activate and every control sum/payload remain byte-identical; private startup
-functions only rename their existing operations/references. Modules6/25/31/6
-remain unchanged; proxy8017→8018 lines, pool19729→19727, supervisor14831 and
-worker2253 unchanged; public declarations16/48/56/27 and matches/arms176/438,
-388/936,391/997,26/48 unchanged. Every surviving alternative owns the identical
-current value described above; no added history/cause/cardinality/authority,
-semantic boolean or structural caller syntax. Strict library Clippy passes with
-no Default implementation or lint exception. Batch ledger: production+90/-91/net-1;
-tests+27/-27/net0; docs+10/-9/net1; public types+0/-0; one public method renamed.
-The naming example in AGENTS uses proxy/worker/startup.rs; global standing
-preferences remain persisted. STARTUP-BEFORE/AFTER/RENAMES/MIGRATION and complete
-owner/native logs preserve the checks. At retained headbc7718c, fresh separate nextest passes969 tests in40.893 seconds;
-all ten native Nix gates pass in253.184 seconds, including969 optimized tests,
-all applicable denials/macros, docs, formatting, Clippy, dependency and package
-inventory checks. Actual archive preflight passes in11.072 seconds; the release
-skill preflight passes all four Cargo workspaces in6.140 seconds. All143 packaged
-production Rust files match the exact tested source. Final24 archive commands
-execute28 complete journeys in305.341 seconds on current/MSRV debug/release,
-including both wrapper orders and complete refusal/retirement, with unchanged
-344/152/272/264-byte retained actors. No signing/disk waiver; Linux/x86_64-Darwin
-remain unexecuted. Caller argument counts directory6→1, router10→4 and automatic
-pool recovery4→2; no runtime allocation or throughput improvement is claimed.
-Registry publication, delivery documentation pruning and the other open DX rows
-remain required; the persistent programme goal remains active.
-Delivery draft: PR98 (https://github.com/devrandom-labs/bombay-behavior/pull/98)
-atbc7718c on codex/devx-policies. Exact-head CI/API audit/mutation checks are running;
-the published API break is labelled semver-breaking. Keep it draft while carrying
-the existing16-document pruning and compact requirement evidence into delivery.
-No merge/publication approval is requested before that reviewable work is complete.
+Existing authorizations cover expanded cumulative budget (2026-10-09) and the
+single topology declaration (2026-10-11); do not ask again for those scopes.
+PR98 remains draft until existing16-document pruning and this concise owning
+record are integrated and gates/CI pass on its new exact head. New policy merge/
+publication needs concrete review and authorization; existing PR-specific release
+approvals do not authorize it. No selected open criterion is closed by this
+record. Networking, durability, global identity and deployment remain explicit
+DX23 deferrals; all other open rows continue under the persistent active goal.
