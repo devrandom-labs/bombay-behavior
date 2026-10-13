@@ -1,5 +1,19 @@
 # Reopened design experiments
 
+## Entity definition as its own logical-host proof
+
+Date: 2026-10-12. Disposition: `reopen` for automatic family-host synthesis.
+
+The complete native two-family consumer tried deriving `Hosts` from each
+definition's `Behavior::Protocol`. That same `EntityDefinition` implementation
+requires its `Hosts` proof, and coherence rejected the resulting projected
+hosts as overlapping. Keeping the original concrete Account/Profile protocol
+hosts lets the existing definition's Behavior projection execute the complete
+journey on both pinned compilers and profiles. No host-projection representation
+or new proof trait is retained. The application declaration must keep genuine
+logical-host choices explicit while deriving hydrated actors and their child
+custody from the existing definition. The owning DevX PRD records the witnesses.
+
 ## Separate late worker-preparation return wrapper
 
 Date: 2026-10-01. Disposition: `reopen` for the wrapper only.
@@ -628,3 +642,27 @@ unused branch. Any future upstream fallibility needs a fresh explicit owner
 retirement law. Actor/runtime states remain unchanged; disposition: reopen.
 Source: https://docs.rs/axum/0.8.9/src/axum/serve/mod.rs.html#334-350.
 Candidate logs: /private/tmp/bombay-application-shutdown-pv2wsny6/HTTP-RESULTS.json.
+
+Named recovery configuration: nesting the public policy product inside runtime
+RecoverySettings increased the same fully constructed fixed supervisor from
+344 to352 bytes on pinned1.99/aarch64-Darwin. Reopen the nested storage only;
+keep the proven named caller syntax and consume its fields into the original
+flat runtime settings, including their existing eligibility fact. Complete
+before/after sources and layout observations: worker-factory-source/POLICY-LAYOUT-RED.json.
+
+## Shortened template directories
+
+Making `atomic/fixed` and `atomic/fifo` public configuration owners passed the
+construction and retirement tests, but lost the domain meaning of their names.
+The user rejected this hierarchy. Do not retain a catch-all atomic namespace or
+adjective-only owner directories; organize noun-named concerns under their
+actual supervisor, pool, proxy and worker parents, with curated visibility.
+
+### Uniform startup-phase labels
+
+Renaming every worker `Activating` phase to `Starting` collides with the
+proxy’s existing shutdown state awaiting fresh creation. The candidate fails
+E0428 and cannot name both ownership products truthfully. Keep creation waiting
+and established-worker startup distinct; use WaitingForCreation for the former.
+Terminal startup custody may contain success or rejection and must not be named
+StartupRejected merely because an unrelated error variant shares its old label.
