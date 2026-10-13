@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.25.0...bombay-behavior-v0.26.0) - 2026-10-13
+
+### Other
+
+- reject previously recorded correlations explicitly ([#93](https://github.com/devrandom-labs/bombay-behavior/pull/93))
+
 ## [0.25.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.24.0...bombay-behavior-v0.25.0) - 2026-10-12
 
 ### Changed
