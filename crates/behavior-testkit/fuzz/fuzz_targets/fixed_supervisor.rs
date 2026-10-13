@@ -7,7 +7,7 @@ use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, StableProxy, WorkerStartResult};
 use behavior_actors::supervisor::roster;
 use behavior_actors::supervisor::roster::{FailureReaction, FixedSupervisor, Recovery};
-use behavior_actors::worker::{WorkerSource};
+use behavior_actors::worker::WorkerSource;
 use behavior_actors::worker::{
     ImmediateStartup, OrderedRoles, StartupLimit, WorkerAttempt, WorkerSubmission,
 };

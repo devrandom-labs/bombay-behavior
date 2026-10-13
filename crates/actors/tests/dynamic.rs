@@ -1,4 +1,5 @@
 use behavior::InterpretationProgress;
+use behavior_actors::supervisor::directory;
 mod installed_control;
 
 use std::collections::VecDeque;
@@ -28,7 +29,7 @@ use behavior_actors::supervisor::directory::{
     DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryRetirement,
     EntryStopFailureReason, InterruptedWorker, QueryReply, ReplacementFailure, StartRejection,
     UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
-    WorkerChangeRejection, dynamic,
+    WorkerChangeRejection,
 };
 use behavior_actors::worker::{
     StartupLimit, StartupPlan, WorkerCreationRejection, WorkerInitializationOutcome,
@@ -313,14 +314,14 @@ fn search_supervisor(
         >,
     >,
 > {
-    dynamic(
-        entries,
-        startup,
-        UnexpectedExit::KeepEmpty,
-        actor_drain,
-        peers.lifecycle,
-        DiagnosticDisposition::deliver_to(peers.diagnostics),
-    )
+    directory::new(directory::Config {
+        entries: entries,
+        startup: startup,
+        exit: UnexpectedExit::KeepEmpty,
+        shutdown: actor_drain,
+        lifecycle: peers.lifecycle,
+        diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
+    })
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior
@@ -540,14 +541,14 @@ fn role_first_construction_returns_the_complete_behavior() {
         lifecycle: Recipient::global(SearchAddress(1)),
         diagnostics: Recipient::global(SearchAddress(2)),
     };
-    let supervisor = dynamic(
-        EntryCapacity::new(1).expect("entry capacity is positive"),
-        StartupLimit::new(1).expect("startup capacity is positive"),
-        UnexpectedExit::KeepEmpty,
-        ActorDrainPolicy::WaitForActorGraph,
-        peers.lifecycle,
-        DiagnosticDisposition::deliver_to(peers.diagnostics),
-    )
+    let supervisor = directory::new(directory::Config {
+        entries: EntryCapacity::new(1).expect("entry capacity is positive"),
+        startup: StartupLimit::new(1).expect("startup capacity is positive"),
+        exit: UnexpectedExit::KeepEmpty,
+        shutdown: ActorDrainPolicy::WaitForActorGraph,
+        lifecycle: peers.lifecycle,
+        diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
+    })
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior;
@@ -2779,24 +2780,24 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
 
 #[tokio::test]
 async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
-    let initialized = dynamic(
-        EntryCapacity::new(1).expect("entry capacity is positive"),
-        StartupLimit::new(1).expect("startup capacity is positive"),
-        UnexpectedExit::Retire,
-        ActorDrainPolicy::WaitForActorGraph,
-        Recipient::<
+    let initialized = directory::new(directory::Config {
+        entries: EntryCapacity::new(1).expect("entry capacity is positive"),
+        startup: StartupLimit::new(1).expect("startup capacity is positive"),
+        exit: UnexpectedExit::Retire,
+        shutdown: ActorDrainPolicy::WaitForActorGraph,
+        lifecycle: Recipient::<
             MessageProtocol<
                 SearchAddress,
                 DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(101)),
-        DiagnosticDisposition::deliver_to(Recipient::<
+        diagnostics: DiagnosticDisposition::deliver_to(Recipient::<
             MessageProtocol<
                 SearchAddress,
                 DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(102))),
-    )
+    })
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     let mut supervisor = initialized.behavior;
@@ -3256,24 +3257,24 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
 
 #[test]
 fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
-    let initialized = dynamic(
-        EntryCapacity::new(1).expect("entry capacity is positive"),
-        StartupLimit::new(1).expect("startup capacity is positive"),
-        UnexpectedExit::KeepEmpty,
-        ActorDrainPolicy::WaitForActorGraph,
-        Recipient::<
+    let initialized = directory::new(directory::Config {
+        entries: EntryCapacity::new(1).expect("entry capacity is positive"),
+        startup: StartupLimit::new(1).expect("startup capacity is positive"),
+        exit: UnexpectedExit::KeepEmpty,
+        shutdown: ActorDrainPolicy::WaitForActorGraph,
+        lifecycle: Recipient::<
             MessageProtocol<
                 SearchAddress,
                 DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(1)),
-        DiagnosticDisposition::deliver_to(Recipient::<
+        diagnostics: DiagnosticDisposition::deliver_to(Recipient::<
             MessageProtocol<
                 SearchAddress,
                 DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(2))),
-    )
+    })
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     assert!(initialized.actions.creates.is_empty());

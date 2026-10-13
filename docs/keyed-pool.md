@@ -62,10 +62,34 @@ rebalance affects future admission; it cannot retarget queued, assigned, or
 retried work. Permanent role unavailability removes every binding and returns
 all role-owned work in one transition. Temporary recovery retains bindings.
 
+Construction keeps the factory, ordered roster and key selector separate from
+simultaneous policy choices:
+
+```rust,ignore
+behavior_actors::pool::router::new(
+    factory,
+    roles,
+    selector,
+    behavior_actors::pool::router::Config {
+        startup,
+        recovery,
+        backlog,
+        bindings,
+        interruption,
+        shutdown,
+        diagnostics,
+    },
+)
+```
+
+Preparation refusal returns the original configuration and selector alongside
+the factory, prepared prefix, refused role and reason, and untouched suffix.
+Successful construction consumes the configuration into existing flat actor
+storage; it introduces no runtime allocation or extra policy state.
+
 The initial factory is construction-only. `KeyedConstructionRejected` embeds
 the shared `InitialWorkerRejection` described in
-[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md) beside keyed
-policy. Permanent and transient recovery use
+[`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md) beside the original selector and `Config`. Permanent and transient recovery use
 the same generic one-role worker-source request as FIFO and fixed supervision;
 Bombay executes it outside `Behavior`, while KeyedPool owns eligibility, budget,
 timing, binding consequences, and topology disposition. Temporary recovery has

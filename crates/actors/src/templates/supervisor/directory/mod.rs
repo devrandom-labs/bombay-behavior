@@ -25,6 +25,7 @@ use crate::templates::proxy_creation::{StableProxyCreation, identity, resolve};
 use crate::worker::StartupLimit;
 
 mod capacity;
+mod config;
 mod diagnostic;
 mod entry;
 mod event;
@@ -33,6 +34,7 @@ mod protocol;
 mod requests;
 
 pub use capacity::EntryCapacity;
+pub use config::{Config, new};
 pub use diagnostic::DynamicDiagnostic;
 pub use event::DynamicSupervisorEvent;
 pub use lifecycle::{
@@ -83,36 +85,6 @@ where
     availability: SupervisorAvailability,
     lifecycle: LifecycleRoute,
     diagnostics: DiagnosticDisposition<DiagnosticRoute>,
-}
-
-/// Construct one dynamic supervisor from its six semantic policies.
-#[must_use]
-pub fn dynamic<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>(
-    entries: EntryCapacity,
-    startup: StartupLimit,
-    unexpected_exit: UnexpectedExit,
-    actor_drain: ActorDrainPolicy,
-    lifecycle: LifecycleRoute,
-    diagnostics: DiagnosticDisposition<DiagnosticRoute>,
-) -> DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>
-where
-    Worker: Behavior,
-    Plan: StartupPlan,
-    BehaviorAddr<Worker>: EndpointAddress,
-    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
-{
-    DynamicSupervisor {
-        services: BTreeMap::new(),
-        entries,
-        startup,
-        generations: Some(NonZeroU64::MIN),
-        operations: Some(NonZeroU64::MIN),
-        creations: CreationSequence::new(),
-        unexpected_exit,
-        availability: SupervisorAvailability::Accepting(actor_drain),
-        lifecycle,
-        diagnostics,
-    }
 }
 
 impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType> BehaviorBase

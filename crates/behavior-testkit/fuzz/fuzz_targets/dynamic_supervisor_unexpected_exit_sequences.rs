@@ -1,6 +1,7 @@
 #![no_main]
 //! Unexpected worker exit through both retained-service policies.
 
+use behavior_actors::supervisor::directory;
 use std::time::Instant;
 
 use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
@@ -9,7 +10,7 @@ use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, WorkerStartResu
 use behavior_actors::supervisor::directory::EntryCapacity;
 use behavior_actors::supervisor::directory::{
     CancellationReceipt, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
-    EntryRetirement, StartRejection, UnexpectedExit, WorkerChangeRejection, dynamic,
+    EntryRetirement, StartRejection, UnexpectedExit, WorkerChangeRejection,
 };
 use behavior_actors::worker::{ImmediateStartup, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
@@ -61,14 +62,14 @@ fuzz_target!(|input: &[u8]| {
                 DynamicDiagnostic<ServiceKey, Worker, ImmediateStartup>,
             >,
         >::global(RuntimeAddress);
-        let initialized = dynamic(
-            EntryCapacity::new(1).expect("one entry is valid"),
-            StartupLimit::new(1).expect("one startup is valid"),
-            policy,
-            ActorDrainPolicy::WaitForActorGraph,
-            lifecycle,
-            DiagnosticDisposition::deliver_to(diagnostics),
-        )
+        let initialized = directory::new(directory::Config {
+            entries: EntryCapacity::new(1).expect("one entry is valid"),
+            startup: StartupLimit::new(1).expect("one startup is valid"),
+            exit: policy,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            lifecycle: lifecycle,
+            diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
+        })
         .initialize()
         .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
         let mut supervisor = initialized.behavior;

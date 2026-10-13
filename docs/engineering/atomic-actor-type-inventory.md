@@ -481,7 +481,7 @@ recreating an active job or an unbounded tombstone.
 
 ### Current public surface
 
-- `keyed(…) -> Result<KeyedPool<…>, KeyedConstructionRejected<…>>` is the sole
+- `router::new(…, router::Config { … }) -> Result<KeyedPool<…>, KeyedConstructionRejected<…>>` is the sole
   production construction spelling and does not reuse FIFO's constructor or a
   shared pool builder;
 - `KeyedPool<…>` — a separate direct fold, not a `FifoPool` wrapper;
@@ -582,13 +582,13 @@ KeyedPool ─────────────creates/assigns/observes direct
 | Family | Component construction | Status |
 |---|---|---|
 | Stable proxy | `StableProxy::immediate()` or `StableProxy::activated()` | selected |
-| Fixed supervisor | `fixed(factory, roles, fixed::Config { … })`, optional lifecycle publication, then `build()` | selected |
-| Dynamic supervisor | `dynamic(entries, activation, unexpected_exit, actor_drain, lifecycle, diagnostics)` | selected |
-| FIFO pool | `fifo(factory, roles, fifo::Config { … })` | selected |
-| Keyed pool | `keyed(factory, roles, selector, activation, recovery, backlog, bindings, interruption, actor_drain, diagnostics)` | selected |
+| Fixed supervisor | `roster::new(factory, roles, roster::Config { … })`, optional lifecycle publication, then `build()` | selected |
+| Dynamic supervisor | `directory::new(directory::Config { … })` | selected |
+| FIFO pool | `queue::new(factory, roles, queue::Config { … })` | selected |
+| Keyed pool | `router::new(factory, roles, selector, router::Config { … })` | selected |
 
-Generated component rustdoc lists 102 semantic items for the five implemented
-families: 43 structs, 53 enums, two traits, and four construction functions.
+Generated component rustdoc is the executable public-surface inventory for the
+five implemented families.
 These are construction, policies, commands, capabilities, typed rejections, and
 domain outcomes—not structural actor machinery. Reduce this count only when
 two names own the same law; hiding a real outcome is not surface curation.

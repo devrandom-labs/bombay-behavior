@@ -3,9 +3,11 @@
 use core::convert::Infallible;
 
 use behavior_actors::proxy::{ProxyOutcome, StableProxy};
-use behavior_actors::supervisor::roster::{CapabilityResult, FixedCommand, FixedSupervisor, Recovery};
-use behavior_actors::worker::{PrepareWorkers, WorkerSource};
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FixedCommand, FixedSupervisor, Recovery,
+};
 use behavior_actors::worker::{ImmediateStartup, WorkerAttempt};
+use behavior_actors::worker::{PrepareWorkers, WorkerSource};
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
     ActionItemResult, ChildReport, MessageProtocol, NoSends, Recipient, SettledItem, Step,

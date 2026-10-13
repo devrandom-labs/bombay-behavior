@@ -1,4 +1,5 @@
 use behavior::{Here, InterpretationProgress};
+use behavior_actors::pool::router;
 use std::time::Instant;
 
 use behavior::{
@@ -8,7 +9,7 @@ use behavior::{
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::router::{
-    BindingCapacity, KeyedCommand, KeyedEvent, KeyedOutcome, KeyedQueuedReturnReason, keyed,
+    BindingCapacity, KeyedCommand, KeyedEvent, KeyedOutcome, KeyedQueuedReturnReason,
 };
 use behavior_actors::pool::{
     AssignWorker, BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction,
@@ -50,20 +51,23 @@ fn commit_worker_creation(
 async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_customers() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -292,20 +296,23 @@ async fn rejected_assignments_wait_for_worker_shutdown_before_returning_to_custo
 async fn exact_completion_selects_the_busy_nonzero_role() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool

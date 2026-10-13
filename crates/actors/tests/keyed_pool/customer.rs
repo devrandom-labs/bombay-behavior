@@ -1,3 +1,4 @@
+use behavior_actors::pool::router;
 use std::time::Instant;
 
 use behavior::{
@@ -7,7 +8,7 @@ use behavior::{
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::router::{
-    BindingCapacity, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome, keyed,
+    BindingCapacity, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome,
 };
 use behavior_actors::pool::{
     BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction, PoolRecovery,
@@ -131,17 +132,20 @@ async fn customer_desk_matches_every_keyed_assignment_exit_and_shutdown_order() 
     for order in input_orders() {
         let roles = OrderedRoles::new(SearchRole::Primary, [])
             .unwrap_or_else(|_| panic!("one role is a valid keyed roster"));
-        let pool = keyed(
+        let pool = router::new(
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-            PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-            BacklogCapacity::new(0),
-            BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-            Interruption::Fail,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::terminate(),
+            router::Config {
+                startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+                recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+                backlog: BacklogCapacity::new(0),
+                bindings: BindingCapacity::new(1)
+                    .unwrap_or_else(|_| panic!("one binding is valid")),
+                interruption: Interruption::Fail,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+            },
         )
         .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
         let initialized = pool

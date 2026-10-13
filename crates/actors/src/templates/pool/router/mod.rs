@@ -24,19 +24,17 @@ use crate::templates::pool::worker as direct_worker;
 use crate::templates::pool::worker::{Member, MemberState, RetiringWorker, Worker, WorkerPhase};
 use crate::templates::pool::{
     AssignWorker, Assignment, BacklogCapacity, CompletesAssignments, CustomerDelivery,
-    Interruption, PoolRecovery, PoolRecoveryState, ShutdownSequence, SubmissionId,
-};
-use crate::templates::worker::{
-    InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers,
+    Interruption, PoolRecoveryState, ShutdownSequence, SubmissionId,
 };
 use crate::worker::{
-    InitializeWorker, OrderedRoles, PreparedWorker, StartWorker, StartupLimit, StartupPlan,
-    WorkerAttempt, WorkerInitializationReport, WorkerStartup,
+    InitializeWorker, PreparedWorker, StartWorker, StartupLimit, StartupPlan, WorkerAttempt,
+    WorkerInitializationReport, WorkerStartup,
 };
 use crate::worker::{PrepareWorkers, WorkerPreparation, WorkerSource};
 
 mod assignment;
 mod binding;
+mod config;
 mod event;
 mod job;
 mod protocol;
@@ -48,6 +46,7 @@ mod shutdown;
 pub use binding::{
     BindingCapacity, BindingEvidence, BindingExpectation, BindingGeneration, BindingRequestId,
 };
+pub use config::{Config, KeyedConstructionRejected, new};
 pub use event::KeyedEvent;
 pub use protocol::{
     BindingCommand, BindingRejection, BindingReply, KeyedAdmissionRejection,
@@ -305,118 +304,6 @@ where
     assignments: AssignmentSequence,
     shutdowns: ShutdownSequence,
     next_restart_timer: u64,
-}
-
-/// Complete custody when initial keyed-worker preparation rejects.
-pub struct KeyedConstructionRejected<Factory, Selector, Role, W, P, Rejection, Source, Diagnostics>
-{
-    /// Complete initial-worker rejection.
-    pub workers: InitialWorkerRejection<Factory, Role, W, P, Rejection>,
-    /// Complete key selector.
-    pub selector: Selector,
-    /// Complete startup policy.
-    pub startup: StartupLimit,
-    /// Complete recovery policy.
-    pub recovery: PoolRecovery<Source>,
-    /// Complete per-role waiting-job capacity.
-    pub backlog: BacklogCapacity,
-    /// Complete retained-binding capacity.
-    pub binding_capacity: BindingCapacity,
-    /// Complete interruption policy.
-    pub interruption: Interruption,
-    /// Complete actor-graph drain policy.
-    pub actor_drain: ActorDrainPolicy,
-    /// Complete diagnostic disposition.
-    pub diagnostics: DiagnosticDisposition<Diagnostics>,
-}
-
-/// Construct one keyed pool after preparing every declared worker in order.
-/// The factory may return `WorkerSubmission` directly or a fallible `Result`.
-/// Rejection returns the original factory, prepared prefix, role, refusal and
-/// untouched suffix together with the selector and every construction policy.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "every argument is one explicit KeyedPool policy pending the recorded builder comparison"
-)]
-pub fn keyed<
-    Factory,
-    Selector,
-    Role,
-    W,
-    P,
-    Preparation,
-    Source,
-    Diagnostics,
-    Key,
-    Job,
-    WorkerResult,
->(
-    factory: Factory,
-    roles: OrderedRoles<Role>,
-    selector: Selector,
-    startup: StartupLimit,
-    recovery: PoolRecovery<Source>,
-    backlog: BacklogCapacity,
-    binding_capacity: BindingCapacity,
-    interruption: Interruption,
-    actor_drain: ActorDrainPolicy,
-    diagnostics: DiagnosticDisposition<Diagnostics>,
-) -> Result<
-    KeyedPool<Role, W, P, Source, Selector, Diagnostics, Key, Job, WorkerResult>,
-    KeyedConstructionRejected<
-        Factory,
-        Selector,
-        Role,
-        W,
-        P,
-        Preparation::Rejection,
-        Source,
-        Diagnostics,
-    >,
->
-where
-    Factory: FnMut(&Role) -> Preparation,
-    Preparation: InitialWorkerPreparation<Worker = W, Plan = P>,
-    Selector: Fn(&Key) -> Role,
-    Role: Eq,
-    W: Behavior,
-    W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
-    BehaviorAddr<W>: EndpointAddress,
-{
-    let prepared = match prepare_initial_workers(factory, roles) {
-        Ok(prepared) => prepared,
-        Err(workers) => {
-            return Err(KeyedConstructionRejected {
-                workers,
-                selector,
-                startup,
-                recovery,
-                backlog,
-                binding_capacity,
-                interruption,
-                actor_drain,
-                diagnostics,
-            });
-        }
-    };
-    Ok(KeyedPool {
-        state: KeyedPoolState::Constructed(prepared),
-        selector,
-        startup,
-        recovery: recovery.into(),
-        restarts: crate::templates::restart::RestartBudget::empty(),
-        backlog,
-        binding_capacity,
-        interruption,
-        actor_drain,
-        diagnostics,
-        creations: CreationSequence::new(),
-        jobs: AcceptedJobSequence::new(),
-        assignments: AssignmentSequence::new(),
-        shutdowns: ShutdownSequence::new(),
-        next_restart_timer: 1,
-    })
 }
 
 impl<Role, W, P, Source, Selector, Diagnostics, Key, Job, WorkerResult> BehaviorBase

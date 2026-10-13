@@ -1,6 +1,7 @@
 #![no_main]
 //! Post-transfer cancellation through every worker/shutdown/proxy arrival order.
 
+use behavior_actors::supervisor::directory;
 use std::time::Instant;
 
 use behavior_actors::diagnostic::DiagnosticDisposition;
@@ -9,7 +10,7 @@ use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOperation, ProxyOutcome,
 use behavior_actors::supervisor::directory::EntryCapacity;
 use behavior_actors::supervisor::directory::{
     CancellationOutcome, CancellationReceipt, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
-    EntryRetirement, UnexpectedExit, WorkerChange, dynamic,
+    EntryRetirement, UnexpectedExit, WorkerChange,
 };
 use behavior_actors::worker::{ImmediateStartup, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
@@ -76,14 +77,14 @@ fuzz_target!(|input: &[u8]| {
                 DynamicDiagnostic<ServiceKey, Worker, ImmediateStartup>,
             >,
         >::global(RuntimeAddress);
-        let initialized = dynamic(
-            EntryCapacity::new(2).expect("two entries are valid"),
-            StartupLimit::new(1).expect("one startup is valid"),
-            UnexpectedExit::KeepEmpty,
-            ActorDrainPolicy::WaitForActorGraph,
-            lifecycle,
-            DiagnosticDisposition::deliver_to(diagnostics),
-        )
+        let initialized = directory::new(directory::Config {
+            entries: EntryCapacity::new(2).expect("two entries are valid"),
+            startup: StartupLimit::new(1).expect("one startup is valid"),
+            exit: UnexpectedExit::KeepEmpty,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            lifecycle: lifecycle,
+            diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
+        })
         .initialize()
         .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
         let mut supervisor = initialized.behavior;

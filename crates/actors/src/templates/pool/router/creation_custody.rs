@@ -1,7 +1,8 @@
 use super::{KeyedDiagnosticCause, KeyedOutcome, KeyedQueuedReturnReason};
 use crate::lifecycle::ActorDrainPolicy;
+use crate::pool::router;
 use crate::pool::router::{BindingCapacity, BindingEvidence};
-use crate::pool::router::{KeyedEvent, KeyedPool, KeyedPoolState, keyed};
+use crate::pool::router::{KeyedEvent, KeyedPool, KeyedPoolState};
 use crate::pool::{
     Assignment, BacklogCapacity, CustomerDelivery, Interruption, JobId, PoolFailureReaction,
     PoolRecovery, SubmissionId,
@@ -130,17 +131,19 @@ fn search_pool_with_roles(
     policy: PoolFailureReaction,
     roles: OrderedRoles<SearchRole>,
 ) -> SearchPool {
-    keyed(
+    router::new(
         prepare_search,
         roles,
         role_for_key as fn(&u64) -> SearchRole,
-        StartupLimit::new(2).expect("two genuine startup slots"),
-        PoolRecovery::temporary(policy),
-        BacklogCapacity::new(2),
-        BindingCapacity::new(2).expect("both accepted keys have binding capacity"),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).expect("two genuine startup slots"),
+            recovery: PoolRecovery::temporary(policy),
+            backlog: BacklogCapacity::new(2),
+            bindings: BindingCapacity::new(2).expect("both accepted keys have binding capacity"),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("two prepared search roles"))
 }

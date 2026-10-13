@@ -17,8 +17,11 @@ use std::time::Duration;
 
 use behavior_actors::diagnostic::DiagnosticAction;
 use behavior_actors::proxy::{ProxyControl, ProxyInputReceipt, ProxyOutcome, StableProxy};
-use behavior_actors::supervisor::roster::{CapabilityResult, FixedCommand, FixedDiagnostic, FixedSupervisor, FixedSupervisorEvent, Recovery, RecoveryPolicy, Strategy, UnavailablePhase};
-use behavior_actors::worker::{WorkerSource};
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FixedCommand, FixedDiagnostic, FixedSupervisor, FixedSupervisorEvent,
+    Recovery, RecoveryPolicy, Strategy, UnavailablePhase,
+};
+use behavior_actors::worker::WorkerSource;
 use behavior_actors::worker::{
     ImmediateStartup, RestartLimit, RestartRelease, WorkerAttempt, WorkerSubmission,
 };

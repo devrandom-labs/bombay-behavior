@@ -4,6 +4,7 @@
 #[path = "installed_control.rs"]
 mod installed_control;
 
+use behavior_actors::pool::router;
 use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::collections::{BTreeSet, VecDeque};
@@ -14,7 +15,7 @@ use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::router::{
     BindingCapacity, BindingEvidence, BindingGeneration, KeyedAssignedReturnReason, KeyedCommand,
-    KeyedEvent, KeyedOutcome, KeyedPool, KeyedQueuedReturnReason, keyed,
+    KeyedEvent, KeyedOutcome, KeyedPool, KeyedQueuedReturnReason,
 };
 use behavior_actors::pool::{
     AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, Completion, CustomerDelivery,
@@ -154,17 +155,19 @@ fn created_worker(
 }
 
 fn ready_pool() -> (SearchPool, CreationId) {
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         OrderedRoles::new(Role::Search, core::iter::empty()).expect("one role is a valid roster"),
         selected_role as fn(&Account) -> Role,
-        StartupLimit::new(1).expect("one startup is valid"),
-        PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        BindingCapacity::new(1).expect("one binding is valid"),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).expect("one startup is valid"),
+            recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            bindings: BindingCapacity::new(1).expect("one binding is valid"),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
     let initialized = pool

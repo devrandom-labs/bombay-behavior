@@ -465,9 +465,9 @@ existing Driver and both must pass the final atomic integration probe.
 
 H148 historically derived the target source equation independently of Bombay's
 current root-first API: typed lifecycle and diagnostic capabilities enter one
-pure root constructor, the six-policy `dynamic(entries, activation,
-unexpected_exit, actor_drain, lifecycle, diagnostics)` call infers its key,
-worker, and activation types. The real production construction test and five
+pure root constructor, the named `directory::new(directory::Config { entries, startup,
+exit, shutdown, lifecycle, diagnostics })` call infers its key, worker and startup
+types. The real production construction test and five
 command paths now own that contract; H589 removes the superseded facsimile while
 retaining H148's compiler evidence in Git. Removing lifecycle provenance or
 delivering `Stop` without the typed supervisor capability produced E0277/E0308

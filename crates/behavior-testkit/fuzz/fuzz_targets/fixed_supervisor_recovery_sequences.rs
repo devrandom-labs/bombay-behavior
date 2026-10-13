@@ -10,8 +10,10 @@ use core::ops::ControlFlow;
 use std::time::Duration;
 
 use behavior_actors::proxy::{ProxyOutcome, StableProxy};
-use behavior_actors::supervisor::roster::{CapabilityResult, FixedSupervisorEvent, Recovery, RecoveryPolicy, Strategy, UnavailablePhase};
-use behavior_actors::worker::{WorkerSource};
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FixedSupervisorEvent, Recovery, RecoveryPolicy, Strategy, UnavailablePhase,
+};
+use behavior_actors::worker::WorkerSource;
 use behavior_actors::worker::{ImmediateStartup, RestartLimit, RestartRelease, WorkerSubmission};
 use behavior_core::{
     ActionItemResult, ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never,

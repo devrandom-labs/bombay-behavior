@@ -294,24 +294,15 @@ walks `.inner`, `.own`, `WithParent`, a slot number, or wrapper depth.
 
 ## Dynamic-supervisor journey
 
-The canonical constructor is one `dynamic(entries, activation, unexpected_exit,
-actor_drain, lifecycle, diagnostics)` call. Applications construct `entries`
-with `EntryCapacity::new(usize)` and `activation` with
-`StartupLimit::new(usize)`. Both return `ZeroCapacity`, but their values
-cannot be exchanged. Every executable semantic policy appears once; there is no
-staged builder, factory, callback, default, marker, or public proxy type.
-`ActorDrainPolicy` is mandatory because global shutdown is executable.
-
-A named policy product or another builder would only move these six unrelated
-choices behind an extra public name, so the direct form remains canonical.
-Bombay constructs the lifecycle and diagnostic peers first, passes their typed
-capabilities to this call, and then activates the returned supervisor;
-applications never name the final behavior type. H148 historically derived the
-role-first inference shape with stable Rust. The real
-`role_first_construction_returns_the_complete_behavior` integration test now
-owns that syntax; H589 removes the superseded private facsimile. The earlier
-H135/H137 fragments remain rejected because they fabricated capabilities before
-the code under test.
+The canonical constructor is `supervisor::directory::new(directory::Config {
+entries, startup, exit, shutdown, lifecycle, diagnostics })`. Applications
+construct `entries` with `EntryCapacity::new(usize)` and `startup` with
+`StartupLimit::new(usize)`. Both reject zero, and their values cannot be exchanged.
+Each policy and typed route appears once by name; construction consumes them into
+existing actor storage without runtime effects. Bombay establishes the lifecycle
+and diagnostic peers before passing their capabilities to this constructor.
+The production construction and complete native start/cancel/rejection/stop/join
+journey prove inference without naming the final behavior type.
 
 Bombay must declare and establish application actors by semantic role before it
 constructs the root. Its one-time application assembly supplies typed logical
@@ -470,26 +461,17 @@ returned through `FifoConstructionRejected.config` on preparation refusal.
 
 ## Keyed-pool journey
 
-The selected construction spelling is one direct call:
+The selected construction spelling names policies under their owning component:
 
 ```text
-keyed(
-    initial_factory,
-    ordered unique roles,
-    key-to-role selector,
-    StartupLimit,
-    PoolRecovery,
-    per-role BacklogCapacity,
-    BindingCapacity,
-    Interruption,
-    ActorDrainPolicy,
-    DiagnosticDisposition,
-)
+pool::router::new(factory, roles, selector, router::Config {
+    startup, recovery, backlog, bindings, interruption, shutdown, diagnostics,
+})
 ```
 
 The callable factory exists only during construction; the successful
 `KeyedPool` does not store it. `KeyedConstructionRejected.workers` is the shared
-`InitialWorkerRejection`, beside the selector and keyed policy. The selector is
+`InitialWorkerRejection`, beside the original selector and `Config`. The selector is
 the one concrete `Fn(&Key) -> Role` value used by
 future admission; it is not a boxed callback, runtime registry, or distribution
 mode. `StartupLimit`, `BacklogCapacity`, and `BindingCapacity` are distinct

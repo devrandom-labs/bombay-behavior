@@ -1,3 +1,4 @@
+use behavior_actors::pool::router;
 use core::ops::ControlFlow;
 use std::cell::RefCell;
 use std::convert::Infallible;
@@ -15,7 +16,7 @@ use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::router::{
     BindingCapacity, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome,
-    KeyedQueuedReturnReason, keyed,
+    KeyedQueuedReturnReason,
 };
 use behavior_actors::pool::{
     AssignWorker, BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction,
@@ -90,7 +91,7 @@ fn construction_rejection_returns_the_worker_roster() {
     )
     .unwrap_or_else(|_| panic!("worker roles are unique"));
 
-    let mut rejection = match keyed(
+    let mut rejection = match router::new(
         move |role: &WorkerRole| {
             factory_calls.borrow_mut().push(*role);
             match role {
@@ -102,13 +103,15 @@ fn construction_rejection_returns_the_worker_roster() {
         },
         roles,
         |_: &Account| WorkerRole::Search,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(4).unwrap_or_else(|_| panic!("four bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(4).unwrap_or_else(|_| panic!("four bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     ) {
         Ok(_) => panic!("index worker preparation must reject"),
         Err(rejection) => rejection,
@@ -222,25 +225,28 @@ fn worker_creation_settlement(
 async fn concurrent_worker_failures_claim_one_recovery_source() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::immediate(),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -366,23 +372,25 @@ async fn concurrent_worker_failures_claim_one_recovery_source() {
 async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -544,7 +552,7 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
     let mut initial_activation = Some(HeldActivation(Arc::clone(&initial_drops)));
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         move |_: &SearchRole| {
             Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
@@ -555,19 +563,21 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         },
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -686,22 +696,26 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                 UnavailableRolePolicy::RetireRole => PoolFailureReaction::RetireRole,
                 UnavailableRolePolicy::StopPool => PoolFailureReaction::StopPool,
             };
-            let pool = keyed(
+            let pool = router::new(
                 prepare_worker,
                 roles,
                 |_: &Account| SearchRole::Primary,
-                StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-                PoolRecovery::permanent(
-                    FallibleSearchSource,
-                    RestartLimit::new(1, Duration::from_secs(10)),
-                    RestartRelease::immediate(),
-                    failure,
-                ),
-                BacklogCapacity::new(1),
-                BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-                Interruption::Retry,
-                ActorDrainPolicy::WaitForActorGraph,
-                DiagnosticDisposition::terminate(),
+                router::Config {
+                    startup: StartupLimit::new(1)
+                        .unwrap_or_else(|_| panic!("one startup is valid")),
+                    recovery: PoolRecovery::permanent(
+                        FallibleSearchSource,
+                        RestartLimit::new(1, Duration::from_secs(10)),
+                        RestartRelease::immediate(),
+                        failure,
+                    ),
+                    backlog: BacklogCapacity::new(1),
+                    bindings: BindingCapacity::new(1)
+                        .unwrap_or_else(|_| panic!("one binding is valid")),
+                    interruption: Interruption::Retry,
+                    shutdown: ActorDrainPolicy::WaitForActorGraph,
+                    diagnostics: DiagnosticDisposition::terminate(),
+                },
             )
             .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
             let initialized = pool
@@ -898,22 +912,24 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
 async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::immediate(),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -976,22 +992,24 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
 
     let foreign_roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let foreign_pool = keyed(
+    let foreign_pool = router::new(
         prepare_worker,
         foreign_roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::immediate(),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the foreign worker declaration constructs a keyed pool"));
     let foreign_initialized = foreign_pool
@@ -1080,23 +1098,25 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
 async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -1229,23 +1249,25 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
 async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -1347,20 +1369,23 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
 async fn ready_worker_drains_only_its_role_queue() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -1422,17 +1447,20 @@ async fn ready_worker_drains_only_its_role_queue() {
 
     let foreign_roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct foreign roles are a valid roster"));
-    let foreign_pool = keyed(
+    let foreign_pool = router::new(
         prepare_worker,
         foreign_roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the foreign worker declaration constructs a keyed pool"));
     let foreign_initialized = foreign_pool
@@ -1795,7 +1823,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
     let prepared_drops = Arc::clone(&activation_drops);
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         move |_: &SearchRole| {
             Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
@@ -1807,13 +1835,15 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -1919,25 +1949,27 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
 async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RestartLimit::new(3, Duration::from_secs(10)),
+                RestartRelease::immediate(),
+                PoolFailureReaction::RetireRole,
+            ),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -2027,20 +2059,23 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
 async fn shutdown_keeps_pending_workers_until_the_runtime_returns_them() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            bindings: BindingCapacity::new(8)
+                .unwrap_or_else(|_| panic!("eight bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -2115,17 +2150,19 @@ async fn shutdown_keeps_pending_workers_until_the_runtime_returns_them() {
 async fn initialization_stop_completes_the_worker_shutdown_join() {
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -2177,17 +2214,19 @@ async fn initialization_stop_completes_the_worker_shutdown_join() {
 async fn activation_start_remains_a_receipt_during_shutdown() {
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
@@ -2264,22 +2303,25 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
     for disposition in DISPOSITIONS {
         let roles = OrderedRoles::new(SearchRole::Primary, [])
             .unwrap_or_else(|_| panic!("one role is a valid roster"));
-        let pool = keyed(
+        let pool = router::new(
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-            PoolRecovery::permanent(
-                FallibleSearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
-            ),
-            BacklogCapacity::new(1),
-            BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-            Interruption::Retry,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::terminate(),
+            router::Config {
+                startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+                recovery: PoolRecovery::permanent(
+                    FallibleSearchSource,
+                    RestartLimit::new(3, Duration::from_secs(10)),
+                    RestartRelease::immediate(),
+                    PoolFailureReaction::RetireRole,
+                ),
+                backlog: BacklogCapacity::new(1),
+                bindings: BindingCapacity::new(1)
+                    .unwrap_or_else(|_| panic!("one binding is valid")),
+                interruption: Interruption::Retry,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+            },
         )
         .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
         let initialized = pool
@@ -2390,23 +2432,26 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
     for disposition in DISPOSITIONS {
         let roles = OrderedRoles::new(SearchRole::Primary, [])
             .unwrap_or_else(|_| panic!("one role is a valid roster"));
-        let pool = keyed(
+        let pool = router::new(
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-            PoolRecovery::permanent(
-                SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
-            ),
-            BacklogCapacity::new(1),
-            BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-            Interruption::Retry,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::terminate(),
+            router::Config {
+                startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+                recovery: PoolRecovery::permanent(
+                    SearchSource,
+                    RestartLimit::new(3, Duration::from_secs(10)),
+                    RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                    PoolFailureReaction::RetireRole,
+                ),
+                backlog: BacklogCapacity::new(1),
+                bindings: BindingCapacity::new(1)
+                    .unwrap_or_else(|_| panic!("one binding is valid")),
+                interruption: Interruption::Retry,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+            },
         )
         .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
         let initialized = pool
@@ -2526,17 +2571,21 @@ async fn shutdown_settlement_and_worker_exit_are_order_independent() {
         for order in ORDERS {
             let roles = OrderedRoles::new(SearchRole::Primary, [])
                 .unwrap_or_else(|_| panic!("one role is a valid roster"));
-            let pool = keyed(
+            let pool = router::new(
                 prepare_worker,
                 roles,
                 |_: &Account| SearchRole::Primary,
-                StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-                PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-                BacklogCapacity::new(1),
-                BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-                Interruption::Retry,
-                ActorDrainPolicy::WaitForActorGraph,
-                DiagnosticDisposition::terminate(),
+                router::Config {
+                    startup: StartupLimit::new(1)
+                        .unwrap_or_else(|_| panic!("one startup is valid")),
+                    recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+                    backlog: BacklogCapacity::new(1),
+                    bindings: BindingCapacity::new(1)
+                        .unwrap_or_else(|_| panic!("one binding is valid")),
+                    interruption: Interruption::Retry,
+                    shutdown: ActorDrainPolicy::WaitForActorGraph,
+                    diagnostics: DiagnosticDisposition::terminate(),
+                },
             )
             .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
             let initialized = pool
@@ -2648,7 +2697,7 @@ fn forced_retirement_keeps_a_pending_worker_until_the_pool_is_dropped() {
     let mut startup = Some(HeldActivation(Arc::clone(&activation_drops)));
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         move |_: &SearchRole| {
             Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
@@ -2659,15 +2708,17 @@ fn forced_retirement_keeps_a_pending_worker_until_the_pool_is_dropped() {
         },
         roles,
         |_: &Account| SearchRole::Primary,
-        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Fail,
-        ActorDrainPolicy::RetireActorGraphAfter {
-            deadline: Duration::from_secs(2),
+        router::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::RetireActorGraphAfter {
+                deadline: Duration::from_secs(2),
+            },
+            diagnostics: DiagnosticDisposition::terminate(),
         },
-        DiagnosticDisposition::terminate(),
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool
