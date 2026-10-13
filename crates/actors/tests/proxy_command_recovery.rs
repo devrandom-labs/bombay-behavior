@@ -254,7 +254,7 @@ fn awaiting_initialization<P>(
 where
     P: StartupPlan,
 {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -351,7 +351,7 @@ fn commit_hydrated_worker(
 
 #[test]
 fn dormant_owner_shutdown_stops_without_fabricating_an_owner_outcome() {
-    let initialized = StableProxy::<Worker, Hydrate>::activated()
+    let initialized = StableProxy::<Worker, Hydrate>::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -438,7 +438,7 @@ async fn ready_owner_shutdown_joins_shutdown_resolution_before_stop() {
 
 #[test]
 fn owner_shutdown_waits_for_emitted_creation_rejection_and_retains_the_submission() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -468,7 +468,7 @@ fn owner_shutdown_waits_for_emitted_creation_rejection_and_retains_the_submissio
 
 #[test]
 fn owner_shutdown_after_committed_creation_waits_for_initialization_and_worker_departure() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -552,7 +552,7 @@ fn owner_shutdown_after_committed_creation_waits_for_initialization_and_worker_d
 
 #[test]
 fn owner_shutdown_after_stop_before_creation_never_sends_duplicate_worker_shutdown() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -1377,7 +1377,7 @@ fn canonical_construction_infers_worker_and_activation_without_runtime_types() {
     assert_eq!(start.sends.worker_observations.len(), 1);
     worker_observation(&start.sends.worker_observations[0]);
 
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -1777,7 +1777,7 @@ fn committed_worker_enters_initializing_without_publishing_readiness() {
 
 #[tokio::test]
 async fn successful_initialization_authorizes_one_correlated_activation() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -2047,7 +2047,7 @@ async fn accepted_activation_rejection_drains_the_exact_worker_before_reporting(
 
 #[tokio::test]
 async fn activation_plan_rejection_remains_distinct_from_start_rejection() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -2412,7 +2412,7 @@ fn initialization_return_keeps_both_worker_stop_observations() {
 
 #[test]
 fn earlier_worker_stop_prevents_activation_after_initialization_succeeds() {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;

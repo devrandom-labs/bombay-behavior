@@ -83,9 +83,12 @@ where
         }
     }
 
-    /// Construct an empty proxy whose worker start supplies a concrete plan.
+    /// Construct an empty proxy whose worker submission supplies a startup plan.
+    ///
+    /// Construction starts no worker and performs no runtime effect. Readiness
+    /// follows only after fresh creation, initialization and startup succeed.
     #[must_use]
-    pub const fn activated() -> Self {
+    pub const fn new() -> Self {
         Self::dormant()
     }
 
@@ -330,7 +333,9 @@ where
             ProxyEvent::WorkerInitialization(initialization) => {
                 Self::worker_initialized(current, initialization)
             }
-            ProxyEvent::WorkerStartupReported(startup) => Self::worker_activated(current, startup),
+            ProxyEvent::WorkerStartupReported(startup) => {
+                Self::settle_worker_startup(current, startup)
+            }
             ProxyEvent::WorkerShutdownResolved(shutdown) => {
                 Self::worker_shutdown_resolved(current, shutdown)
             }
@@ -338,7 +343,7 @@ where
         }
     }
 
-    fn admit_activation(
+    fn admit_startup(
         progress: &StartupProgress<W, P>,
         input: WorkerStartup<W, P>,
     ) -> Result<WorkerStartup<W, P>, WorkerStartup<W, P>> {
@@ -1467,8 +1472,7 @@ where
                         stopped,
                     },
             } => {
-                let (startup, shutdown) =
-                    Self::begin_activation_shutdown(worker, progress, stopped);
+                let (startup, shutdown) = Self::begin_startup_shutdown(worker, progress, stopped);
                 let actions = match shutdown {
                     Some(shutdown) => Self::request_worker_shutdown(shutdown),
                     None => Actions::cont(),
@@ -2037,7 +2041,7 @@ where
         )
     }
 
-    fn begin_activation_shutdown(
+    fn begin_startup_shutdown(
         worker: CurrentWorker<W>,
         startup: StartupProgress<W, P>,
         stopped: Option<ChildStopped<BehaviorAddr<W>>>,
@@ -2068,7 +2072,7 @@ where
         }
     }
 
-    fn continue_activation_shutdown<I>(
+    fn continue_startup_shutdown<I>(
         creations: CreationSequence,
         kind: WorkerStartKind,
         changed: Result<
@@ -2094,7 +2098,7 @@ where
         }
     }
 
-    fn admit_worker_activation_during_shutdown(
+    fn admit_worker_startup_during_shutdown(
         current: WorkerStartupShutdown<W, P>,
         input: WorkerStartup<W, P>,
     ) -> Result<
@@ -2105,8 +2109,8 @@ where
             WorkerStartupShutdown::Departing {
                 startup: StartupDuringDeparture::Pending(progress),
                 departure,
-            } => match Self::admit_activation(&progress, input) {
-                Ok(input) => Self::retain_activation_while_departing(progress, departure, input),
+            } => match Self::admit_startup(&progress, input) {
+                Ok(input) => Self::retain_startup_while_departing(progress, departure, input),
                 Err(input) => Err((
                     WorkerStartupShutdown::Departing {
                         startup: StartupDuringDeparture::Pending(progress),
@@ -2124,9 +2128,9 @@ where
                 worker,
                 shutdown,
                 stopped,
-            } => match Self::admit_activation(&startup, input) {
+            } => match Self::admit_startup(&startup, input) {
                 Ok(input) => {
-                    Self::retain_activation_after_worker(startup, worker, shutdown, stopped, input)
+                    Self::retain_startup_after_worker(startup, worker, shutdown, stopped, input)
                 }
                 Err(input) => Err((
                     WorkerStartupShutdown::WaitingForStartup {
@@ -2141,7 +2145,7 @@ where
         }
     }
 
-    fn advance_activation_during_shutdown(
+    fn advance_startup_during_shutdown(
         progress: StartupProgress<W, P>,
         input: WorkerStartup<W, P>,
     ) -> Result<StartupDuringDeparture<W, P>, (StartupProgress<W, P>, WorkerStartup<W, P>)> {
@@ -2171,7 +2175,7 @@ where
         }
     }
 
-    fn retain_activation_while_departing(
+    fn retain_startup_while_departing(
         progress: StartupProgress<W, P>,
         departure: WorkerStopping<W>,
         input: WorkerStartup<W, P>,
@@ -2179,7 +2183,7 @@ where
         ControlFlow<WorkerStartRetirement<W, P>, WorkerStartupShutdown<W, P>>,
         (WorkerStartupShutdown<W, P>, WorkerStartup<W, P>),
     > {
-        match Self::advance_activation_during_shutdown(progress, input) {
+        match Self::advance_startup_during_shutdown(progress, input) {
             Ok(startup) => Ok(ControlFlow::Continue(WorkerStartupShutdown::Departing {
                 startup,
                 departure,
@@ -2194,7 +2198,7 @@ where
         }
     }
 
-    fn retain_activation_after_worker(
+    fn retain_startup_after_worker(
         progress: StartupProgress<W, P>,
         worker: CurrentWorker<W>,
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
@@ -2204,7 +2208,7 @@ where
         ControlFlow<WorkerStartRetirement<W, P>, WorkerStartupShutdown<W, P>>,
         (WorkerStartupShutdown<W, P>, WorkerStartup<W, P>),
     > {
-        match Self::advance_activation_during_shutdown(progress, input) {
+        match Self::advance_startup_during_shutdown(progress, input) {
             Ok(StartupDuringDeparture::Pending(startup)) => Ok(ControlFlow::Continue(
                 WorkerStartupShutdown::WaitingForStartup {
                     startup,
@@ -2233,7 +2237,7 @@ where
         }
     }
 
-    fn rejoin_activation_departure<I>(
+    fn rejoin_startup_departure<I>(
         startup: StartupDuringDeparture<W, P>,
         admitted: Result<ControlFlow<StoppedWorker<W>, WorkerStopping<W>>, (WorkerStopping<W>, I)>,
     ) -> Result<
@@ -2276,29 +2280,29 @@ where
         }
     }
 
-    fn shutdown_worker_activated(
+    fn settle_shutdown_startup(
         creations: CreationSequence,
         shutdown: ProxyShutdown<W, P>,
         input: WorkerStartup<W, P>,
     ) -> (StableProxy<W, P>, ProxyActions<W, P>) {
         match shutdown {
             ProxyShutdown::Starting { kind, startup } => {
-                match Self::continue_activation_shutdown(
+                match Self::continue_startup_shutdown(
                     creations,
                     kind,
-                    Self::admit_worker_activation_during_shutdown(startup, input),
+                    Self::admit_worker_startup_during_shutdown(startup, input),
                 ) {
                     Ok(changed) => changed,
                     Err((creations, shutdown, input)) => {
-                        Self::unexpected_shutdown_activation(creations, shutdown, input)
+                        Self::unexpected_shutdown_startup(creations, shutdown, input)
                     }
                 }
             }
-            shutdown => Self::unexpected_shutdown_activation(creations, shutdown, input),
+            shutdown => Self::unexpected_shutdown_startup(creations, shutdown, input),
         }
     }
 
-    fn unexpected_shutdown_activation(
+    fn unexpected_shutdown_startup(
         creations: CreationSequence,
         shutdown: ProxyShutdown<W, P>,
         startup: WorkerStartup<W, P>,
@@ -2489,14 +2493,14 @@ where
             ProxyShutdown::Starting { kind, startup } => {
                 let changed = match startup {
                     WorkerStartupShutdown::Departing { startup, departure } => {
-                        Self::rejoin_activation_departure(
+                        Self::rejoin_startup_departure(
                             startup,
                             departure.shutdown_resolved(resolution),
                         )
                     }
                     startup => Err((startup, resolution)),
                 };
-                match Self::continue_activation_shutdown(creations, kind, changed) {
+                match Self::continue_startup_shutdown(creations, kind, changed) {
                     Ok(changed) => changed,
                     Err((creations, shutdown, input)) => Self::unexpected_shutdown(
                         creations,
@@ -2762,14 +2766,11 @@ where
             ProxyShutdown::Starting { kind, startup } => {
                 let changed = match startup {
                     WorkerStartupShutdown::Departing { startup, departure } => {
-                        Self::rejoin_activation_departure(
-                            startup,
-                            departure.worker_stopped(stopped),
-                        )
+                        Self::rejoin_startup_departure(startup, departure.worker_stopped(stopped))
                     }
                     startup => Err((startup, stopped)),
                 };
-                match Self::continue_activation_shutdown(creations, kind, changed) {
+                match Self::continue_startup_shutdown(creations, kind, changed) {
                     Ok(changed) => changed,
                     Err((creations, shutdown, input)) => {
                         Self::unexpected_stop(creations, ProxyState::ShuttingDown(shutdown), input)
@@ -2932,7 +2933,7 @@ where
     <W::Birth as BirthMode>::Child: ChildCreationProduct<BehaviorAddr<W>, behavior::ChildHead>,
     EstablishedRecipient<W::Protocol>: Send,
 {
-    fn worker_activated(
+    fn settle_worker_startup(
         current: StableProxy<W, P>,
         input: WorkerStartup<W, P>,
     ) -> (StableProxy<W, P>, ProxyActions<W, P>) {
@@ -2945,9 +2946,9 @@ where
                         progress,
                         stopped,
                     },
-            }) => match Self::admit_activation(&progress, input) {
+            }) => match Self::admit_startup(&progress, input) {
                 Ok(input) => match progress {
-                    StartupProgress::WaitingForStart(startup) => Self::activation_waiting(
+                    StartupProgress::WaitingForStart(startup) => Self::startup_waiting(
                         current.creations,
                         kind,
                         worker,
@@ -2955,7 +2956,7 @@ where
                         stopped,
                         input,
                     ),
-                    StartupProgress::Running(startup) => Self::activation_running(
+                    StartupProgress::Running(startup) => Self::startup_running(
                         current.creations,
                         kind,
                         worker,
@@ -2964,7 +2965,7 @@ where
                         input,
                     ),
                 },
-                Err(input) => Self::unexpected_activation(
+                Err(input) => Self::unexpected_startup(
                     current.creations,
                     ProxyState::Starting(WorkerStart {
                         kind,
@@ -2978,13 +2979,13 @@ where
                 ),
             },
             ProxyState::ShuttingDown(shutdown) => {
-                Self::shutdown_worker_activated(current.creations, shutdown, input)
+                Self::settle_shutdown_startup(current.creations, shutdown, input)
             }
-            state => Self::unexpected_activation(current.creations, state, input),
+            state => Self::unexpected_startup(current.creations, state, input),
         }
     }
 
-    fn activation_waiting(
+    fn startup_waiting(
         creations: CreationSequence,
         kind: WorkerStartKind,
         worker: CurrentWorker<W>,
@@ -3030,7 +3031,7 @@ where
                         PreReadyFailure::StartupRefused { request, reason },
                     ),
                 },
-                Err(input) => Self::unexpected_activation(
+                Err(input) => Self::unexpected_startup(
                     creations,
                     ProxyState::Starting(WorkerStart {
                         kind,
@@ -3046,7 +3047,7 @@ where
         }
     }
 
-    fn activation_running(
+    fn startup_running(
         creations: CreationSequence,
         kind: WorkerStartKind,
         worker: CurrentWorker<W>,
@@ -3097,7 +3098,7 @@ where
                         PreReadyFailure::StartupRejected { rejection },
                     ),
                 },
-                Err(input) => Self::unexpected_activation(
+                Err(input) => Self::unexpected_startup(
                     creations,
                     ProxyState::Starting(WorkerStart {
                         kind,
@@ -3113,7 +3114,7 @@ where
         }
     }
 
-    fn unexpected_activation(
+    fn unexpected_startup(
         creations: CreationSequence,
         state: ProxyState<W, P>,
         startup: WorkerStartup<W, P>,
@@ -3222,7 +3223,7 @@ where
                             }),
                             creations,
                         },
-                        Self::begin_activation(request),
+                        Self::begin_startup(request),
                     )
                 }
             },
@@ -3311,7 +3312,7 @@ where
         )
     }
 
-    fn begin_activation(request: StartWorker<W, P>) -> ProxyActions<W, P> {
+    fn begin_startup(request: StartWorker<W, P>) -> ProxyActions<W, P> {
         Actions::send(ProxyEffects {
             worker_observations: InterpreterRequests::empty(),
             worker_initializations: InterpreterRequests::empty(),

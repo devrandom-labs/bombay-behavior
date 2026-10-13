@@ -818,7 +818,7 @@ fn settled_creation_failure_replay_returns_complete_original_input_twice() {
 }
 
 #[test]
-fn retiring_creation_failure_preserves_original_activation_and_prior_stop() {
+fn retiring_creation_failure_preserves_original_startup_and_prior_stop() {
     let initialized = search_pool(PoolFailureReaction::RetireRole)
         .initialize()
         .expect("public keyed initialization");

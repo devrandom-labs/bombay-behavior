@@ -146,7 +146,7 @@ fn proxy_unavailable_preserves_receipt_activation_prior_stop_and_replays() {
         retired: retired.clone(),
     };
     let pointer = &*plan.value as *const u8;
-    let mut proxy = StableProxy::<SearchWorker, Hydrate>::activated()
+    let mut proxy = StableProxy::<SearchWorker, Hydrate>::new()
         .initialize()
         .unwrap()
         .behavior;
@@ -218,7 +218,7 @@ fn proxy_unavailable_preserves_receipt_activation_prior_stop_and_replays() {
 #[test]
 fn shutdown_outside_proxy_preserves_unavailable_inner_lane() {
     let retired = Arc::new(AtomicUsize::new(0));
-    let mut proxy = StopOnShutdown::new(StableProxy::<SearchWorker, Hydrate>::activated())
+    let mut proxy = StopOnShutdown::new(StableProxy::<SearchWorker, Hydrate>::new())
         .initialize()
         .unwrap()
         .behavior;
@@ -245,7 +245,7 @@ fn shutdown_outside_proxy_preserves_unavailable_inner_lane() {
 #[test]
 fn shutdown_inside_proxy_preserves_unavailable_child_lane() {
     let retired = Arc::new(AtomicUsize::new(0));
-    let mut proxy = StableProxy::<StopOnShutdown<SearchWorker>, Hydrate>::activated()
+    let mut proxy = StableProxy::<StopOnShutdown<SearchWorker>, Hydrate>::new()
         .initialize()
         .unwrap()
         .behavior;

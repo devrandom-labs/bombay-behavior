@@ -134,7 +134,7 @@ where
                         observations.push(ObserveChild::new(creation));
                         proxies.extend([CreateChild::birth(
                             creation,
-                            StableProxy::<Worker, Plan>::activated(),
+                            StableProxy::<Worker, Plan>::new(),
                         )]);
                         let (witness, operation) =
                             ProxyOperation::initial(creation, member.submission);

@@ -291,7 +291,7 @@ fn awaiting_activation_proxy<P>(plan: P) -> (Active<StableProxy<Worker, P>>, Sta
 where
     P: StartupPlan,
 {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -533,7 +533,7 @@ async fn completed_replacement_follows(order: &[WorkerShutdownArrival]) {
 }
 
 fn initialization_follows(order: &[WorkerShutdownArrival]) {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -790,7 +790,7 @@ proptest! {
 #[test]
 fn stopped_proxy_retains_initialized_plan_until_behavior_retirement() {
     let drops = Arc::new(AtomicUsize::new(0));
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;

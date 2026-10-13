@@ -1323,7 +1323,7 @@ where
     }
 }
 
-pub(in crate::templates) fn accept_worker_activation<Role, W, P>(
+pub(in crate::templates) fn accept_worker_startup<Role, W, P>(
     mut workers: Vec<RetiringWorker<Role, W, P>>,
     input: WorkerStartup<W, P>,
 ) -> RetiringWorkerStartup<Role, W, P>
@@ -1575,9 +1575,7 @@ where
         }
     }
 
-    pub(in crate::templates) fn authorize_activation(
-        self,
-    ) -> Result<(Self, StartWorker<W, P>), Self> {
+    pub(in crate::templates) fn authorize_startup(self) -> Result<(Self, StartWorker<W, P>), Self> {
         let Self {
             role,
             recoveries,
@@ -1967,7 +1965,7 @@ where
         }
     }
 
-    pub(in crate::templates) fn admit_activation(
+    pub(in crate::templates) fn admit_startup(
         self,
         input: WorkerStartup<W, P>,
     ) -> Result<Self, (Self, WorkerStartup<W, P>)> {
@@ -2363,7 +2361,7 @@ pub(in crate::templates) fn ordered_creation_positions(
 }
 
 #[cfg(test)]
-mod activation_correlation {
+mod startup_correlation {
     use std::sync::Arc;
 
     use behavior::{
@@ -2483,7 +2481,7 @@ mod activation_correlation {
             }),
         };
         let input = foreign.started();
-        let admission = member.admit_activation(input);
+        let admission = member.admit_startup(input);
         drop(original);
         drop(foreign);
         let Err((returned_member, returned_input)) = admission else {
@@ -2542,7 +2540,7 @@ mod activation_correlation {
             }),
         };
         let input = foreign.start().await;
-        let admission = member.admit_activation(input);
+        let admission = member.admit_startup(input);
         drop(original);
         let Err((returned_member, returned_input)) = admission else {
             panic!("same worker identity cannot substitute a different startup attempt")
@@ -2574,7 +2572,7 @@ mod activation_correlation {
 }
 
 #[cfg(test)]
-pub(in crate::templates) mod activation_pool_correlation {
+pub(in crate::templates) mod startup_pool_correlation {
     use super::CurrentWorker;
     use crate::StopOnShutdown;
     use crate::pool::{Assignment, Completion};

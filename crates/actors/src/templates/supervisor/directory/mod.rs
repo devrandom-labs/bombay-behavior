@@ -304,7 +304,7 @@ where
         }));
         let creations = Creations::one(CreateChild::birth(
             creation,
-            StableProxy::<Worker, Plan>::activated(),
+            StableProxy::<Worker, Plan>::new(),
         ));
         Ok(Actions::new(requests, creations, Step::Continue))
     }

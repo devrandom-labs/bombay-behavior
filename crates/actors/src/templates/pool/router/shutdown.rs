@@ -671,7 +671,7 @@ where
         }
     }
 
-    pub(super) fn accept_worker_activation(
+    pub(super) fn accept_worker_startup(
         &self,
         workers: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -680,7 +680,7 @@ where
         KeyedPoolState<Role, W, P, Key, Job, WorkerResult>,
         KeyedActions<Role, W, P, Source, Diagnostics, Key, Job, WorkerResult>,
     ) {
-        match direct_worker::accept_worker_activation(workers, input) {
+        match direct_worker::accept_worker_startup(workers, input) {
             RetiringWorkerStartup::Started { workers } => {
                 self.continue_retirement(workers, deadline, None, Actions::cont())
             }

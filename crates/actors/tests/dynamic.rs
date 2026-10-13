@@ -208,7 +208,7 @@ async fn ready_search_proxy(
     Active<StableProxy<SearchWorker, SearchStartup>>,
     ProxyOutcome<SearchWorker, SearchStartup>,
 ) {
-    let initialized = StableProxy::<SearchWorker, SearchStartup>::activated()
+    let initialized = StableProxy::<SearchWorker, SearchStartup>::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized.behavior;
@@ -456,7 +456,7 @@ fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
         .pop()
         .unwrap_or_else(|| panic!("the dynamic supervisor emits one owner input"));
     assert_eq!(operation.creation(), creation);
-    let proxy = StableProxy::<SearchWorker, SearchStartup>::activated()
+    let proxy = StableProxy::<SearchWorker, SearchStartup>::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"))
         .behavior;
@@ -3305,11 +3305,11 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     let first = ids.issue().expect("first malformed creation ID exists");
     let second = ids.issue().expect("second malformed creation ID exists");
     let malformed = behavior::Creations::one(SettledItem::Unattempted(RoutedCreation::new(
-        CreateChild::birth(first, StableProxy::activated()),
+        CreateChild::birth(first, StableProxy::new()),
         31,
     )))
     .and(SettledItem::Unattempted(RoutedCreation::new(
-        CreateChild::birth(second, StableProxy::activated()),
+        CreateChild::birth(second, StableProxy::new()),
         32,
     )));
     let rejected = supervisor.on(CreationsSettled::new(CreationSettlement::Settled(
@@ -3750,7 +3750,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
     assert!(settled.creates.is_empty());
     assert!(settled.sends.proxy_operations.is_empty());
 
-    let initialized_proxy = StableProxy::<SearchWorker, SearchStartup>::activated()
+    let initialized_proxy = StableProxy::<SearchWorker, SearchStartup>::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized_proxy.behavior;

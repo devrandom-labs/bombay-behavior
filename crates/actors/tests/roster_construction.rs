@@ -341,7 +341,7 @@ fn initialization_creates_and_admits_one_ordered_proxy_batch() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("the first proxy operation is issued"));
-    let proxy = StableProxy::<SearchWorker, SearchStartup>::activated()
+    let proxy = StableProxy::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"))
         .behavior;

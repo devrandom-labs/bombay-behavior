@@ -144,7 +144,7 @@ type per activation phase. Nor does it authorize
 `Activation<Plan>::Immediate`, which would leave an unused plan type to infer;
 immediate and plan-bearing builder states must both remain inferred.
 
-The activation-authorization limit uses `ActivationPolicy`, constructed from a
+The activation-authorization limit uses `StartupLimit`, constructed from a
 plain `usize` with typed `ZeroCapacity` rejection. Its one user-facing law is
 “at most this many owner authorizations may be unresolved.” A supervisor
 conservatively records authorization when it emits the opaque proxy install
@@ -219,9 +219,10 @@ those states inferred. If not, the builder spelling is still open.
 ### Current public surface
 
 - `StableProxy<Worker, Plan>` — the behavior definition and stable service
-  identity. `StableProxy::immediate()` and `StableProxy::activated()` are its two
-  inferred constructions.
-- `ActivationPlan`, `ImmediateActivation`, and `WorkerSubmission` — application
+  identity. `StableProxy::new()` constructs the empty proxy;
+  `StableProxy::immediate()` selects the concrete no-work startup plan. Both
+  support inferred construction.
+- `StartupPlan`, `ImmediateStartup`, and `WorkerSubmission` — application
   worker definition and its concrete activation work.
 - `ProxyPhase`, `ProxyOutcome`, `InitialWorkerOutcome`, `ReplacementOutcome`,
   and `ProxyDiagnostic` — owner-observable lifecycle and diagnostic products.
@@ -249,7 +250,7 @@ emitted; no inventory shorthand may place it back in a later creation state.
   resulting behavior. The returned `FixedBuilder` is doc-hidden because ordinary
   source never names it.
 - `OrderedRoles` and `DuplicateRole` — validated non-empty unique topology.
-- `ActivationPolicy`, `Recovery`, `FailureReaction`, and `ActorDrainPolicy` —
+- `StartupLimit`, `Recovery`, `FailureReaction`, and `ActorDrainPolicy` —
   every required supervisor policy.
 - `FixedCommand` — status, capability, and shutdown management.
 - `FixedSnapshot` — read-only role/order/phase/availability projection.
@@ -323,7 +324,7 @@ erase them into a universal envelope.
 - `UnexpectedExit` — `KeepEmpty | Retire`; the complete policy after an
   unrequested exact worker stop.
 - `EntryCapacity` — the positive maximum retained keyed entries. It is distinct
-  from `ActivationPolicy`, so exchanging the two policies does not compile.
+  from `StartupLimit`, so exchanging the two policies does not compile.
 
 Request replies and durable lifecycle events use distinct protocol
 capabilities. A temporary request caller never becomes the long-lived owner by
@@ -581,7 +582,7 @@ KeyedPool ─────────────creates/assigns/observes direct
 
 | Family | Component construction | Status |
 |---|---|---|
-| Stable proxy | `StableProxy::immediate()` or `StableProxy::activated()` | selected |
+| Stable proxy | `StableProxy::immediate()` or `StableProxy::new()` | selected |
 | Fixed supervisor | `roster::new(factory, roles, roster::Config { … })`, optional lifecycle publication, then `build()` | selected |
 | Dynamic supervisor | `directory::new(directory::Config { … })` | selected |
 | FIFO pool | `queue::new(factory, roles, queue::Config { … })` | selected |

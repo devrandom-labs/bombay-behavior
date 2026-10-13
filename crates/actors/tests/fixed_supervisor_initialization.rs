@@ -576,7 +576,7 @@ fn routed_start(
 async fn ready_proxy_outcome(
     control: ProxyControl<SearchWorker, SearchStartup>,
 ) -> ProxyOutcome<SearchWorker, SearchStartup> {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized.behavior;
@@ -639,7 +639,7 @@ async fn ready_proxy_outcome(
 async fn ready_tracked_proxy_outcome(
     control: ProxyControl<TrackedWorker, TrackedActivation>,
 ) -> ProxyOutcome<TrackedWorker, TrackedActivation> {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .unwrap_or_else(|_| panic!("tracked proxy initialization is pure"));
     let mut proxy = initialized.behavior;
@@ -4488,7 +4488,7 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
             ),
         );
         assert_eq!(creation, expected_proxy);
-        let initialized = StableProxy::activated()
+        let initialized = StableProxy::new()
             .initialize()
             .unwrap_or_else(|_| panic!("proxy initialization is pure"));
         let mut proxy = initialized.behavior;
@@ -4657,7 +4657,7 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
         ),
     );
     assert_eq!(creation, proxy_id);
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized.behavior;

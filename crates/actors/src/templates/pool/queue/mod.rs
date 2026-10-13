@@ -829,7 +829,7 @@ where
         }
     }
 
-    fn continue_after_returned_activation(
+    fn continue_after_returned_startup(
         &mut self,
         operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         position: usize,
@@ -2132,7 +2132,7 @@ where
                 return;
             };
             let member = operating.members.remove(position);
-            match member.authorize_activation() {
+            match member.authorize_startup() {
                 Ok((member, request)) => {
                     operating.members.insert(position, member);
                     actions
@@ -2353,7 +2353,7 @@ where
         Err((operating, input))
     }
 
-    fn accept_activation(
+    fn accept_startup(
         &mut self,
         mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
         mut input: crate::worker::WorkerStartup<W, P>,
@@ -2373,7 +2373,7 @@ where
             .position(|member| member.worker_attempt() == Some(&input.worker()))
         {
             let member = operating.members.remove(position);
-            match member.admit_activation(input) {
+            match member.admit_startup(input) {
                 Ok(member) => {
                     let mut actions = Actions::cont();
                     match &member.state {
@@ -2583,7 +2583,7 @@ where
                         | WorkerStartupOutcome::StartRejected { .. }
                         | WorkerStartupOutcome::Ready(_)
                         | WorkerStartupOutcome::Rejected(_)) => {
-                            return Ok(self.continue_after_returned_activation(
+                            return Ok(self.continue_after_returned_startup(
                                 operating,
                                 position,
                                 role,
@@ -2642,7 +2642,7 @@ where
                         outcome @ (WorkerStartupOutcome::StartRejected { .. }
                         | WorkerStartupOutcome::Ready(_)
                         | WorkerStartupOutcome::Rejected(_)) => {
-                            return Ok(self.continue_after_returned_activation(
+                            return Ok(self.continue_after_returned_startup(
                                 operating,
                                 position,
                                 role,
@@ -3342,7 +3342,7 @@ where
         }
     }
 
-    fn accept_drain_activation(
+    fn accept_drain_startup(
         &self,
         members: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -3351,7 +3351,7 @@ where
         PoolState<Role, W, P, Job, WorkerResult>,
         FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
     ) {
-        match direct_worker::accept_worker_activation(members, input) {
+        match direct_worker::accept_worker_startup(members, input) {
             RetiringWorkerStartup::Started { workers } => {
                 self.continue_draining(workers, deadline, Actions::cont())
             }
@@ -3956,7 +3956,7 @@ where
                 }
             }
             (PoolState::Operating(operating), FifoEvent::WorkerStartupReported(input)) => {
-                match self.accept_activation(operating, input) {
+                match self.accept_startup(operating, input) {
                     Ok(result) => result,
                     Err((operating, input)) => self.diagnose(
                         PoolState::Operating(operating),
@@ -4092,7 +4092,7 @@ where
             (
                 PoolState::Draining { members, deadline },
                 FifoEvent::WorkerStartupReported(startup),
-            ) => self.accept_drain_activation(members, deadline, startup),
+            ) => self.accept_drain_startup(members, deadline, startup),
             (
                 PoolState::Draining { members, deadline },
                 FifoEvent::WorkerShutdownSettled(settled),

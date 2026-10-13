@@ -691,7 +691,7 @@ where
                 queue,
                 capacity,
             } = operating.roles.remove(position);
-            match member.authorize_activation() {
+            match member.authorize_startup() {
                 Ok((member, request)) => {
                     operating.roles.insert(
                         position,
@@ -771,7 +771,7 @@ where
         }
     }
 
-    fn accept_activation(
+    fn accept_startup(
         &mut self,
         mut operating: KeyedOperating<Role, W, P, Key, Job, WorkerResult>,
         input: WorkerStartup<W, P>,
@@ -793,7 +793,7 @@ where
             queue,
             capacity,
         } = operating.roles.remove(position);
-        match member.admit_activation(input) {
+        match member.admit_startup(input) {
             Ok(member) => {
                 let mut actions = Actions::cont();
                 match &member.state {
@@ -1193,7 +1193,7 @@ where
                 }
             }
             (KeyedPoolState::Operating(operating), KeyedEvent::WorkerStartupReported(input)) => {
-                match self.accept_activation(operating, input) {
+                match self.accept_startup(operating, input) {
                     Ok((operating, actions)) => (KeyedPoolState::Operating(operating), actions),
                     Err((operating, input)) => self.diagnose(
                         KeyedPoolState::Operating(operating),
@@ -1310,7 +1310,7 @@ where
             (
                 KeyedPoolState::Retiring { workers, deadline },
                 KeyedEvent::WorkerStartupReported(input),
-            ) => self.accept_worker_activation(workers, deadline, input),
+            ) => self.accept_worker_startup(workers, deadline, input),
             (
                 KeyedPoolState::Retiring { workers, deadline },
                 KeyedEvent::WorkerPreparationStarted(input),

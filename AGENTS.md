@@ -300,8 +300,8 @@ runtime surface.
 
 Read a module path compositionally. Parent directories supply domain
 qualification, so child filenames use the shortest unambiguous domain noun:
-`stable_proxy/worker/activation.rs`, not
-`stable_proxy/worker_activation_shutdown.rs`. Add a nested directory when it
+`proxy/worker/startup.rs`, not
+`proxy/worker_startup_shutdown.rs`. Add a nested directory when it
 groups several real sibling concerns; do not repeat the parent name in every
 child filename or encode an entire transition sentence in one filename.
 

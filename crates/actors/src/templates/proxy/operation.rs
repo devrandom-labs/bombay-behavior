@@ -2887,7 +2887,7 @@ mod tests {
     }
 
     #[test]
-    fn private_parent_input_recovery_preserves_worker_and_activation() {
+    fn private_parent_input_recovery_preserves_worker_and_startup() {
         parent_input_round_trip::<MailProxyEvent>();
         parent_input_round_trip::<MailWithOuterNotice>();
         parent_input_round_trip::<MailWithInnerNotice>();

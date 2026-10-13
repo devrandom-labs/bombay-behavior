@@ -558,7 +558,7 @@ where
 }
 
 #[cfg(test)]
-mod live_activation_correlation {
+mod live_startup_correlation {
     use super::super::binding::{BindingCapacity, BindingTable};
     use super::super::requests::KeyedRequests;
     use super::super::role::RoleCell;
@@ -568,7 +568,7 @@ mod live_activation_correlation {
     use crate::pool::{BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery};
     use crate::templates::pool::ShutdownSequence;
     use crate::templates::pool::assignment::{AcceptedJobSequence, AssignmentSequence};
-    use crate::templates::pool::worker::activation_pool_correlation::{
+    use crate::templates::pool::worker::startup_pool_correlation::{
         StartupEndpoint, StartupWorker, assert_current_worker, initialized_startup,
     };
     use crate::templates::pool::worker::{CurrentWorker, Member, MemberState, Worker, WorkerPhase};
@@ -589,7 +589,7 @@ mod live_activation_correlation {
     }
 
     #[tokio::test]
-    async fn keyed_dispatched_live_returns_the_original_foreign_activation_twice() {
+    async fn keyed_dispatched_live_returns_the_original_foreign_startup_twice() {
         let mut creations = CreationSequence::new();
         let creation = creations.issue().expect("one original worker creation");
         let worker = WorkerAttempt::issued(creation);
@@ -745,7 +745,7 @@ mod live_activation_correlation {
     }
 
     #[tokio::test]
-    async fn keyed_dispatched_stopped_returns_the_original_foreign_activation_twice() {
+    async fn keyed_dispatched_stopped_returns_the_original_foreign_startup_twice() {
         let mut creations = CreationSequence::new();
         let creation = creations.issue().expect("one original worker creation");
         let worker = WorkerAttempt::issued(creation);
@@ -907,7 +907,7 @@ mod live_activation_correlation {
     }
 
     #[tokio::test]
-    async fn keyed_activating_live_returns_the_original_foreign_activation_twice() {
+    async fn keyed_starting_live_returns_the_original_foreign_startup_twice() {
         let mut creations = CreationSequence::new();
         let creation = creations.issue().expect("one original worker creation");
         let worker = WorkerAttempt::issued(creation);
@@ -1063,7 +1063,7 @@ mod live_activation_correlation {
     }
 
     #[tokio::test]
-    async fn keyed_activating_stopped_returns_the_original_foreign_activation_twice() {
+    async fn keyed_starting_stopped_returns_the_original_foreign_startup_twice() {
         let mut creations = CreationSequence::new();
         let creation = creations.issue().expect("one original worker creation");
         let worker = WorkerAttempt::issued(creation);
@@ -1225,7 +1225,7 @@ mod live_activation_correlation {
     }
 
     #[tokio::test]
-    async fn keyed_original_activation_started_then_ready_preserves_all_lanes() {
+    async fn keyed_original_startup_started_then_ready_preserves_all_lanes() {
         let mut creations = CreationSequence::new();
         let creation = creations.issue().expect("one original worker creation");
         let worker = WorkerAttempt::issued(creation);

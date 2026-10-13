@@ -108,7 +108,7 @@ enum Role {
     Index,
 }
 #[tokio::test]
-async fn fifo_unavailable_diagnostic_preserves_exact_receipt_activation_and_prior_stop() {
+async fn fifo_unavailable_diagnostic_preserves_exact_receipt_startup_and_prior_stop() {
     for reaction in [
         PoolFailureReaction::RetireRole,
         PoolFailureReaction::StopPool,

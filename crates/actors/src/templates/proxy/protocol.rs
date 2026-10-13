@@ -240,7 +240,7 @@ where
         shutdown: Option<EstablishedShutdownResolved<W::Protocol>>,
         stopped: ChildStopped<BehaviorAddr<W>>,
     },
-    /// Activation completed, but an exact worker stop prevented availability.
+    /// Startup completed, but an exact worker stop prevented availability.
     StartupCompleted {
         readiness: P::Ready,
         stopped: ChildStopped<BehaviorAddr<W>>,
