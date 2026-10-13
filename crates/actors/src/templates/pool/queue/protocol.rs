@@ -1264,9 +1264,10 @@ mod creation_custody;
 #[cfg(test)]
 mod rejection_custody {
     use super::{FifoDiagnostic, FifoDiagnosticCause};
-    use crate::atomic::pool::worker::WorkerPreparationError;
-    use crate::atomic::pool::worker::activation_pool_correlation::ActivationWorker;
-    use crate::atomic::{ImmediateActivation, RoleName, WorkerAttempt, WorkerSource};
+    use crate::templates::pool::worker::WorkerPreparationError;
+    use crate::templates::pool::worker::activation_pool_correlation::StartupWorker;
+    use crate::templates::roster::RoleName;
+    use crate::worker::{ImmediateStartup, WorkerAttempt, WorkerSource};
     use crate::{ChildStopped, Exit};
     use behavior::CreationSequence;
     use std::sync::Arc;
@@ -1276,7 +1277,7 @@ mod rejection_custody {
         retained: Box<Vec<u64>>,
     }
 
-    impl WorkerSource<u64, ActivationWorker, ImmediateActivation> for WorkerWorkshop {
+    impl WorkerSource<u64, StartupWorker, ImmediateStartup> for WorkerWorkshop {
         type WorkerRejection = Box<Vec<u64>>;
         type SourceRejection = Box<Vec<u64>>;
     }
@@ -1297,20 +1298,16 @@ mod rejection_custody {
         let original_attempt = previous.clone();
         let at = Instant::now();
         let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
-        let diagnostic = FifoDiagnostic::<
-            _,
-            ActivationWorker,
-            ImmediateActivation,
-            WorkerWorkshop,
-            u8,
-            u16,
-        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
-            role,
-            previous,
-            stopped,
-            returned_source: Some(source),
-            error: WorkerPreparationError::WorkerRejected(reason),
-        });
+        let diagnostic =
+            FifoDiagnostic::<_, StartupWorker, ImmediateStartup, WorkerWorkshop, u8, u16>::new(
+                FifoDiagnosticCause::WorkerPreparationFailed {
+                    role,
+                    previous,
+                    stopped,
+                    returned_source: Some(source),
+                    error: WorkerPreparationError::WorkerRejected(reason),
+                },
+            );
         let diagnostic = match diagnostic.into_source_rejection() {
             Err(original) => original,
             Ok(_) => panic!("the other rejection category cannot be accepted"),
@@ -1347,20 +1344,16 @@ mod rejection_custody {
         let original_attempt = previous.clone();
         let at = Instant::now();
         let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
-        let diagnostic = FifoDiagnostic::<
-            _,
-            ActivationWorker,
-            ImmediateActivation,
-            WorkerWorkshop,
-            u8,
-            u16,
-        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
-            role,
-            previous,
-            stopped,
-            returned_source: Some(source),
-            error: WorkerPreparationError::SourceRejected(reason),
-        });
+        let diagnostic =
+            FifoDiagnostic::<_, StartupWorker, ImmediateStartup, WorkerWorkshop, u8, u16>::new(
+                FifoDiagnosticCause::WorkerPreparationFailed {
+                    role,
+                    previous,
+                    stopped,
+                    returned_source: Some(source),
+                    error: WorkerPreparationError::SourceRejected(reason),
+                },
+            );
         let diagnostic = match diagnostic.into_worker_rejection() {
             Err(original) => original,
             Ok(_) => panic!("the other rejection category cannot be accepted"),
