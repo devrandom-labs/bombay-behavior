@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.25.0...bombay-behavior-v0.26.0) - 2026-10-13
+
+### Fixed
+
+- *(macros)* derive empty birth eligibility from its capability ([#91](https://github.com/devrandom-labs/bombay-behavior/pull/91))
+
+### Breaking
+
+- Add `CreationRejection::CorrelationAlreadyRecorded` for an already recorded
+  creator-local correlation. Rejection returns the complete original request
+  before allocation; the existing binding and accepted prefix remain intact.
+  Handle this new variant in exhaustive rejection matches ([#93](https://github.com/devrandom-labs/bombay-behavior/pull/93)).
+
 ## [0.25.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.24.0...bombay-behavior-v0.25.0) - 2026-10-12
 
 ### Changed
