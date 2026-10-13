@@ -35,13 +35,13 @@ require the remaining consumers, inferred standalone roots and full gates.
 
 ## Evidence and scope
 
-Current Bombay registry contract: Behavior/Actors0.25.0, macros0.14.1,
+Current Bombay selected registry contract: Behavior/Actors0.26.0, macros0.14.2,
 Address0.3.0, Communication0.1.5, Timers0.2.0, Tokio1.53.1 and Axum0.8.9,
-with no repository patches. The selected published source is2bb4510;
-all136 downloaded Core/Actors Rust files match the reviewed release. The later
-correlation reason is locally committed as821380e and is not selected by that
-registry contract. Native correlation experiments use an explicitly private
-source copy/patch; they are not evidence of registry delivery.
+with no repository patches. Published source98983b4 matches all207 downloaded
+owner Rust files. The isolated runtime now returns complete duplicate-correlation
+rejections through that published contract. Focused current/MSRV and both profile
+proofs and all21 fresh native gates pass; remaining programme work stays open. Earlier
+0.25 and private-patch results retain their revision limits.
 
 The following table and observations preserve the initial review baseline,
 not the current dependency selection. Claims come from source and test bodies
@@ -764,11 +764,11 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
 | DX10 | WorkerFactory has bounded inferred fixed/FIFO, failure/prefix, wrapper, memory-layout and denial evidence; named RecoveryPolicy is implemented locally:104 focused owner tests pass in both profiles, all16 real replacement/refusal/wrapper executions pass on1.99/1.96; all ten final owner gates pass963 tests. Registry delivery and other families remain open. Published0.25.0 from2bb4510 accepts direct or fallible initial factories through the existing fixed/FIFO/keyed constructors. Pure custody/inverse tests,963 pinned owner tests/ten native gates and five complete downstream journeys in eight configurations pass;765 fixed assertions preserved. Before-source denials prove the owner gap | Open: final registry consumer gates, dynamic/proxy construction and measured policy syntax across all five families |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
-| DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Open: native registry adoption of published Core0.26.0; exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
+| DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
-| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Published-contract Bombay e4d2db1 nextest:571 pass, one topology-suite failure, one parent-invoked child skipped | Open: generated topology/custody and complete downstream gates |
+| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
@@ -779,7 +779,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Actual counter main98 lines, FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks |
-| DX27 | Registry0.25 owners are published from2bb4510 without patches;963 owner tests, ten Nix gates, CI and preflight pass. Bombay e197d4d passes all21 native Nix gates in2177.895 seconds, including factory migration, complete caller migrations and compiled/package guide. The eight-configuration topology/family/cold, receiving38 and HTTP5 matrices remain | Open: PR91/new correlation owner delivery and remaining final consumer/package/MSRV gates. Correlation owner821380e passes962 tests/strict Clippy/ten Nix gates. Subsequent scope/equality passes its bounded composition/aggregate and package-guide checkpoints; its full native capture passes all21 gates in2244.019 seconds (runtime source and compiled guide match8011d49) |
+| DX27 | Published Core/Actors0.26.0 and macros0.14.2 at98983b4: owner ten native gates,964 tests, archive preflight, exact CI and normal release pass. Bombay selects those registry versions without patches; actual207 owner sources match. Correlation native journey passes both compilers/profiles and its optimized defect inverse fails. Prior0.25/scope/WorkerFactory full gates retain their revision limits | Adoption passes all21 native gates in2306.566 seconds,646 optimized tests and current/MSRV debug/release archive journeys; open: unpublished policy changes and remaining final programme consumers |
 | DX28 | Initial pruning preserved; one canonical guide is included through Cargo readme metadata. Complete leaf Application/joined cleanup executes in workspace and extracted runtime/engine/macros on all eight configurations;59 local links resolve | Open: compact reconciliation, rendered external links and final documentation gates. Scope guide executes in all eight workspace/archive configurations; stale normative version prose delegates to the current selection record |
 
 ### Retained contracts and evidence
@@ -1203,6 +1203,65 @@ latest-main delivery and the remaining DX rows stay open.
 
 #### Owner failures and delivery — DX12/24/27
 
+Before Bombay registry adoption: select published Core/Actors0.26.0 and macros
+0.14.2 without source patches; exact release98983b4 AGENTS blob4996c149 matches
+the inspected instructions. The native child interpreter still allocates before
+checking its creator-local map and `record_child_creation` panics on a duplicate.
+Reuse the existing complete native birth/replacement/replay witness as a real
+Bombay integration regression before changing dependencies or production. First
+RED must expose the unavailable typed reason at0.25; after adopting0.26, repeat
+RED against the unchanged runtime to reproduce the occupied-map panic.
+Research law: fresh allocation (Agha et al.1997 pp19–20); creator-local checked
+correlation and rejection-before-allocation are derived/project policies. Caller
+syntax remains ordinary typed Creations inside the one Application topology.
+Return the unchanged RoutedCreation (ID + child + provenance + route) with
+CorrelationAlreadyRecorded, leaving the recorded child/order/address untouched.
+Accepted prefix and independent later sibling still execute and retire; a
+rejected replacement produces no successful restart. Reuse the current HashMap,
+ItemSettlement::Rejected, source rows and terminal custody. No new state, type,
+trait, bound, dependency family or capability is justified. Expected one small
+pre-allocation guard plus public contract prose, one focused integration test,
+three dependency version/checksum changes and compact evidence. Native kernel
+control sums and every subordinate phase/value stay unchanged; precheck pass.
+Post-proof count/memory/provenance/denial and full native/package gates remain
+required. Expanded change-budget authorization already applies.
+
+The retained registry guard satisfies that law with six executable lines. Actual
+RED0.25 fails only the missing-reason assertions; RED0.26 reproduces the original
+occupied-map panic. Native birth/replacement/replay, accepted prefix/independent
+suffix and joined children pass1.99/1.96 debug/release. The optimized inverse
+removes exactly this guard from an exact current-source snapshot and restores
+that panic. Workspace nextest passes645 tests with one existing subprocess-only
+skip. All207 downloaded owner Rust files match published98983b4. Workspace161
+and fuzz29 registry identities change only the selected owner records.
+
+Post-checkpoint: CreationBinding remains Starting | RetiringStartup | Established |
+Rejected | StartupRejected. Starting owns original startup/task/control; retirement
+owns raw or projected task/reply; established owns endpoint/control/task/join;
+startup refusal owns explicit kind/address/route and all original failure lanes;
+Rejected owns no installed child. StartupRetirementCustody remains Raw | Projection
+and ChildAuthority remains Established | Unavailable. The complete actor Driver and
+all24 ActorRetirement alternatives stay unchanged; these subordinate values select
+no actor transition. No retained field or public spelling is added. Creation file
+lines2780→2789, lexical matches16→16, conditionals8→9, arms47→47, enums3→3,
+public declarations3→3; children file1066 lines, matches10, conditionals18, arms31,
+enums3 and public declarations16 remain byte-identical. Production+11/-2/net9
+(including contract prose); focused integration test+288/-0 with60 assertions.
+No arrival history, duplicated cause, false cardinality, nested transition authority,
+semantic boolean, caller structural path or extra bound is introduced. Reuse the
+original map rather than a second registry. Cross-check fresh-allocation law,
+creator-local correlation, explicit provenance, total creation settlement and
+Driver D-INIT/D-SETTLE/D-RETIRE: bounded model disposition pass. Final adoption passes all21 native gates in2306.566 seconds,646 optimized
+workspace tests and one existing ignored subprocess-only case. All459 captured
+source hashes match. Real package correlation/fixed/FIFO and guide journeys pass
+on1.99/1.96 debug/release; final archives retain61 byte-identical production Rust
+files and195 current other Rust files, with only three owner changes among140
+registry dependencies. Engine/Bombay macros are actual extracted unpublished
+packages, so no registry-only Bombay claim follows. Retained memory fields are
+unchanged; no unmeasured heap or speed improvement is claimed. No signing/disk
+waiver applies; Linux and x86_64 Darwin are unexecuted.
+
+
 Creation correlation is not actor identity or replacement provenance. Duplicate
 correlation returns the original request with a typed reason; accepted creation
 prefix and later suffix remain independent. Owner821380e/PR93 passes962 tests,
@@ -1218,8 +1277,8 @@ CI38350983446 passes. Under the existing authorization PR97 merged as98983b4;
 main CI38352087285 and normal Release38353101159 both pass. Registry publication
 is independently confirmed: Core/Actors0.26.0 and macros0.14.2 are available,
 un-yanked, with all three GitHub release tags. The exhaustive
-CreationRejection::CorrelationAlreadyRecorded break is documented. Bombay’s
-committed registry graph still uses0.25.0/0.14.1; downstream adoption is separate.
+CreationRejection::CorrelationAlreadyRecorded break is documented. Bombay’s current adoption selects0.26.0/0.14.2 without patches; complete
+downstream verification is separate from this owner publication.
 
 FIFO diagnostic consumption at owner d287f85 is a derived ownership projection.
 `into_worker_rejection` returns original Arc role, previous WorkerAttempt,
@@ -1273,3 +1332,29 @@ failed candidates remain in DEAD_ENDS.md only where their falsifier matters.
 The evidence appendix owns initial source/catalogue coverage; canonical user
 syntax belongs to Bombay's compiled user-facing guide. Network transport,
 durability, stable global identity and deployment are separately deferred.
+
+Verification binding correction (pre-edit): current Driver/template evidence still
+names0.23/d69f992b while the actual graph selects0.26/98983b4. Existing hard-coded
+manifest tests check mutual agreement but cannot detect that stale selection.
+Add a focused test comparing the existing manifest owner versions with locked,
+offline Cargo metadata; its expected RED is0.23 versus0.26. Then rebind manifest
+versions/revision, existing assertions and current guidance to the verified207
+registry sources. Reuse serde_json and the existing pinned Cargo; add no dependency,
+production type, state, bound or protocol. Check the template inventory against
+actual0.26 owners before retaining its new binding. The interrupted first Nix run
+is not a completed gate; rerun all21 checks after this correction.
+
+Binding RED fails for the intended0.23/0.26 mismatch. After updating the two
+manifest headers/evidence revisions, all ten Engine manifest tests pass; the new
+test also compares the template owner against the locked package graph. Actual
+registry source confirms every45 template and19 capability spelling/source and
+evidence location; this is presence/inventory evidence, not a new exhaustive
+semantic proof. Versions now name98983b4 and0.26/0.14.2. Test-only+46/-5/net41,
+with no production/API change. The first full run was deliberately interrupted
+after426.907 seconds for this correction; no pass is inferred. Final all21 gates
+execute the corrected metadata and original law mutations. Current/MSRV manifest
+suites pass all ten tests in both profiles. Bombay adoption is committed as3a80848 on its isolated feature branch.
+Whole adoption: production+11/-2/net9;
+tests+334/-5/net329; public types+0/-0; no new production module or retained field.
+The captured source predates only this final prose update; runtime, tests, locks,
+manifest bindings, compiled guide and gates remain byte-identical.
