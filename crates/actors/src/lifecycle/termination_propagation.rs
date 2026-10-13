@@ -548,6 +548,16 @@ mod tests {
             Ok(Exit::SupervisionFailed(
                 SupervisionFailureReason::WorkerFactoryRejected,
             )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::StableChildCreationRejected(
+                    CreationRejection::CorrelationAlreadyRecorded,
+                ),
+            )),
+            Ok(Exit::SupervisionFailed(
+                SupervisionFailureReason::WorkerCreationRejected(
+                    CreationRejection::CorrelationAlreadyRecorded,
+                ),
+            )),
             Err(Crash::Failed),
             Err(Crash::EnvironmentFailed),
             Err(Crash::CapabilityFailed),
@@ -691,7 +701,7 @@ mod tests {
     proptest! {
         #[test]
         fn arbitrary_terminal_payload_is_conserved_once(
-            tag in 0_u8..23,
+            tag in 0_u8..25,
             peer in any::<u64>(),
             admitted in any::<usize>(),
             requested in any::<usize>(),
@@ -728,6 +738,8 @@ mod tests {
                 19 => Err(Crash::EnvironmentFailed),
                 20 => Err(Crash::Panicked),
                 21 => Err(Crash::Cancelled),
+                23 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::StableChildCreationRejected(CreationRejection::CorrelationAlreadyRecorded))),
+                24 => Ok(Exit::SupervisionFailed(SupervisionFailureReason::WorkerCreationRejected(CreationRejection::CorrelationAlreadyRecorded))),
                 _ => Err(Crash::CapabilityFailed),
             };
             let worker = worker_creation();

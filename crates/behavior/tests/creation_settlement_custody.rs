@@ -1,8 +1,9 @@
 use behavior::{
     Address, Behavior, BehaviorActed, ChildCreationOutcome, ChildCreationSettled, ChildHead,
-    CreateChild, CreationSequence, Creations, EndpointAddress, EventLayer, Here, InjectEvent,
-    ItemSettlement, Never, NoBirths, NoSends, Protocol, RecoverEvent, RoutedCreation, SettledItem,
-    User, UserEvent,
+    ClassifySettlement, CreateChild, CreationKind, CreationRejection, CreationSequence, Creations,
+    EndpointAddress, EstablishedCreation, EventLayer, Here, InjectEvent, ItemSettlement, Never,
+    NoBirths, NoSends, Protocol, RecoverEvent, RoutedCreation, SettledItem, SettlementStatus, User,
+    UserEvent,
 };
 
 mod installed_control;
@@ -117,6 +118,52 @@ fn worker_definition_is_not_cloneable() {
     fn requires_owned(_: Worker) {}
 
     requires_owned(Worker(17));
+}
+
+#[test]
+fn recorded_correlation_returns_the_complete_birth_or_replacement_request() {
+    let mut sequence = CreationSequence::new();
+    let previous = sequence.issue().expect("the prior creation ID exists");
+    let id = sequence.issue().expect("the requested creation ID exists");
+    for kind in [CreationKind::Birth, CreationKind::replacement(previous)] {
+        let child: Box<[u8]> = Box::from([17, 23]);
+        let allocation = child.as_ptr();
+        let creation = match kind {
+            CreationKind::Birth => CreateChild::<RuntimeAddr, _>::birth(id, child),
+            CreationKind::Replacement { previous } => CreateChild::replacement(id, previous, child),
+        };
+        let request = RoutedCreation::new(creation, 7);
+        let settlement: ItemSettlement<_, (), _, Never> = ItemSettlement::Rejected {
+            item: request,
+            reason: CreationRejection::CorrelationAlreadyRecorded,
+        };
+        assert_eq!(settlement.settlement_status(), SettlementStatus::Rejected);
+        let ItemSettlement::Rejected { item, reason } = settlement else {
+            panic!("recorded correlation retains the original staged request");
+        };
+        assert_eq!(reason, CreationRejection::CorrelationAlreadyRecorded);
+        let (request, route) = item.into_parts();
+        let (returned_id, child, returned_kind) = request.into_parts();
+        assert_eq!(returned_id, id);
+        assert_eq!(returned_kind, kind);
+        assert_eq!(route, 7);
+        assert_eq!(child.as_ref(), [17, 23]);
+        assert_eq!(child.as_ptr(), allocation);
+
+        let rejected = EstablishedCreation::<Worker, ChildHead>::rejected(id, kind, reason);
+        let EstablishedCreation::Rejected {
+            id: returned_id,
+            kind: returned_kind,
+            reason,
+            ..
+        } = rejected
+        else {
+            panic!("a recorded correlation is never an established actor");
+        };
+        assert_eq!(returned_id, id);
+        assert_eq!(returned_kind, kind);
+        assert_eq!(reason, CreationRejection::CorrelationAlreadyRecorded);
+    }
 }
 
 #[test]
