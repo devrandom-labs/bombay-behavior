@@ -1556,3 +1556,8 @@ remain unexecuted. Caller argument counts directory6→1, router10→4 and autom
 pool recovery4→2; no runtime allocation or throughput improvement is claimed.
 Registry publication, delivery documentation pruning and the other open DX rows
 remain required; the persistent programme goal remains active.
+Delivery draft: PR98 (https://github.com/devrandom-labs/bombay-behavior/pull/98)
+atbc7718c on codex/devx-policies. Exact-head CI/API audit/mutation checks are running;
+the published API break is labelled semver-breaking. Keep it draft while carrying
+the existing16-document pruning and compact requirement evidence into delivery.
+No merge/publication approval is requested before that reviewable work is complete.
