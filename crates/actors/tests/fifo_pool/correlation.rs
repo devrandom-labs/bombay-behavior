@@ -1,4 +1,5 @@
 use super::recovery::{SearchDesk, SearchRecoverySource};
+use behavior_actors::pool::RecoveryPolicy;
 use core::ops::ControlFlow;
 use std::convert::Infallible;
 
@@ -323,10 +324,12 @@ async fn delayed_recoveries_select_the_exact_role_and_timer() {
         Interruption::Fail,
         PoolRecovery::permanent(
             super::SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -954,9 +957,11 @@ async fn non_source_diagnostic_returns_original_shared_role_and_reason() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup")),
             recovery: PoolRecovery::permanent(
                 SearchRecoverySource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(0),
             interruption: Interruption::Fail,

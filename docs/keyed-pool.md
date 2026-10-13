@@ -87,6 +87,20 @@ the factory, prepared prefix, refused role and reason, and untouched suffix.
 Successful construction consumes the configuration into existing flat actor
 storage; it introduces no runtime allocation or extra policy state.
 
+Permanent and transient recovery keep the source separate from their named
+choices:
+
+```rust,ignore
+behavior_actors::pool::PoolRecovery::permanent(
+    source,
+    behavior_actors::pool::RecoveryPolicy { limit, delay, failure },
+)
+```
+
+`transient(source, policy)` has the same shape. `temporary(failure)` needs no
+source. Construction performs no work and retains the existing flat policy
+storage. The limit, release timing and failure reaction remain independent.
+
 The initial factory is construction-only. `KeyedConstructionRejected` embeds
 the shared `InitialWorkerRejection` described in
 [`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md) beside the original selector and `Config`. Permanent and transient recovery use

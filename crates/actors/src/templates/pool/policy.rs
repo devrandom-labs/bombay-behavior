@@ -43,6 +43,22 @@ pub enum PoolFailureReaction {
     StopPool,
 }
 
+/// Simultaneous choices for recovering one direct-worker role.
+///
+/// The worker source and eligibility belong to [`PoolRecovery`]. Construction
+/// consumes this product into its existing flat fields, performs no work and
+/// changes no restart budget. A pool recovers individual roles; it needs no
+/// coordinated restart strategy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecoveryPolicy {
+    /// Bound replacement workers admitted in one sliding window.
+    pub limit: RestartLimit,
+    /// Select when an admitted replacement may be released.
+    pub delay: RestartRelease,
+    /// Select what happens if preparation or restart admission fails.
+    pub failure: PoolFailureReaction,
+}
+
 /// Direct-worker eligibility, source, restart policy, and failure reaction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PoolRecovery<Source> {
@@ -78,12 +94,12 @@ pub enum PoolRecovery<Source> {
 impl<Source> PoolRecovery<Source> {
     /// Recover after every exact worker stop.
     #[must_use]
-    pub const fn permanent(
-        source: Source,
-        limit: RestartLimit,
-        release: RestartRelease,
-        failure: PoolFailureReaction,
-    ) -> Self {
+    pub const fn permanent(source: Source, policy: RecoveryPolicy) -> Self {
+        let RecoveryPolicy {
+            limit,
+            delay: release,
+            failure,
+        } = policy;
         Self::Permanent {
             source,
             limit,
@@ -94,12 +110,12 @@ impl<Source> PoolRecovery<Source> {
 
     /// Recover only after abnormal worker stops.
     #[must_use]
-    pub const fn transient(
-        source: Source,
-        limit: RestartLimit,
-        release: RestartRelease,
-        failure: PoolFailureReaction,
-    ) -> Self {
+    pub const fn transient(source: Source, policy: RecoveryPolicy) -> Self {
+        let RecoveryPolicy {
+            limit,
+            delay: release,
+            failure,
+        } = policy;
         Self::Transient {
             source,
             limit,

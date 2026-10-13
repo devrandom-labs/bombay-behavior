@@ -95,6 +95,20 @@ the pool later receives only `EstablishedShutdownResolved<P>` and the exact
 `ChildStopped` input. Direct-worker state must not duplicate the emitted request
 or import StableProxy's private worker state.
 
+Permanent and transient recovery keep the source separate from their named
+choices:
+
+```rust,ignore
+behavior_actors::pool::PoolRecovery::permanent(
+    source,
+    behavior_actors::pool::RecoveryPolicy { limit, delay, failure },
+)
+```
+
+`transient(source, policy)` has the same shape. `temporary(failure)` needs no
+source. Construction performs no work and retains the existing flat policy
+storage. The limit, release timing and failure reaction remain independent.
+
 The initial factory is consumed only while constructing the all-or-none roster.
 Its rejection is the shared `InitialWorkerRejection` described in
 [`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md), embedded in

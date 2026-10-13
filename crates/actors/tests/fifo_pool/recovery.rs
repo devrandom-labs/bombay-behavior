@@ -1,3 +1,4 @@
+use behavior_actors::pool::RecoveryPolicy;
 use core::ops::ControlFlow;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -93,9 +94,11 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                     Interruption::Fail,
                     PoolRecovery::permanent(
                         FallibleSearchSource,
-                        RestartLimit::new(3, Duration::from_secs(10)),
-                        RestartRelease::immediate(),
-                        failure,
+                        RecoveryPolicy {
+                            limit: RestartLimit::new(3, Duration::from_secs(10)),
+                            delay: RestartRelease::immediate(),
+                            failure: failure,
+                        },
                     ),
                 )
                 .await;
@@ -249,9 +252,11 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup")),
             recovery: PoolRecovery::permanent(
                 SearchRecoverySource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(0),
             interruption: Interruption::Fail,

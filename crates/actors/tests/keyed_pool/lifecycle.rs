@@ -1,3 +1,4 @@
+use behavior_actors::pool::RecoveryPolicy;
 use behavior_actors::pool::router;
 use core::ops::ControlFlow;
 use std::cell::RefCell;
@@ -236,9 +237,11 @@ async fn concurrent_worker_failures_claim_one_recovery_source() {
             startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(4),
             bindings: BindingCapacity::new(8)
@@ -380,10 +383,12 @@ async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
             startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
@@ -567,10 +572,12 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -705,9 +712,11 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                         .unwrap_or_else(|_| panic!("one startup is valid")),
                     recovery: PoolRecovery::permanent(
                         FallibleSearchSource,
-                        RestartLimit::new(1, Duration::from_secs(10)),
-                        RestartRelease::immediate(),
-                        failure,
+                        RecoveryPolicy {
+                            limit: RestartLimit::new(1, Duration::from_secs(10)),
+                            delay: RestartRelease::immediate(),
+                            failure: failure,
+                        },
                     ),
                     backlog: BacklogCapacity::new(1),
                     bindings: BindingCapacity::new(1)
@@ -920,9 +929,11 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -1000,9 +1011,11 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -1106,10 +1119,12 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -1257,10 +1272,12 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -1960,9 +1977,11 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
             startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(1),
             bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
@@ -2311,9 +2330,11 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
                 startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
                 recovery: PoolRecovery::permanent(
                     FallibleSearchSource,
-                    RestartLimit::new(3, Duration::from_secs(10)),
-                    RestartRelease::immediate(),
-                    PoolFailureReaction::RetireRole,
+                    RecoveryPolicy {
+                        limit: RestartLimit::new(3, Duration::from_secs(10)),
+                        delay: RestartRelease::immediate(),
+                        failure: PoolFailureReaction::RetireRole,
+                    },
                 ),
                 backlog: BacklogCapacity::new(1),
                 bindings: BindingCapacity::new(1)
@@ -2440,10 +2461,13 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
                 startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
                 recovery: PoolRecovery::permanent(
                     SearchSource,
-                    RestartLimit::new(3, Duration::from_secs(10)),
-                    RestartRelease::constant(Duration::from_secs(1))
-                        .unwrap_or_else(|error| panic!("positive release delay rejected: {error}")),
-                    PoolFailureReaction::RetireRole,
+                    RecoveryPolicy {
+                        limit: RestartLimit::new(3, Duration::from_secs(10)),
+                        delay: RestartRelease::constant(Duration::from_secs(1)).unwrap_or_else(
+                            |error| panic!("positive release delay rejected: {error}"),
+                        ),
+                        failure: PoolFailureReaction::RetireRole,
+                    },
                 ),
                 backlog: BacklogCapacity::new(1),
                 bindings: BindingCapacity::new(1)

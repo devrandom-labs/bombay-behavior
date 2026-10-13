@@ -469,6 +469,12 @@ pool::router::new(factory, roles, selector, router::Config {
 })
 ```
 
+Automatic pool recovery uses `PoolRecovery::permanent(source, pool::RecoveryPolicy {
+limit, delay, failure })` or `transient(source, policy)`. Temporary recovery takes
+only its failure reaction and requires no source. Pools do not require a fixed-
+supervisor restart strategy. The source and named choices are consumed into the
+existing flat recovery representation; no policy wrapper is retained.
+
 The callable factory exists only during construction; the successful
 `KeyedPool` does not store it. `KeyedConstructionRejected.workers` is the shared
 `InitialWorkerRejection`, beside the original selector and `Config`. The selector is

@@ -14,7 +14,9 @@ pub use assignment::{AssignWorker, AssignmentReceipt};
 pub use assignment::{Assignment, Completion, JobId, SubmissionId};
 #[doc(hidden)]
 pub use customer::CustomerDelivery;
-pub use policy::{BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery};
+pub use policy::{
+    BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery, RecoveryPolicy,
+};
 pub(in crate::templates) use policy::{PoolRecoveryState, WorkerRecoveryDecision};
 pub(in crate::templates) use shutdown::ShutdownSequence;
 

@@ -1,4 +1,5 @@
 use behavior::{Here, InterpretationProgress};
+use behavior_actors::pool::RecoveryPolicy;
 mod installed_control;
 
 macro_rules! start_worker_preparation {
@@ -462,9 +463,11 @@ where
         Interruption::Fail,
         PoolRecovery::permanent(
             source,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -580,10 +583,12 @@ async fn scheduling_search_replacement_with_drain(
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
         actor_drain,
     )
@@ -1023,9 +1028,11 @@ async fn preparation_start_commits_before_shutdown_and_late_worker_return() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -1347,10 +1354,12 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::constant(Duration::from_secs(1))
-                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(0),
             interruption: Interruption::Fail,
@@ -1814,9 +1823,11 @@ async fn forced_retirement_keeps_worker_source_owned_by_its_pending_request() {
         Interruption::Fail,
         PoolRecovery::permanent(
             TrackedSearchSource(Arc::clone(&source_drops)),
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
         ActorDrainPolicy::RetireActorGraphAfter {
             deadline: Duration::from_secs(2),
@@ -2491,9 +2502,11 @@ async fn permanent_pre_ready_stop_requests_replacement_only_after_initialization
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(0),
             interruption: Interruption::Fail,
@@ -2608,9 +2621,11 @@ async fn initialization_failure_stops_the_worker_before_permanent_recovery() {
             startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
             recovery: PoolRecovery::permanent(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
             backlog: BacklogCapacity::new(0),
             interruption: Interruption::Fail,
@@ -3542,9 +3557,11 @@ async fn permanent_worker_stop_emits_one_affine_source_request() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3581,9 +3598,11 @@ async fn transient_normal_stop_retires_without_preparation() {
             Interruption::Fail,
             PoolRecovery::transient(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
         )
         .await;
@@ -3646,9 +3665,11 @@ async fn transient_abnormal_stop_emits_one_affine_source_request() {
             Interruption::Fail,
             PoolRecovery::transient(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
         )
         .await;
@@ -3676,9 +3697,11 @@ async fn concurrent_stops_do_not_duplicate_the_affine_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3715,9 +3738,11 @@ async fn accepted_preparation_starts_one_immediate_replacement() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3762,9 +3787,11 @@ async fn returned_source_prepares_the_first_waiting_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3824,10 +3851,12 @@ async fn delayed_replacement_waits_for_schedule_and_timer() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3893,9 +3922,11 @@ async fn restart_limit_denial_retires_the_role_without_creation() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(0, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(0, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3939,9 +3970,11 @@ async fn restart_limit_keeps_a_charge_at_the_inclusive_cutoff() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(1, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(1, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4042,10 +4075,12 @@ async fn rejected_restart_schedule_retires_without_creation() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4103,9 +4138,11 @@ async fn rejected_preparation_restores_source_for_next_waiting_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4153,9 +4190,11 @@ async fn rejected_preparation_preserves_source_and_reason_custody() {
         Interruption::Fail,
         PoolRecovery::permanent(
             TrackedSearchSource(Arc::clone(&source_drops)),
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4195,9 +4234,11 @@ async fn worker_preparation_rejection_retires_the_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4232,9 +4273,11 @@ async fn preparation_failure_can_stop_the_pool_and_drain_surviving_workers() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::StopPool,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::StopPool,
+            },
         ),
     )
     .await;
@@ -4265,9 +4308,11 @@ async fn corrupt_preparation_retires_the_role_without_losing_its_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4305,9 +4350,11 @@ async fn unattempted_preparation_retires_the_role_without_losing_its_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4336,9 +4383,11 @@ async fn foreign_preparation_cannot_advance_another_pool() {
     let recovery = || {
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         )
     };
     let ReadySearchPool {
