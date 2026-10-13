@@ -705,7 +705,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
-| DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
+| DX09 | ActorExt now exposes the exact registry FinalizeOnShutdown through finalize_on_shutdown. Missing-method RED precedes the change; final sends, both timer orders, real expiry and native panic custody pass current/MSRV debug/release | Open: remaining real decoration audit, significant-order inversion and final downstream/repository gates; no broad migration yet |
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
@@ -971,9 +971,53 @@ failures, never permanent waivers; preserve other AI/global caches.
 
 Existing authorizations cover expanded cumulative budget (2026-10-09) and the
 single topology declaration (2026-10-11); do not ask again for those scopes.
-PR98 remains draft until existing16-document pruning and this concise owning
-record are integrated and gates/CI pass on its new exact head. New policy merge/
-publication needs concrete review and authorization; existing PR-specific release
-approvals do not authorize it. No selected open criterion is closed by this
+PR98 is ready at186266e: the16-document pruning is integrated, all ten native
+gates and exact-head API/CI/mutation checks pass. Its merge/publication question
+is pending; existing PR-specific release approvals do not authorize it. No selected open criterion is closed by this
 record. Networking, durability, global identity and deployment remain explicit
 DX23 deferrals; all other open rows continue under the persistent active goal.
+
+
+#### Final shutdown decoration — DX09/21
+
+Expose the existing FinalizeOnShutdown owner through
+`actor.finalize_on_shutdown(reaction)`. This is API composition policy, not a
+new actor law: the infallible pure reaction emits its complete sends/creations;
+the existing wrapper forces normal stop. Reuse ShutdownReaction, ShutdownEvent,
+FinalizeOnShutdown, event injection, native delivery and retirement. Preserve
+call-order precedence: an outer stop wrapper consumes shutdown before inner
+finalization; outer finalization executes its own reaction. No I/O in the fold,
+new wrapper/type/trait/bound/default/dependency/state or interpreter change.
+The existing real FinalizationProbe publishes Ready then Finalized; its complete
+application/join test becomes the missing-method RED before production. Add
+focused two-order effect/next-state comparison and real refusal/retirement
+coverage before other callers migrate. Ordinary domain actor state and all
+runtime/control sums stay unchanged. Expected actor_ext.rs plus focused tests/
+compiled guidance, roughly net15 production lines, zero public types and one
+method; source/before counts captured before edits. Cross-check pure transition,
+shutdown precedence, initialization/effect ordering and exact terminal custody.
+The pre-edit native journey fails E0599. The retained method returns that exact
+registry owner: production+11/-2/net9, tests+194/-6/net188, public types+0/-0, methods6→7, owner module1→1 (79→88 lines).
+There are no new control states, subordinate sums, transition branches or
+runtime fields. Continue/Goto/Stop and all24 retirement alternatives remain at
+their existing owners. Existing FinalizationProbe retains only its current
+optional known observer, needed for the final notice; no arrival history,
+repeated cause, false cardinality, semantic boolean or nested transition owner
+is introduced. Cross-check shutdown.rs, the owner's complete sends/creation
+regression, canonical transition/composition laws and native retirement.
+Provenance and aggregate-drift disposition: pass for this bounded API addition.
+
+The real journey and both timer orders retain final notices, shutdown replay
+and complete joined retirement. Zero-duration expiry follows its own policy;
+native reaction panic retains the original payload, actor and independent
+work result without a fictional successful settlement. Ignoring the reaction
+makes the optimized panic regression fail Normal versus Panicked; exact source
+restoration passes. Two shutdown layers retain distinct occurrences and deny
+inferred shutdown with E0283; no path annotation or capability widening is
+retained. Current1.99 runs all20 focused tests and six reviewed compile fixtures
+in both profiles;1.96 runs19 native cases in both profiles, and its six separate
+compile cases preserve expected acceptance/error categories. Two existing1.96
+snapshot renderings differ, so their exact-snapshot run remains failed; no
+snapshot is blessed. Strict workspace/all-target/all-feature lint passes.
+Full final-source Nix and extracted-package gates remain pending; DX09 also
+retains its remaining decoration and significant-order acceptance.
