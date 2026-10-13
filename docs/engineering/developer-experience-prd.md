@@ -1026,5 +1026,10 @@ denies ambiguous duplicate shutdown lanes. The final optimized workspace suite p
 subprocess-only skip in70.539 seconds; strict all-target/all-feature lint and
 both MSRV profiles pass. The prior650-case cold run took620.293 seconds; these
 differ in cache state and do not establish a performance improvement. Full
-final-source Nix and extracted-package gates remain pending; DX09 retains its
-remaining decoration audit.
+final-source Nix gates remain pending. Extracted Engine/macros/runtime preserve
+all61 production Rust files, the complete guide and run_with.rs byte-for-byte.
+Their four current/MSRV debug/release runs pass21/21/20/20 cases in92.801 seconds;
+current compiler runs all six exact fixture snapshots per profile. Only the two
+unpublished extracted owner packages are patched; all144 other registry records
+remain unchanged. No registry publication is claimed. DX09 retains its remaining
+decoration audit.
