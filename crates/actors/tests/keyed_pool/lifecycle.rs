@@ -11,13 +11,20 @@ use behavior::{
     CreationSettlement, CreationsSettled, InterpreterFault, ItemSettlement, MessageProtocol, Never,
     Recipient, SettledItem, Step,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationPolicy, ActorDrainPolicy, AssignWorker, BacklogCapacity,
-    BindingCapacity, CustomerDelivery, DiagnosticAction, DiagnosticDisposition,
-    ImmediateActivation, Interruption, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent,
-    KeyedOutcome, KeyedQueuedReturnReason, OrderedRoles, PoolFailureReaction, PoolRecovery,
-    RestartLimit, RestartRelease, SubmissionId, WorkerInitializationOutcome, WorkerSource,
-    WorkerSubmission, keyed,
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome,
+    KeyedQueuedReturnReason, keyed,
+};
+use behavior_actors::pool::{
+    AssignWorker, BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction,
+    PoolRecovery, SubmissionId,
+};
+use behavior_actors::worker::WorkerSource;
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, RestartLimit, RestartRelease, StartupLimit, StartupPlan,
+    WorkerInitializationOutcome, WorkerSubmission,
 };
 use behavior_actors::{
     Activate, ChildStopped, Crash, EstablishedShutdownResolved, Exit, ScheduleAfterRejection,
@@ -52,11 +59,11 @@ impl Drop for HeldActivation {
     }
 }
 
-impl ActivationPlan for HeldActivation {
+impl StartupPlan for HeldActivation {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move {
@@ -95,7 +102,7 @@ fn construction_rejection_returns_the_worker_roster() {
         },
         roles,
         |_: &Account| WorkerRole::Search,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(4),
         BindingCapacity::new(4).unwrap_or_else(|_| panic!("four bindings are valid")),
@@ -120,7 +127,7 @@ fn construction_rejection_returns_the_worker_roster() {
 #[derive(Debug, Eq, PartialEq)]
 struct SearchSource;
 
-impl WorkerSource<SearchRole, SearchWorker, ImmediateActivation> for SearchSource {
+impl WorkerSource<SearchRole, SearchWorker, ImmediateStartup> for SearchSource {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -142,7 +149,7 @@ enum SearchSourceRejection {
 
 struct FallibleSearchSource;
 
-impl WorkerSource<SearchRole, SearchWorker, ImmediateActivation> for FallibleSearchSource {
+impl WorkerSource<SearchRole, SearchWorker, ImmediateStartup> for FallibleSearchSource {
     type WorkerRejection = SearchWorkerRejection;
     type SourceRejection = SearchSourceRejection;
 }
@@ -222,7 +229,7 @@ async fn concurrent_worker_failures_claim_one_recovery_source() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -254,20 +261,20 @@ async fn concurrent_worker_failures_claim_one_recovery_source() {
             .pop()
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(started.sends.worker_preparations.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.sends.worker_preparations.is_empty());
     }
@@ -363,7 +370,7 @@ async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -395,21 +402,21 @@ async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
             .pop()
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let activation_started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(activation_started.creates.is_empty());
         assert!(activation_started.sends.worker_observations.is_empty());
         assert!(activation_started.sends.worker_initializations.is_empty());
-        assert!(activation_started.sends.worker_activations.is_empty());
+        assert!(activation_started.sends.worker_startups.is_empty());
         assert!(activation_started.sends.customer_outcomes.is_empty());
         assert!(
             activation_started
@@ -424,12 +431,12 @@ async fn nonzero_role_delayed_recovery_requires_the_exact_schedule_and_timer() {
         assert!(activation_started.sends.worker_shutdowns.is_empty());
         assert!(activation_started.sends.diagnostics.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.creates.is_empty());
         assert!(ready.sends.worker_observations.is_empty());
         assert!(ready.sends.worker_initializations.is_empty());
-        assert!(ready.sends.worker_activations.is_empty());
+        assert!(ready.sends.worker_startups.is_empty());
         assert!(ready.sends.customer_outcomes.is_empty());
         assert!(ready.sends.binding_replies.as_slice().is_empty());
         assert!(ready.sends.worker_assignments.is_empty());
@@ -539,7 +546,7 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
     let pool = keyed(
         move |_: &SearchRole| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 initial_activation
                     .take()
@@ -548,7 +555,7 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         },
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -584,20 +591,20 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         .pop()
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
     assert!(started.creates.is_empty());
     let ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(ready.creates.is_empty());
     assert_eq!(initial_drops.load(Ordering::SeqCst), 1);
@@ -615,9 +622,12 @@ async fn shutdown_cancels_a_replacement_waiting_for_its_restart_timer() {
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("worker failure requests one preparation"));
-    let ControlFlow::Break(prepared) = start_keyed_preparation!(pool, preparation).accept(
-        WorkerSubmission::activated(SearchWorker, HeldActivation(Arc::clone(&replacement_drops))),
-    ) else {
+    let ControlFlow::Break(prepared) =
+        start_keyed_preparation!(pool, preparation).accept(WorkerSubmission::with_startup(
+            SearchWorker,
+            HeldActivation(Arc::clone(&replacement_drops)),
+        ))
+    else {
         panic!("one role completes one worker preparation")
     };
     let scheduling = pool
@@ -680,7 +690,7 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                 prepare_worker,
                 roles,
                 |_: &Account| SearchRole::Primary,
-                ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+                StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
                 PoolRecovery::permanent(
                     FallibleSearchSource,
                     RestartLimit::new(1, Duration::from_secs(10)),
@@ -715,21 +725,21 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                 .pop()
                 .unwrap_or_else(|| panic!("created worker awaits initialization"));
             let initialized = pool
-                .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+                .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
                 .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-            let activation = initialized
+            let startup = initialized
                 .sends
-                .worker_activations
+                .worker_startups
                 .into_requests()
                 .pop()
-                .unwrap_or_else(|| panic!("initialized worker begins activation"));
+                .unwrap_or_else(|| panic!("initialized worker begins startup"));
             let activation_started = pool
-                .on(activation.started())
-                .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+                .on(startup.started())
+                .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
             assert!(activation_started.creates.is_empty());
             assert!(activation_started.sends.worker_preparations.is_empty());
             let ready = pool
-                .on(activation.activate().await)
+                .on(startup.start().await)
                 .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
             assert!(ready.creates.is_empty());
             assert!(ready.sends.worker_preparations.is_empty());
@@ -779,7 +789,7 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                 .transition(event)
                 .unwrap_or_else(|error| panic!("worker preparation input failed: {error}"));
             assert!(acted.sends.worker_initializations.is_empty());
-            assert!(acted.sends.worker_activations.is_empty());
+            assert!(acted.sends.worker_startups.is_empty());
             assert!(acted.sends.customer_outcomes.is_empty());
             assert!(acted.sends.binding_replies.as_slice().is_empty());
             assert!(acted.sends.worker_assignments.is_empty());
@@ -809,22 +819,22 @@ async fn preparation_failures_and_restart_denial_obey_the_unavailable_role_polic
                         .pop()
                         .unwrap_or_else(|| panic!("replacement awaits initialization"));
                     let initialized = pool
-                        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+                        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
                         .unwrap_or_else(|error| {
                             panic!("replacement initialization failed: {error}")
                         });
-                    let activation = initialized
+                    let startup = initialized
                         .sends
-                        .worker_activations
+                        .worker_startups
                         .into_requests()
                         .pop()
-                        .unwrap_or_else(|| panic!("replacement begins activation"));
-                    let started = pool.on(activation.started()).unwrap_or_else(|error| {
-                        panic!("replacement activation start failed: {error}")
+                        .unwrap_or_else(|| panic!("replacement begins startup"));
+                    let started = pool.on(startup.started()).unwrap_or_else(|error| {
+                        panic!("replacement startup start failed: {error}")
                     });
                     assert!(started.creates.is_empty());
                     let ready = pool
-                        .on(activation.activate().await)
+                        .on(startup.start().await)
                         .unwrap_or_else(|error| panic!("replacement readiness failed: {error}"));
                     assert!(ready.creates.is_empty());
 
@@ -892,7 +902,7 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -927,20 +937,20 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
         .pop()
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
     assert!(activation_started.creates.is_empty());
     let ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(ready.creates.is_empty());
 
@@ -970,7 +980,7 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
         prepare_worker,
         foreign_roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -1005,20 +1015,20 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
         .pop()
         .unwrap_or_else(|| panic!("foreign worker awaits initialization"));
     let foreign_initialized = foreign_pool
-        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("foreign worker initialization failed: {error}"));
     let foreign_activation = foreign_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("foreign worker begins activation"));
+        .unwrap_or_else(|| panic!("foreign worker begins startup"));
     let foreign_started = foreign_pool
         .on(foreign_activation.started())
-        .unwrap_or_else(|error| panic!("foreign activation start failed: {error}"));
+        .unwrap_or_else(|error| panic!("foreign startup start failed: {error}"));
     assert!(foreign_started.creates.is_empty());
     let foreign_ready = foreign_pool
-        .on(foreign_activation.activate().await)
+        .on(foreign_activation.start().await)
         .unwrap_or_else(|error| panic!("foreign worker readiness failed: {error}"));
     assert!(foreign_ready.creates.is_empty());
     let foreign_stopped = foreign_pool
@@ -1056,7 +1066,7 @@ async fn shutdown_retains_an_inflight_worker_preparation_until_it_returns() {
     assert!(returned.creates.is_empty());
     assert!(returned.sends.worker_observations.is_empty());
     assert!(returned.sends.worker_initializations.is_empty());
-    assert!(returned.sends.worker_activations.is_empty());
+    assert!(returned.sends.worker_startups.is_empty());
     assert!(returned.sends.customer_outcomes.is_empty());
     assert!(returned.sends.binding_replies.as_slice().is_empty());
     assert!(returned.sends.worker_assignments.is_empty());
@@ -1074,7 +1084,7 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -1110,20 +1120,20 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
         .pop()
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
     assert!(activation_started.creates.is_empty());
     let ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(ready.creates.is_empty());
 
@@ -1181,7 +1191,7 @@ async fn rejected_restart_schedule_retires_the_role_and_returns_its_queue() {
     assert!(rejected.creates.is_empty());
     assert!(rejected.sends.worker_observations.is_empty());
     assert!(rejected.sends.worker_initializations.is_empty());
-    assert!(rejected.sends.worker_activations.is_empty());
+    assert!(rejected.sends.worker_startups.is_empty());
     assert!(rejected.sends.binding_replies.as_slice().is_empty());
     assert!(rejected.sends.worker_assignments.is_empty());
     assert!(rejected.sends.worker_preparations.is_empty());
@@ -1223,7 +1233,7 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -1259,20 +1269,20 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
         .pop()
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
     assert!(activation_started.creates.is_empty());
     let ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(ready.creates.is_empty());
 
@@ -1323,7 +1333,7 @@ async fn shutdown_retains_an_inflight_restart_schedule_until_it_returns() {
     assert!(returned.creates.is_empty());
     assert!(returned.sends.worker_observations.is_empty());
     assert!(returned.sends.worker_initializations.is_empty());
-    assert!(returned.sends.worker_activations.is_empty());
+    assert!(returned.sends.worker_startups.is_empty());
     assert!(returned.sends.customer_outcomes.is_empty());
     assert!(returned.sends.binding_replies.as_slice().is_empty());
     assert!(returned.sends.worker_assignments.is_empty());
@@ -1344,7 +1354,7 @@ async fn ready_worker_drains_only_its_role_queue() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(4),
         BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
@@ -1416,7 +1426,7 @@ async fn ready_worker_drains_only_its_role_queue() {
         prepare_worker,
         foreign_roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(4),
         BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
@@ -1440,10 +1450,10 @@ async fn ready_worker_drains_only_its_role_queue() {
         .pop()
         .unwrap_or_else(|| panic!("foreign primary awaits initialization"));
     let rejected_initialization = pool
-        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("foreign initialization input failed: {error}"));
     assert_eq!(rejected_initialization.sends.diagnostics.len(), 1);
-    assert!(rejected_initialization.sends.worker_activations.is_empty());
+    assert!(rejected_initialization.sends.worker_startups.is_empty());
 
     let foreign_replica = foreign_pool
         .on(commit_worker_creation(foreign_workers.remove(0)))
@@ -1455,41 +1465,41 @@ async fn ready_worker_drains_only_its_role_queue() {
         .pop()
         .unwrap_or_else(|| panic!("foreign replica awaits initialization"));
     let foreign_replica = foreign_pool
-        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(foreign_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("foreign replica initialization failed: {error}"));
     let foreign_activation = foreign_replica
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("foreign replica begins activation"));
+        .unwrap_or_else(|| panic!("foreign replica begins startup"));
     let rejected_activation = pool
         .on(foreign_activation.started())
-        .unwrap_or_else(|error| panic!("foreign activation input failed: {error}"));
+        .unwrap_or_else(|error| panic!("foreign startup input failed: {error}"));
     assert_eq!(rejected_activation.sends.diagnostics.len(), 1);
     assert!(rejected_activation.sends.worker_assignments.is_empty());
 
     let replica_initialized = pool
-        .on(replica_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(replica_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("replica initialization failed: {error}"));
     let replica_activation = replica_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized replica begins activation"));
+        .unwrap_or_else(|| panic!("initialized replica begins startup"));
     let duplicate_start = replica_activation.started();
     let replica_started = pool
         .on(replica_activation.started())
-        .unwrap_or_else(|error| panic!("replica activation start failed: {error}"));
+        .unwrap_or_else(|error| panic!("replica startup start failed: {error}"));
     assert!(replica_started.sends.worker_assignments.is_empty());
     let duplicate_start = pool
         .on(duplicate_start)
-        .unwrap_or_else(|error| panic!("duplicate activation input failed: {error}"));
+        .unwrap_or_else(|error| panic!("duplicate startup input failed: {error}"));
     assert_eq!(duplicate_start.sends.diagnostics.len(), 1);
     assert!(duplicate_start.sends.worker_assignments.is_empty());
     let replica_ready = pool
-        .on(replica_activation.activate().await)
+        .on(replica_activation.start().await)
         .unwrap_or_else(|error| panic!("replica readiness failed: {error}"));
     assert!(replica_ready.sends.worker_assignments.is_empty());
 
@@ -1503,20 +1513,20 @@ async fn ready_worker_drains_only_its_role_queue() {
         .pop()
         .unwrap_or_else(|| panic!("created primary awaits initialization"));
     let primary_initialized = pool
-        .on(primary_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(primary_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("primary initialization failed: {error}"));
     let primary_activation = primary_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized primary begins activation"));
+        .unwrap_or_else(|| panic!("initialized primary begins startup"));
     let primary_started = pool
         .on(primary_activation.started())
-        .unwrap_or_else(|error| panic!("primary activation start failed: {error}"));
+        .unwrap_or_else(|error| panic!("primary startup start failed: {error}"));
     assert!(primary_started.sends.worker_assignments.is_empty());
     let primary_ready = pool
-        .on(primary_activation.activate().await)
+        .on(primary_activation.start().await)
         .unwrap_or_else(|error| panic!("primary readiness failed: {error}"));
     let queued_assignment = primary_ready
         .sends
@@ -1787,7 +1797,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
     let pool = keyed(
         move |_: &SearchRole| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 HeldActivation(Arc::clone(&prepared_drops)),
             ))
@@ -1797,7 +1807,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(1),
         BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
@@ -1826,14 +1836,14 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
         .pop()
         .unwrap_or_else(|| panic!("the primary worker awaits initialization"));
     let primary_initialized = pool
-        .on(primary_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(primary_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("primary initialization failed: {error}"));
     let primary_activation = primary_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("the primary worker occupies activation capacity"));
+        .unwrap_or_else(|| panic!("the primary worker occupies startup capacity"));
 
     let replica_created = pool
         .on(commit_worker_creation(replica_creation))
@@ -1845,9 +1855,9 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
         .pop()
         .unwrap_or_else(|| panic!("the replica worker awaits initialization"));
     let replica_waiting = pool
-        .on(replica_initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(replica_initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("replica initialization failed: {error}"));
-    assert!(replica_waiting.sends.worker_activations.is_empty());
+    assert!(replica_waiting.sends.worker_startups.is_empty());
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
 
     let retiring = pool
@@ -1855,7 +1865,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
         .unwrap_or_else(|error| panic!("keyed shutdown failed: {error}"));
     let shutdowns = retiring.sends.worker_shutdowns.into_requests();
     assert_eq!(shutdowns.len(), 2);
-    assert!(retiring.sends.worker_activations.is_empty());
+    assert!(retiring.sends.worker_startups.is_empty());
     assert!(retiring.sends.worker_preparations.is_empty());
     assert!(retiring.creates.is_empty());
     assert!(matches!(retiring.become_, Step::Continue));
@@ -1863,12 +1873,12 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
 
     let started = pool
         .on(primary_activation.started())
-        .unwrap_or_else(|error| panic!("primary activation start failed: {error}"));
-    assert!(started.sends.worker_activations.is_empty());
+        .unwrap_or_else(|error| panic!("primary startup start failed: {error}"));
+    assert!(started.sends.worker_startups.is_empty());
     let ready = pool
-        .on(primary_activation.activate().await)
-        .unwrap_or_else(|error| panic!("primary activation completion failed: {error}"));
-    assert!(ready.sends.worker_activations.is_empty());
+        .on(primary_activation.start().await)
+        .unwrap_or_else(|error| panic!("primary startup completion failed: {error}"));
+    assert!(ready.sends.worker_startups.is_empty());
     assert_eq!(activation_drops.load(Ordering::SeqCst), 1);
 
     for shutdown in shutdowns {
@@ -1877,7 +1887,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
                 shutdown.id,
             ))
             .unwrap_or_else(|error| panic!("worker shutdown settlement failed: {error}"));
-        assert!(settled.sends.worker_activations.is_empty());
+        assert!(settled.sends.worker_startups.is_empty());
         assert!(matches!(settled.become_, Step::Continue));
     }
     let primary_stopped = pool
@@ -1895,7 +1905,7 @@ async fn shutdown_retains_a_worker_waiting_for_activation_capacity() {
             Instant::now(),
         ))
         .unwrap_or_else(|error| panic!("replica exit failed: {error}"));
-    assert!(replica_stopped.sends.worker_activations.is_empty());
+    assert!(replica_stopped.sends.worker_startups.is_empty());
     assert_eq!(replica_stopped.sends.diagnostics.len(), 1);
     assert!(matches!(replica_stopped.become_, Step::Stop(_)));
     assert_eq!(activation_drops.load(Ordering::SeqCst), 1);
@@ -1916,7 +1926,7 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::permanent(
             SearchSource,
             RestartLimit::new(3, Duration::from_secs(10)),
@@ -1948,21 +1958,21 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
             .pop()
             .unwrap_or_else(|| panic!("the created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("the initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("the initialized worker begins startup"));
         let started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(started.creates.is_empty());
         assert!(started.sends.worker_preparations.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.creates.is_empty());
         assert!(ready.sends.worker_preparations.is_empty());
@@ -2007,7 +2017,7 @@ async fn shutdown_cancels_a_worker_waiting_for_the_recovery_source() {
         .transition(KeyedEvent::WorkerPreparationReturned(prepared))
         .unwrap_or_else(|error| panic!("retired worker preparation failed: {error}"));
     assert!(returned.sends.worker_preparations.is_empty());
-    assert!(returned.sends.worker_activations.is_empty());
+    assert!(returned.sends.worker_startups.is_empty());
     assert!(returned.sends.worker_shutdowns.is_empty());
     assert!(returned.creates.is_empty());
     assert!(matches!(returned.become_, Step::Stop(_)));
@@ -2024,7 +2034,7 @@ async fn shutdown_keeps_pending_workers_until_the_runtime_returns_them() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(4),
         BindingCapacity::new(8).unwrap_or_else(|_| panic!("eight bindings are valid")),
@@ -2109,7 +2119,7 @@ async fn initialization_stop_completes_the_worker_shutdown_join() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(1),
         BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -2171,7 +2181,7 @@ async fn activation_start_remains_a_receipt_during_shutdown() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(1),
         BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -2201,14 +2211,14 @@ async fn activation_start_remains_a_receipt_during_shutdown() {
         .pop()
         .unwrap_or_else(|| panic!("the created worker awaits initialization"));
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("the initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("the initialized worker begins startup"));
 
     let retiring = pool
         .receive(RuntimeAddr(7), KeyedCommand::shutdown())
@@ -2220,14 +2230,14 @@ async fn activation_start_remains_a_receipt_during_shutdown() {
         .pop()
         .unwrap_or_else(|| panic!("the activating worker receives one shutdown"));
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
     assert!(matches!(started.become_, Step::Continue));
 
     let ready = pool
-        .on(activation.activate().await)
-        .unwrap_or_else(|error| panic!("activation completion failed: {error}"));
+        .on(startup.start().await)
+        .unwrap_or_else(|error| panic!("startup completion failed: {error}"));
     assert_eq!(ready.sends.diagnostics.len(), 1);
     assert!(matches!(ready.become_, Step::Continue));
     let settled = pool
@@ -2258,7 +2268,7 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+            StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             PoolRecovery::permanent(
                 FallibleSearchSource,
                 RestartLimit::new(3, Duration::from_secs(10)),
@@ -2293,20 +2303,20 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
             .pop()
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(started.creates.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.creates.is_empty());
 
@@ -2358,7 +2368,7 @@ async fn shutdown_retains_every_failed_worker_preparation_return() {
         assert!(terminal.creates.is_empty());
         assert!(terminal.sends.worker_observations.is_empty());
         assert!(terminal.sends.worker_initializations.is_empty());
-        assert!(terminal.sends.worker_activations.is_empty());
+        assert!(terminal.sends.worker_startups.is_empty());
         assert!(terminal.sends.customer_outcomes.is_empty());
         assert!(terminal.sends.binding_replies.as_slice().is_empty());
         assert!(terminal.sends.worker_assignments.is_empty());
@@ -2384,7 +2394,7 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+            StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
             PoolRecovery::permanent(
                 SearchSource,
                 RestartLimit::new(3, Duration::from_secs(10)),
@@ -2420,20 +2430,20 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
             .pop()
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(started.creates.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.creates.is_empty());
 
@@ -2492,7 +2502,7 @@ async fn shutdown_retains_every_failed_restart_schedule_return() {
         assert!(terminal.creates.is_empty());
         assert!(terminal.sends.worker_observations.is_empty());
         assert!(terminal.sends.worker_initializations.is_empty());
-        assert!(terminal.sends.worker_activations.is_empty());
+        assert!(terminal.sends.worker_startups.is_empty());
         assert!(terminal.sends.customer_outcomes.is_empty());
         assert!(terminal.sends.binding_replies.as_slice().is_empty());
         assert!(terminal.sends.worker_assignments.is_empty());
@@ -2520,7 +2530,7 @@ async fn shutdown_settlement_and_worker_exit_are_order_independent() {
                 prepare_worker,
                 roles,
                 |_: &Account| SearchRole::Primary,
-                ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+                StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
                 PoolRecovery::temporary(PoolFailureReaction::RetireRole),
                 BacklogCapacity::new(1),
                 BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
@@ -2550,20 +2560,20 @@ async fn shutdown_settlement_and_worker_exit_are_order_independent() {
                 .pop()
                 .unwrap_or_else(|| panic!("created worker awaits initialization"));
             let initialized = pool
-                .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+                .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
                 .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-            let activation = initialized
+            let startup = initialized
                 .sends
-                .worker_activations
+                .worker_startups
                 .into_requests()
                 .pop()
-                .unwrap_or_else(|| panic!("initialized worker begins activation"));
+                .unwrap_or_else(|| panic!("initialized worker begins startup"));
             let started = pool
-                .on(activation.started())
-                .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+                .on(startup.started())
+                .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
             assert!(started.creates.is_empty());
             let ready = pool
-                .on(activation.activate().await)
+                .on(startup.start().await)
                 .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
             assert!(ready.creates.is_empty());
 
@@ -2613,7 +2623,7 @@ async fn shutdown_settlement_and_worker_exit_are_order_independent() {
             assert!(terminal.creates.is_empty());
             assert!(terminal.sends.worker_observations.is_empty());
             assert!(terminal.sends.worker_initializations.is_empty());
-            assert!(terminal.sends.worker_activations.is_empty());
+            assert!(terminal.sends.worker_startups.is_empty());
             assert!(terminal.sends.customer_outcomes.is_empty());
             assert!(terminal.sends.binding_replies.as_slice().is_empty());
             assert!(terminal.sends.worker_assignments.is_empty());
@@ -2635,21 +2645,21 @@ async fn shutdown_settlement_and_worker_exit_are_order_independent() {
 #[test]
 fn forced_retirement_keeps_a_pending_worker_until_the_pool_is_dropped() {
     let activation_drops = Arc::new(AtomicUsize::new(0));
-    let mut activation = Some(HeldActivation(Arc::clone(&activation_drops)));
+    let mut startup = Some(HeldActivation(Arc::clone(&activation_drops)));
     let roles = OrderedRoles::new(SearchRole::Primary, [])
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
     let pool = keyed(
         move |_: &SearchRole| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
-                activation
+                startup
                     .take()
                     .unwrap_or_else(|| panic!("one role prepares one worker")),
             ))
         },
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
+        StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(0),
         BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),

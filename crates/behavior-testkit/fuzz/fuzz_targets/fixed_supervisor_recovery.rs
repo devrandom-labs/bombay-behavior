@@ -2,10 +2,10 @@
 
 use core::convert::Infallible;
 
-use behavior_actors::atomic::{
-    CapabilityResult, FixedCommand, FixedSupervisor, ImmediateActivation, PrepareWorkers,
-    ProxyOutcome, Recovery, StableProxy, WorkerAttempt, WorkerSource,
-};
+use behavior_actors::proxy::{ProxyOutcome, StableProxy};
+use behavior_actors::supervisor::roster::{CapabilityResult, FixedCommand, FixedSupervisor, Recovery};
+use behavior_actors::worker::{PrepareWorkers, WorkerSource};
+use behavior_actors::worker::{ImmediateStartup, WorkerAttempt};
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
     ActionItemResult, ChildReport, MessageProtocol, NoSends, Recipient, SettledItem, Step,
@@ -16,19 +16,19 @@ use crate::stable_proxy::{RuntimeAddress, Worker, worker_stopped};
 
 pub(crate) struct SearchRecovery<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     pub(crate) supervisor:
-        Active<FixedSupervisor<Role, Worker, ImmediateActivation, Source, Infallible, Infallible>>,
-    pub(crate) proxy: Active<StableProxy<Worker, ImmediateActivation>>,
+        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>>,
+    pub(crate) proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     pub(crate) proxy_id: behavior_core::CreationId,
     pub(crate) previous: WorkerAttempt,
-    pub(crate) preparation: PrepareWorkers<Source, Role, Worker, ImmediateActivation>,
+    pub(crate) preparation: PrepareWorkers<Source, Role, Worker, ImmediateStartup>,
 }
 
 pub(crate) fn search_recovery<Source>(recovery: Recovery<Source>) -> SearchRecovery<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     let ready = ready_supervisor(recovery);
     let mut supervisor = ready.supervisor;
@@ -74,11 +74,11 @@ where
 
 pub(crate) fn search_capability<Source>(
     supervisor: &mut Active<
-        FixedSupervisor<Role, Worker, ImmediateActivation, Source, Infallible, Infallible>,
+        FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>,
     >,
 ) -> CapabilityResult<Role, Worker>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     let queried = supervisor
         .receive(

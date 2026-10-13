@@ -1,12 +1,17 @@
 use std::collections::BTreeMap;
 
 use behavior::{MessageProtocol, Recipient};
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, BacklogCapacity, BindingCapacity, BindingExpectation,
-    BindingRejection, BindingReply, BindingRequestId, CustomerDelivery, DiagnosticDisposition,
-    Interruption, KeyedAdmissionRejection, KeyedCommand, KeyedOutcome, OrderedRoles,
-    PoolFailureReaction, PoolRecovery, SubmissionId, keyed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, BindingExpectation, BindingRejection, BindingReply, BindingRequestId,
+    KeyedAdmissionRejection, KeyedCommand, KeyedOutcome, keyed,
 };
+use behavior_actors::pool::{
+    BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction, PoolRecovery,
+    SubmissionId,
+};
+use behavior_actors::worker::{OrderedRoles, StartupLimit};
 use behavior_actors::{Activate, ReplyDelivery, ReplyRoute};
 
 use super::domain::{Account, RuntimeAddr, SearchJob, SearchResult, SearchRole, prepare_worker};
@@ -103,7 +108,7 @@ fn keyed_construction_and_commands_need_only_domain_types() {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(8),
         BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
@@ -483,7 +488,7 @@ fn rejected_submission_keeps_both_customer_capabilities() {
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+        StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
         PoolRecovery::temporary(PoolFailureReaction::RetireRole),
         BacklogCapacity::new(1),
         BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),

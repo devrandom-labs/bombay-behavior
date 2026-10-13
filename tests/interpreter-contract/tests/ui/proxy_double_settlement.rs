@@ -1,5 +1,6 @@
 use behavior::{Behavior, BehaviorAddr, EndpointAddress, InterpretationProgress};
-use behavior_actors::atomic::{ActivationPlan, ProxyControlAdmission, ProxyOperation, StableProxy};
+use behavior_actors::worker::{StartupPlan};
+use behavior_actors::proxy::{ProxyControlAdmission, ProxyOperation, StableProxy};
 
 // Borrowed polling can repeat; the same original private authority cannot enter two owners.
 fn reuse_original_proxy_operation<Source, Worker, Plan, Host>(
@@ -7,7 +8,7 @@ fn reuse_original_proxy_operation<Source, Worker, Plan, Host>(
     host: &mut Host,
 ) where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
     Host: ProxyControlAdmission<Worker, Plan>,

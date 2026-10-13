@@ -5,12 +5,21 @@ use behavior::{
     EndpointAddress, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
     Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, Completion,
-    DiagnosticAction, DiagnosticDisposition, FifoCommand, FifoOutcome, InitialWorkerOutcome,
-    Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery, ProxyControl, ProxyDiagnostic,
-    ProxyOutcome, ProxyPhase, StableProxy, SubmissionId, WorkerCreationRejection,
-    WorkerInitializationOutcome, WorkerStartResult, WorkerSubmission, fifo,
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::pool::queue::{FifoCommand, FifoOutcome};
+use behavior_actors::pool::{
+    Assignment, BacklogCapacity, Completion, Interruption, PoolFailureReaction, PoolRecovery,
+    SubmissionId,
+};
+use behavior_actors::proxy::{
+    InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyOutcome, ProxyPhase, StableProxy,
+    WorkerStartResult,
+};
+use behavior_actors::worker::{
+    OrderedRoles, StartupLimit, StartupPlan, WorkerCreationRejection, WorkerInitializationOutcome,
+    WorkerSubmission,
 };
 use behavior_actors::{Activate as _, ChildStopped, Exit, StopOnShutdown};
 use std::convert::Infallible;
@@ -77,10 +86,10 @@ impl Drop for Hydrate {
         self.retired.fetch_add(1, Ordering::SeqCst);
     }
 }
-impl ActivationPlan for Hydrate {
+impl StartupPlan for Hydrate {
     type Ready = u8;
     type Rejection = Never;
-    fn activate(self) -> impl core::future::Future<Output = Result<u8, Never>> + Send {
+    fn start(self) -> impl core::future::Future<Output = Result<u8, Never>> + Send {
         async move { Ok(*self.value + 1) }
     }
 }
@@ -114,19 +123,19 @@ fn assert_rejected(
                                     id: returned,
                                     kind: returned_kind,
                                 },
-                            activation,
+                            startup,
                             stopped: Some(stopped),
                         },
                 },
         } => {
             assert_eq!(returned, id);
             assert_eq!(returned_kind, kind);
-            assert_eq!(&*activation.value as *const u8, pointer);
+            assert_eq!(&*startup.value as *const u8, pointer);
             assert_eq!(stopped.child, id);
             assert_eq!(stopped.outcome, Ok(Exit::Normal));
             assert_eq!(stopped.at, at);
         }
-        _ => panic!("complete original receipt, activation, and prior stop must coexist"),
+        _ => panic!("complete original receipt, startup, and prior stop must coexist"),
     }
 }
 #[test]
@@ -182,7 +191,7 @@ fn proxy_unavailable_preserves_receipt_activation_prior_stop_and_replays() {
     assert_eq!(proxy.phase(), ProxyPhase::EmptyInitial);
     assert!(returned.creates.is_empty());
     assert!(returned.sends.worker_initializations.is_empty());
-    assert!(returned.sends.worker_activations.is_empty());
+    assert!(returned.sends.worker_startups.is_empty());
     assert!(returned.sends.worker_shutdowns.is_empty());
     assert_eq!(retired.load(Ordering::SeqCst), 0);
     assert_rejected(
@@ -275,9 +284,9 @@ async fn fifo_unavailable_uses_only_configured_failure_reaction() {
     ] {
         let retired = Arc::new(AtomicUsize::new(0));
         let plans = retired.clone();
-        let declared = fifo(
+        let declared = queue::new(
             move |role: &Role| {
-                Ok::<_, Never>(WorkerSubmission::activated(
+                Ok::<_, Never>(WorkerSubmission::with_startup(
                     SearchWorker,
                     Hydrate {
                         value: Box::new(match role {
@@ -289,12 +298,14 @@ async fn fifo_unavailable_uses_only_configured_failure_reaction() {
                 ))
             },
             OrderedRoles::new(Role::Search, [Role::Index]).unwrap(),
-            ActivationPolicy::new(2).unwrap(),
-            PoolRecovery::temporary(reaction),
-            BacklogCapacity::new(4),
-            Interruption::Fail,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::<Infallible>::terminate(),
+            queue::Config {
+                startup: StartupLimit::new(2).unwrap(),
+                recovery: PoolRecovery::temporary(reaction),
+                backlog: BacklogCapacity::new(4),
+                interruption: Interruption::Fail,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+            },
         )
         .unwrap_or_else(|_| panic!("valid role declarations construct FIFO"));
         let initialized = declared.initialize().unwrap();
@@ -328,22 +339,22 @@ async fn fifo_unavailable_uses_only_configured_failure_reaction() {
             .pop()
             .unwrap();
         let activating = pool
-            .on(init.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(init.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap();
-        let activation = activating
+        let startup = activating
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
             .unwrap();
-        let started = pool.on(activation.started()).unwrap();
-        let ready = pool.on(activation.activate().await).unwrap();
+        let started = pool.on(startup.started()).unwrap();
+        let ready = pool.on(startup.start().await).unwrap();
         for actions in [started, ready] {
             assert!(actions.creates.is_empty());
             assert!(matches!(actions.become_, Step::Continue));
             assert!(actions.sends.worker_observations.is_empty());
             assert!(actions.sends.worker_initializations.is_empty());
-            assert!(actions.sends.worker_activations.is_empty());
+            assert!(actions.sends.worker_startups.is_empty());
             assert!(actions.sends.customer_outcomes.as_slice().is_empty());
             assert!(actions.sends.worker_assignments.is_empty());
             assert!(actions.sends.worker_preparations.is_empty());
@@ -363,7 +374,7 @@ async fn fifo_unavailable_uses_only_configured_failure_reaction() {
         assert!(returned.creates.is_empty());
         assert!(returned.sends.worker_preparations.is_empty());
         assert!(returned.sends.restart_schedules.is_empty());
-        assert!(returned.sends.worker_activations.is_empty());
+        assert!(returned.sends.worker_startups.is_empty());
         assert_eq!(retired.load(Ordering::SeqCst), 1);
         let diagnostic = match returned.sends.diagnostics.into_requests().pop().unwrap() {
             DiagnosticAction::Terminal { diagnostic } => diagnostic,

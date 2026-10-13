@@ -1,0 +1,403 @@
+//! Worker startup authorized by successful initialization.
+
+use std::sync::Arc;
+
+use core::marker::PhantomData;
+
+use behavior::{
+    ActionItem, Behavior, BehaviorAddr, EndpointAddress, EstablishedRecipient, Here,
+    InterpretationProgress, InterpreterRequest, ItemSettlement, Never, ReturnsToEmitter,
+    finish_item, prepare_item,
+};
+
+use super::initialization::{InitializationAttempt, StartupPermit};
+use super::{StartupPlan, WorkerAttempt};
+
+/// The original worker/plan-typed startup correlation issued with a permit.
+///
+/// Readiness and rejection are absent from this owner. Its original private
+/// issuer remains inside StartWorker. A caller cannot fabricate a grant,
+/// but into_parts returns the original permit and supports reissuing a request.
+/// This owner does not impose a one-mint-ever policy on that affine permit.
+pub struct WorkerStartupGrant<W, P> {
+    worker: WorkerAttempt,
+    token: Arc<()>,
+    worker_plan: PhantomData<fn() -> (W, P)>,
+}
+
+impl<W, P> Clone for WorkerStartupGrant<W, P> {
+    fn clone(&self) -> Self {
+        Self {
+            worker: self.worker.clone(),
+            token: Arc::clone(&self.token),
+            worker_plan: PhantomData,
+        }
+    }
+}
+
+impl<W, P> WorkerStartupGrant<W, P> {
+    fn issued(worker: &WorkerAttempt) -> Self {
+        Self {
+            worker: worker.clone(),
+            token: Arc::new(()),
+            worker_plan: PhantomData,
+        }
+    }
+
+    /// Original worker correlation carried by this grant.
+    #[must_use]
+    pub fn worker(&self) -> WorkerAttempt {
+        self.worker.clone()
+    }
+}
+
+impl<W, P> PartialEq for WorkerStartupGrant<W, P> {
+    fn eq(&self, other: &Self) -> bool {
+        self.worker == other.worker && Arc::ptr_eq(&self.token, &other.token)
+    }
+}
+
+impl<W, P> Eq for WorkerStartupGrant<W, P> {}
+
+impl<W, P> WorkerStartupGrant<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    /// Form the existing input from the original concrete plan's acquired reply.
+    ///
+    /// The independent correlation stays owned, as when started() produces a
+    /// correlated input. Acceptance remains the actor's existing policy.
+    /// The receiving actor applies its existing correlation policy. Resolving a
+    /// reply does not consume the initialization permit.
+    #[must_use]
+    pub fn resolve(&self, reply: Result<P::Ready, P::Rejection>) -> WorkerStartup<W, P> {
+        WorkerStartup {
+            worker: self.worker(),
+            startup: self.clone(),
+            outcome: match reply {
+                Ok(readiness) => WorkerStartupOutcome::Ready(readiness),
+                Err(rejection) => WorkerStartupOutcome::Rejected(rejection),
+            },
+            worker_type: PhantomData,
+        }
+    }
+}
+
+/// Exact reason startup work was not admitted by its owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartupRejection {
+    OwnerStopped,
+}
+
+/// One startup request consuming an initialized worker permit and plan.
+///
+/// ```compile_fail,E0382
+/// fn duplicate<W, P>(request: behavior_actors::worker::StartWorker<W, P>)
+/// where
+///     W: behavior::Behavior,
+///     behavior::BehaviorAddr<W>: behavior::EndpointAddress,
+///     P: behavior_actors::worker::StartupPlan,
+/// {
+///     let _accepted = request;
+///     let _duplicate = request;
+/// }
+/// ```
+#[must_use = "startup work must be admitted or returned whole"]
+pub struct StartWorker<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    startup: WorkerStartupGrant<W, P>,
+    permit: StartupPermit<W>,
+    plan: P,
+}
+
+impl<W, P> StartWorker<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    /// Consume the successful initialization authority and concrete plan.
+    #[must_use]
+    pub fn new(plan: P, permit: StartupPermit<W>) -> Self {
+        Self {
+            startup: WorkerStartupGrant::issued(permit.worker_evidence()),
+            permit,
+            plan,
+        }
+    }
+
+    /// Transfer original permit/plan and its exact typed grant independently.
+    #[must_use]
+    pub fn into_parts(self) -> (StartupPermit<W>, P, WorkerStartupGrant<W, P>) {
+        let Self {
+            startup,
+            permit,
+            plan,
+        } = self;
+        (permit, plan, startup)
+    }
+
+    /// Exact installed worker target carried by the permit.
+    #[must_use]
+    pub fn target(&self) -> EstablishedRecipient<W::Protocol> {
+        self.permit.target()
+    }
+
+    /// Worker creation correlation authorized by the consumed permit.
+    #[must_use]
+    pub fn worker(&self) -> WorkerAttempt {
+        self.permit.worker()
+    }
+
+    /// Initialization correlation authorized by the consumed permit.
+    #[must_use]
+    pub fn initialization(&self) -> InitializationAttempt {
+        self.permit.initialization()
+    }
+
+    pub(in super::super) fn attempt(&self) -> WorkerStartupGrant<W, P> {
+        self.startup.clone()
+    }
+
+    /// Produce the input Bombay must admit before polling the plan.
+    #[must_use]
+    pub fn started(&self) -> WorkerStartup<W, P> {
+        WorkerStartup {
+            worker: self.worker(),
+            startup: self.startup.clone(),
+            outcome: WorkerStartupOutcome::Started,
+            worker_type: PhantomData,
+        }
+    }
+
+    /// Return a request that its owner could not admit.
+    #[must_use]
+    pub fn start_rejected(self, reason: StartupRejection) -> WorkerStartup<W, P> {
+        let worker = self.worker();
+        let startup = self.startup.clone();
+        WorkerStartup {
+            worker,
+            startup,
+            outcome: WorkerStartupOutcome::StartRejected {
+                request: self,
+                reason,
+            },
+            worker_type: PhantomData,
+        }
+    }
+
+    /// Consume the plan and produce its exact ready or rejected input.
+    pub async fn start(self) -> WorkerStartup<W, P> {
+        let Self {
+            startup,
+            permit,
+            plan,
+        } = self;
+        let worker = permit.worker();
+        match plan.start().await {
+            Ok(readiness) => WorkerStartup {
+                worker,
+                startup,
+                outcome: WorkerStartupOutcome::Ready(readiness),
+                worker_type: PhantomData,
+            },
+            Err(rejection) => WorkerStartup {
+                worker,
+                startup,
+                outcome: WorkerStartupOutcome::Rejected(rejection),
+                worker_type: PhantomData,
+            },
+        }
+    }
+}
+
+impl<W, P> InterpreterRequest for StartWorker<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    type ReturnToEmitter = ReturnsToEmitter<WorkerStartup<W, P>, Here>;
+    type LogicalProtocols = behavior::NoBirthProtocols;
+}
+
+impl<W, P> ActionItem for StartWorker<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    EstablishedRecipient<W::Protocol>: Send,
+    P: StartupPlan,
+{
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
+    type Accepted = ();
+    type Rejection = StartupRejection;
+    type Prerequisite = Never;
+}
+
+pub(in crate::templates) enum WorkerStartupOutcome<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    Started,
+    StartRejected {
+        request: StartWorker<W, P>,
+        reason: StartupRejection,
+    },
+    Ready(P::Ready),
+    Rejected(P::Rejection),
+}
+
+/// Exact input produced by one accepted worker startup request.
+#[must_use = "worker startup must be admitted or transferred outward"]
+pub struct WorkerStartup<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    worker: WorkerAttempt,
+    startup: WorkerStartupGrant<W, P>,
+    outcome: WorkerStartupOutcome<W, P>,
+    worker_type: PhantomData<fn() -> W>,
+}
+
+impl<W, P> WorkerStartup<W, P>
+where
+    W: Behavior,
+    BehaviorAddr<W>: EndpointAddress,
+    P: StartupPlan,
+{
+    /// Worker creation correlation carried by this input.
+    #[must_use]
+    pub fn worker(&self) -> WorkerAttempt {
+        self.worker.clone()
+    }
+
+    pub(in super::super) const fn attempt(&self) -> &WorkerStartupGrant<W, P> {
+        &self.startup
+    }
+
+    pub(in crate::templates) fn into_parts(
+        self,
+    ) -> (
+        WorkerAttempt,
+        WorkerStartupGrant<W, P>,
+        WorkerStartupOutcome<W, P>,
+    ) {
+        (self.worker, self.startup, self.outcome)
+    }
+
+    pub(in crate::templates) fn into_started(self) -> Result<(), Self> {
+        let Self {
+            worker,
+            startup,
+            outcome,
+            worker_type,
+        } = self;
+        match outcome {
+            WorkerStartupOutcome::Started => Ok(()),
+            outcome => Err(Self {
+                worker,
+                startup,
+                outcome,
+                worker_type,
+            }),
+        }
+    }
+
+    pub(in super::super) fn into_start_rejection(
+        self,
+    ) -> Result<(StartWorker<W, P>, StartupRejection), Self> {
+        let Self {
+            worker,
+            startup,
+            outcome,
+            worker_type,
+        } = self;
+        match outcome {
+            WorkerStartupOutcome::StartRejected { request, reason } => Ok((request, reason)),
+            outcome => Err(Self {
+                worker,
+                startup,
+                outcome,
+                worker_type,
+            }),
+        }
+    }
+
+    /// Consume readiness only when this is the ready alternative.
+    pub fn into_ready(self) -> Result<P::Ready, Self> {
+        let Self {
+            worker,
+            startup,
+            outcome,
+            worker_type,
+        } = self;
+        match outcome {
+            WorkerStartupOutcome::Ready(readiness) => Ok(readiness),
+            outcome => Err(Self {
+                worker,
+                startup,
+                outcome,
+                worker_type,
+            }),
+        }
+    }
+
+    /// Consume the application rejection only when this is the rejected alternative.
+    pub fn into_rejection(self) -> Result<P::Rejection, Self> {
+        let Self {
+            worker,
+            startup,
+            outcome,
+            worker_type,
+        } = self;
+        match outcome {
+            WorkerStartupOutcome::Rejected(rejection) => Ok(rejection),
+            outcome => Err(Self {
+                worker,
+                startup,
+                outcome,
+                worker_type,
+            }),
+        }
+    }
+}

@@ -57,7 +57,7 @@ host requirements remain a separate application-topology concern.
 |---|---|---|
 | `Configuration` and `Features` alias | Keep, cross-cutting update | Single versioned configuration state; only reply-delivery rejection is shared. `Features` remains an alias, not a second actor. |
 | `Health` | Keep, cross-cutting update | Fixed component-health evidence is independent. Preserve exact evidence and rejected report ownership. |
-| current `Readiness` actor | Keep, rename/update | It means versioned readiness of a declared dependency set, not incarnation activation. Prefer the public name `DependencyReadiness` so the new `Installed → Activating → Ready` lifecycle cannot be confused with it. |
+| current `Readiness` actor | Keep, rename/update | It means versioned readiness of a declared dependency set, not incarnation activation. Prefer the public name `DependencyReadiness` so the new `Installed → Starting → Ready` lifecycle cannot be confused with it. |
 | `Cache` | Keep, cross-cutting update | Bounded in-memory cache is independent. It is not durable persistence; module/docs should stop implying durability, and result-delivery rejection must preserve values. |
 
 Moving `Cache` out of a `persistence` taxonomy is a documentation/module API

@@ -20,7 +20,7 @@ where
     B::LogicalHosts: behavior::BirthProtocolAt<
             behavior::MessageProtocol<
                 domain::RuntimeAddr,
-                behavior_actors::atomic::KeyedOutcome<
+                behavior_actors::pool::router::KeyedOutcome<
                     domain::Account,
                     domain::SearchRole,
                     domain::SearchJob,
@@ -31,7 +31,7 @@ where
         > + behavior::BirthProtocolAt<
             behavior::MessageProtocol<
                 domain::RuntimeAddr,
-                behavior_actors::atomic::BindingReply<
+                behavior_actors::pool::router::BindingReply<
                     domain::RuntimeAddr,
                     domain::Account,
                     domain::SearchRole,

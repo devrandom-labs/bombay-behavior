@@ -3,12 +3,15 @@
 
 use std::time::Instant;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, CancellationOutcome, CancellationReceipt,
-    DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, EntryCapacity,
-    EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyOperation, ProxyOutcome,
-    ProxyPhase, UnexpectedExit, WorkerChange, WorkerSubmission, dynamic,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOperation, ProxyOutcome, ProxyPhase};
+use behavior_actors::supervisor::directory::EntryCapacity;
+use behavior_actors::supervisor::directory::{
+    CancellationOutcome, CancellationReceipt, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
+    EntryRetirement, UnexpectedExit, WorkerChange, dynamic,
 };
+use behavior_actors::worker::{ImmediateStartup, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
 use behavior_core::{
     ChildInputReason, ChildReport, ItemSettlement, MessageProtocol, Recipient, SettledItem,
@@ -42,8 +45,8 @@ impl WorkerDisposition {
 }
 
 enum WorkerArrival {
-    InputRejected(ProxyOperation<behavior_core::Here, Worker, ImmediateActivation>),
-    ProxyReported(ChildReport<ProxyOutcome<Worker, ImmediateActivation>>),
+    InputRejected(ProxyOperation<behavior_core::Here, Worker, ImmediateStartup>),
+    ProxyReported(ChildReport<ProxyOutcome<Worker, ImmediateStartup>>),
 }
 
 #[derive(Clone, Copy)]
@@ -65,20 +68,17 @@ const ARRIVAL_ORDERS: [[Arrival; 3]; 6] = [
 fuzz_target!(|input: &[u8]| {
     for byte in input.iter().copied().take(64) {
         let lifecycle = Recipient::<
-            MessageProtocol<
-                RuntimeAddress,
-                DynamicLifecycle<ServiceKey, Worker, ImmediateActivation>,
-            >,
+            MessageProtocol<RuntimeAddress, DynamicLifecycle<ServiceKey, Worker, ImmediateStartup>>,
         >::global(RuntimeAddress);
         let diagnostics = Recipient::<
             MessageProtocol<
                 RuntimeAddress,
-                DynamicDiagnostic<ServiceKey, Worker, ImmediateActivation>,
+                DynamicDiagnostic<ServiceKey, Worker, ImmediateStartup>,
             >,
         >::global(RuntimeAddress);
         let initialized = dynamic(
             EntryCapacity::new(2).expect("two entries are valid"),
-            ActivationPolicy::new(1).expect("one activation is valid"),
+            StartupLimit::new(1).expect("one startup is valid"),
             UnexpectedExit::KeepEmpty,
             ActorDrainPolicy::WaitForActorGraph,
             lifecycle,
@@ -140,7 +140,7 @@ fuzz_target!(|input: &[u8]| {
                     ProxyOutcome::Initial {
                         outcome: InitialWorkerOutcome::Overlap {
                             worker: Worker,
-                            activation: ImmediateActivation,
+                            startup: ImmediateStartup,
                             phase: ProxyPhase::Ready,
                         },
                     },
@@ -179,7 +179,7 @@ fuzz_target!(|input: &[u8]| {
         let (waiting_creation, waiting_committed) = committed_proxy(waiting_proxy);
         let waiting = supervisor
             .on(waiting_committed)
-            .unwrap_or_else(|_| panic!("the second proxy waits for activation capacity"));
+            .unwrap_or_else(|_| panic!("the second proxy waits for startup capacity"));
         assert!(waiting.sends.proxy_operations.is_empty());
 
         let cancelling = supervisor
@@ -264,7 +264,7 @@ fuzz_target!(|input: &[u8]| {
                     assert_eq!(acted.sends.diagnostics.len(), 1);
                     assert!(matches!(
                         &acted.sends.diagnostics[0],
-                        behavior_actors::atomic::DiagnosticAction::Deliver {
+                        behavior_actors::diagnostic::DiagnosticAction::Deliver {
                             diagnostic: DynamicDiagnostic::ProxyInputRejected { .. },
                             ..
                         }
@@ -326,7 +326,7 @@ fuzz_target!(|input: &[u8]| {
         assert!(matches!(
             &queried.sends.query_replies.as_slice()[0],
             ReplyDelivery::Logical(delivery)
-                if matches!(delivery.message, behavior_actors::atomic::QueryReply::Unknown { .. })
+                if matches!(delivery.message, behavior_actors::supervisor::directory::QueryReply::Unknown { .. })
         ));
     }
 });

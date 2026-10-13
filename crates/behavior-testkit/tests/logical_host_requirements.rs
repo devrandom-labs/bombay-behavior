@@ -3,7 +3,8 @@
 mod installed_control;
 
 use behavior_actors::DeliveryOutcomes;
-use behavior_actors::atomic::{CustomerDelivery, DiagnosticAction};
+use behavior_actors::diagnostic::DiagnosticAction;
+use behavior_actors::pool::CustomerDelivery;
 use behavior_core::{
     Actions, Address, Behavior, BehaviorActed, BirthProtocol, BirthProtocolAt, BirthProtocolHead,
     BirthProtocolProduct, BirthProtocolTail, Births, ChildChoice, Delivery, EndpointAddress,

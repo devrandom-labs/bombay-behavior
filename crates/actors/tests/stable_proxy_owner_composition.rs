@@ -4,12 +4,13 @@ use behavior::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr, BirthProtocol, Delivery,
     EndpointAddress, LogicalHostRequirements, Never, NoBirthProtocols, NoBirths, Protocol, User,
 };
-use behavior_actors::atomic::{ActivationPlan, ImmediateActivation, StableProxy};
+use behavior_actors::proxy::StableProxy;
+use behavior_actors::worker::{ImmediateStartup, StartupPlan};
 
 fn accepts_proxy_child<Worker, Plan>()
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
@@ -83,7 +84,7 @@ impl Behavior for AccountWorker {
 
 #[test]
 fn a_proxy_owner_needs_only_the_proxy_behavior_contract() {
-    accepts_proxy_child::<AccountWorker, ImmediateActivation>();
+    accepts_proxy_child::<AccountWorker, ImmediateStartup>();
 }
 
 #[test]
@@ -92,7 +93,6 @@ fn proxy_hosts_the_worker_transitive_logical_destination_once() {
     impl<T> Same<T> for T {}
     fn exact<T: Same<BirthProtocol<HostedNotice, NoBirthProtocols>>>() {}
 
-    exact::<
-        <StableProxy<AccountWorker, ImmediateActivation> as LogicalHostRequirements>::LogicalHosts,
-    >();
+    exact::<<StableProxy<AccountWorker, ImmediateStartup> as LogicalHostRequirements>::LogicalHosts>(
+    );
 }

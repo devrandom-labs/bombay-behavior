@@ -1,11 +1,11 @@
 error[E0382]: use of moved value: `operation`
-  --> tests/ui/proxy_double_settlement.rs:17:63
+  --> tests/ui/proxy_double_settlement.rs:18:63
    |
- 6 |     operation: ProxyOperation<Source, Worker, Plan>,
+ 7 |     operation: ProxyOperation<Source, Worker, Plan>,
    |     --------- move occurs because `operation` has type `ProxyOperation<Source, Worker, Plan>`, which does not implement the `Copy` trait
 ...
-15 |     let mut progress = Some(InterpretationProgress::Original(operation));
+16 |     let mut progress = Some(InterpretationProgress::Original(operation));
    |                                                              --------- value moved here
-16 |     ProxyOperation::settle(&mut progress, host);
-17 |     let mut duplicate = Some(InterpretationProgress::Original(operation));
+17 |     ProxyOperation::settle(&mut progress, host);
+18 |     let mut duplicate = Some(InterpretationProgress::Original(operation));
    |                                                               ^^^^^^^^^ value used here after move

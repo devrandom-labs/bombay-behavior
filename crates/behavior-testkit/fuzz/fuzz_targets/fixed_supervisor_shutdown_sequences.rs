@@ -5,7 +5,9 @@ mod fixed_supervisor;
 mod proxy_control;
 mod stable_proxy;
 
-use behavior_actors::atomic::{FixedCommand, ImmediateActivation, Recovery, StableProxy};
+use behavior_actors::proxy::StableProxy;
+use behavior_actors::supervisor::roster::{FixedCommand, Recovery};
+use behavior_actors::worker::ImmediateStartup;
 use behavior_core::{
     ActionItemResult, CreationSequence, EstablishedActor, ItemSettlement, NoSends, SettledItem,
     Step,
@@ -140,7 +142,7 @@ fn exercise(inputs: &[u8]) {
                 Some(operation) => {
                     let (_, _, receipt) = admit_proxy_operation(
                         operation,
-                        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+                        EstablishedActor::<StableProxy<Worker, ImmediateStartup>>::issued(
                             stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
                         ),
                     );

@@ -31,3 +31,5 @@ pub use termination_propagation::{
     TerminalPropagationPolicy, TerminalPropagationSends, TerminalPropagationState,
     TerminationPropagationError, TerminationTarget, propagate_abnormal, propagate_all,
 };
+
+pub use crate::templates::ActorDrainPolicy;

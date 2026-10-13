@@ -171,9 +171,9 @@ parent outcome:
 
 ```text
 Ready(incarnation)
-ActivationStartRejected(incarnation, complete unaccepted request,
+StartupRefused(incarnation, complete unaccepted request,
                         terminal-or-forced drain fact)
-ActivationRejected(incarnation, complete rejection,
+StartupRejected(incarnation, complete rejection,
                    terminal-or-forced drain fact)
 InitializationFoldRejected(attempt, complete error)
 InstallationRejected(attempt, complete host rejection and prepared init)
@@ -796,7 +796,7 @@ present only in the latter. No `Option<incarnation>` hides that distinction.
   emits one `Unavailable` report containing the untouched sender and payload.
 - Successful committed creation enters `Initializing*`, owning the exact
   installed incarnation and initialization settlement. Complete successful
-  settlement yields the one-shot permit and enters `Activating*`; only an
+  settlement yields the one-shot permit and enters `Starting*`; only an
   exact ready fact enters `Ready`. Immediate activation may collapse the
   activation request/resolution, but never the committed initialization phase.
 - Initialization-fold or host rejection executes no initialization action and
@@ -1282,8 +1282,8 @@ Initializing {
 WaitingForActivationAuthorization {
     role, incarnation, activation_permit, activation_plan
 }
-ActivationDispatched { role, incarnation, activation_attempt }
-Activating { role, incarnation, activation_attempt }
+StartupRequested { role, incarnation, activation_attempt }
+Starting { role, incarnation, activation_attempt }
 DrainingPreReady {
     role, incarnation,
     cause: initialization rejection | activation-start rejection
@@ -1472,8 +1472,8 @@ BacklogAdmissible = Prepared
                   | Creating
                   | Initializing
                   | WaitingForActivationAuthorization
-                  | ActivationDispatched
-                  | Activating
+                  | StartupRequested
+                  | Starting
                   | Busy
                   | Recovering
                   | DrainingPreReady { after_drain: ResumeRecovery }
@@ -1503,8 +1503,8 @@ Bindable = Prepared
          | Creating
          | Initializing
          | WaitingForActivationAuthorization
-         | ActivationDispatched
-         | Activating
+         | StartupRequested
+         | Starting
          | Idle
          | Busy
          | Recovering

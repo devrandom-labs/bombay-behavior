@@ -7,9 +7,9 @@ use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::time::Instant;
 
-use behavior_actors::atomic::{
-    BeginActivation, ImmediateActivation, ProxyControl, ProxyOutcome, ProxyPhase, StableProxy,
-    WorkerActivation, WorkerInitializationOutcome,
+use behavior_actors::proxy::{ProxyControl, ProxyOutcome, ProxyPhase, StableProxy};
+use behavior_actors::worker::{
+    ImmediateStartup, StartWorker, WorkerInitializationOutcome, WorkerStartup,
 };
 use behavior_actors::{Activate as _, Active, ChildStopped, StopOnShutdown};
 use behavior_core::{
@@ -97,23 +97,23 @@ fn created_worker(
 }
 
 fn completed_activation(
-    activation: BeginActivation<Worker, ImmediateActivation>,
-) -> WorkerActivation<Worker, ImmediateActivation> {
-    let mut future = core::pin::pin!(activation.activate());
+    startup: StartWorker<Worker, ImmediateStartup>,
+) -> WorkerStartup<Worker, ImmediateStartup> {
+    let mut future = core::pin::pin!(startup.start());
     let mut context = Context::from_waker(Waker::noop());
     match future.as_mut().poll(&mut context) {
         Poll::Ready(result) => result,
-        Poll::Pending => panic!("immediate activation must not remain pending"),
+        Poll::Pending => panic!("immediate startup must not remain pending"),
     }
 }
 
 pub(crate) fn drive_ready_proxy(
-    proxy: StableProxy<Worker, ImmediateActivation>,
-    control: ProxyControl<Worker, ImmediateActivation>,
+    proxy: StableProxy<Worker, ImmediateStartup>,
+    control: ProxyControl<Worker, ImmediateStartup>,
 ) -> (
-    Active<StableProxy<Worker, ImmediateActivation>>,
+    Active<StableProxy<Worker, ImmediateStartup>>,
     CreationId,
-    ProxyOutcome<Worker, ImmediateActivation>,
+    ProxyOutcome<Worker, ImmediateStartup>,
 ) {
     let initialized = proxy.initialize().expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -122,9 +122,9 @@ pub(crate) fn drive_ready_proxy(
 }
 
 pub(crate) fn start_ready_worker(
-    proxy: &mut Active<StableProxy<Worker, ImmediateActivation>>,
-    control: ProxyControl<Worker, ImmediateActivation>,
-) -> (CreationId, ProxyOutcome<Worker, ImmediateActivation>) {
+    proxy: &mut Active<StableProxy<Worker, ImmediateStartup>>,
+    control: ProxyControl<Worker, ImmediateStartup>,
+) -> (CreationId, ProxyOutcome<Worker, ImmediateStartup>) {
     let starting = proxy.on(control).expect("worker start emits one creation");
     let creation = starting
         .creates
@@ -142,21 +142,19 @@ pub(crate) fn start_ready_worker(
         .pop()
         .expect("one worker initialization is requested");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("worker initialization authorizes activation");
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("worker initialization authorizes startup");
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("one worker activation is requested");
-    let started = proxy
-        .on(activation.started())
-        .expect("worker activation starts");
+        .expect("one worker startup is requested");
+    let started = proxy.on(startup.started()).expect("worker startup starts");
     assert!(started.sends.owner_outcomes.is_empty());
     let outcome = proxy
-        .on(completed_activation(activation))
-        .expect("worker activation opens the proxy")
+        .on(completed_activation(startup))
+        .expect("worker startup opens the proxy")
         .sends
         .owner_outcomes
         .into_requests()

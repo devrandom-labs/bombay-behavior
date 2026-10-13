@@ -259,7 +259,7 @@ emitted; no inventory shorthand may place it back in a later creation state.
   `DiagnosticDisposition`.
 - `InitialWorkerRejection` — shared construction-only worker rejection with the
   function, prepared prefix, exact role/reason, and untouched suffix.
-- `FixedConstructionRejected` — fixed policies plus one
+- `FixedConstructionRejected` — the original `fixed::Config` plus one
   `InitialWorkerRejection`.
 - `FailureReaction` — `RetireMember | StopSupervisor`; one exhaustive response
   when fixed topology can no longer be preserved.
@@ -582,9 +582,9 @@ KeyedPool ─────────────creates/assigns/observes direct
 | Family | Component construction | Status |
 |---|---|---|
 | Stable proxy | `StableProxy::immediate()` or `StableProxy::activated()` | selected |
-| Fixed supervisor | `fixed(...)`, optional lifecycle publication, then `build()` | selected |
+| Fixed supervisor | `fixed(factory, roles, fixed::Config { … })`, optional lifecycle publication, then `build()` | selected |
 | Dynamic supervisor | `dynamic(entries, activation, unexpected_exit, actor_drain, lifecycle, diagnostics)` | selected |
-| FIFO pool | `fifo(factory, roles, activation, recovery, backlog, interruption, actor_drain, diagnostics)` | selected |
+| FIFO pool | `fifo(factory, roles, fifo::Config { … })` | selected |
 | Keyed pool | `keyed(factory, roles, selector, activation, recovery, backlog, bindings, interruption, actor_drain, diagnostics)` | selected |
 
 Generated component rustdoc lists 102 semantic items for the five implemented
@@ -593,8 +593,9 @@ These are construction, policies, commands, capabilities, typed rejections, and
 domain outcomes—not structural actor machinery. Reduce this count only when
 two names own the same law; hiding a real outcome is not surface curation.
 
-There is one external component path: `behavior_actors::atomic::Name`; the crate
-root exposes zero duplicate atomic paths. Interpreter reexports are doc-hidden
+Public paths follow their actual owners: `supervisor::{roster, directory}`,
+`pool::{queue, router}`, `proxy`, and `worker`. The private templates catalogue
+has no flattened public forwarding namespace. Interpreter reexports are doc-hidden
 at the facade or at their definitions. Generated rustdoc excludes sampled
 effect products, request products, internal events, worker preparation,
 activation operations, proxy control, and settlement carriers. They remain

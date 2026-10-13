@@ -4,10 +4,11 @@ use behavior::{
     ActiveTurn, Address, Behavior, BehaviorActed, EndpointAddress, InterpreterFault,
     MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
-    WorkerSource,
+use behavior_actors::supervisor::roster::{
+    FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
 };
+use behavior_actors::worker::StartupPlan;
+use behavior_actors::worker::WorkerSource;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -60,11 +61,11 @@ impl Behavior for SearchWorker {
 
 struct SearchPlan;
 
-impl ActivationPlan for SearchPlan {
+impl StartupPlan for SearchPlan {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(()))

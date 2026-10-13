@@ -342,7 +342,7 @@ Member =
         activation_plan,
     }
 
-  | ActivationDispatched {
+  | StartupRequested {
         role,
         worker: WorkerIncarnation,
         kind: BirthKind,
@@ -350,7 +350,7 @@ Member =
         begin_attempt: ActivationAttempt,
     }
 
-  | Activating {
+  | Starting {
         role,
         worker: WorkerIncarnation,
         kind: BirthKind,
@@ -430,7 +430,7 @@ The lifecycle host—not `Initializing`—owns the linear initialization
 settlement and activation plan while initialization is unresolved. Actor state
 retains only `InitAttempt`. An exact `InitResult` later transfers either the
 activation permit and plan, the rejected settlement and plan, or the stopped
-plan back once. `ActivationDispatched` likewise retains correlation while the
+plan back once. `StartupRequested` likewise retains correlation while the
 host owns the moved begin request. These are the same ownership laws as AA-01,
 applied directly rather than by reusing proxy state.
 
@@ -539,7 +539,7 @@ facts; commit cannot be rolled back because one later effect rejects.
 `InitializationSettlement` is one host-authored result:
 
 ```text
-ReadyForActivation {
+ReadyForStartup {
     role, worker, init_attempt,
     permit: ActivationPermit,
     plan: ActivationPlan,
@@ -764,8 +764,8 @@ customer route and payload never enter pool ownership.
 | `Creating` | WB | F- | F- | F- | join | F- | F- | F- |
 | `Initializing` | F- | IN | F- | F- | WS | F- | F- | F- |
 | waiting authorization | F- | F- | F- | F- | WS | F- | F- | F- |
-| `ActivationDispatched` | F- | F- | AS | F- | WS | F- | F- | F- |
-| `Activating` | F- | F- | F- | WR | WS | F- | F- | F- |
+| `StartupRequested` | F- | F- | AS | F- | WS | F- | F- | F- |
+| `Starting` | F- | F- | F- | WR | WS | F- | F- | F- |
 | `DrainingPreReady` | F- | settle | settle | settle stale | WD | F- | F- | settle only |
 | `Idle` | F- | F- | F- | F- | WS | F- | F- | F- |
 | `Busy::AwaitingDeliveryAndTerminal` | F- | F- | F- | F- | join | join | join | F- |
@@ -791,20 +791,20 @@ successful birth.
 
 Creation commit enters `Initializing { init_attempt }`; the lifecycle host
 retains the unresolved initialization settlement and activation plan. Exact
-`ReadyForActivation` transfers its permit and plan into
+`ReadyForStartup` transfers its permit and plan into
 `WaitingForActivationAuthorization`. `Rejected` or `Stopped` transfers its
 complete plan into `DrainingPreReady`; neither rolls back the committed worker
 or begins recovery while an installed actor remains owned.
 
 After every transition that releases activation capacity, `AZ` scans waiting
 roles in declaration order. Reserving an `ActivationTicket`, changing the
-member to `ActivationDispatched`, and emitting `BeginActivation` are one fold.
+member to `StartupRequested`, and emitting `BeginActivation` are one fold.
 Ticket exhaustion/collision enters `DrainingPreReady` with complete activation
 ownership; it cannot leave a silent installed worker waiting forever.
 
 The model accepts begin settlement in either order with worker stop and forced
 drain; no synchronous interpreter guarantee is assumed. Acceptance enters
-`Activating`. Rejection enters `DrainingPreReady` and returns the complete
+`Starting`. Rejection enters `DrainingPreReady` and returns the complete
 activation request through exact settlement. Exact `Ready` releases its ticket and invokes
 the same `fill_fifo` transition used after completion and retry. If backlog is
 non-empty, the member becomes `Busy` directly; it never transiently commits
@@ -998,9 +998,9 @@ DrainMember =
         actor,
         work: Created { activation }
             | Initializing
-            | WaitingForActivation
-            | ActivationDispatched
-            | Activating
+            | WaitingForStartup
+            | StartupRequested
+            | Starting
             | Idle,
         shutdown: NotRequested | Waiting { request, stop },
     }

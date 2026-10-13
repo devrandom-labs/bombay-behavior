@@ -3,13 +3,15 @@
 
 use std::time::Instant;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, CancellationReceipt, DiagnosticAction,
-    DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
-    EntryCapacity, EntryRetirement, ImmediateActivation, InitialWorkerOutcome, ProxyOutcome,
-    StartRejection, UnexpectedExit, WorkerChangeRejection, WorkerStartResult, WorkerSubmission,
-    dynamic,
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, WorkerStartResult};
+use behavior_actors::supervisor::directory::EntryCapacity;
+use behavior_actors::supervisor::directory::{
+    CancellationReceipt, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
+    EntryRetirement, StartRejection, UnexpectedExit, WorkerChangeRejection, dynamic,
 };
+use behavior_actors::worker::{ImmediateStartup, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
 use behavior_core::{
     ChildCreationOutcome, ChildReport, CreationSettlement, CreationsSettled, EstablishedActor,
@@ -51,20 +53,17 @@ fuzz_target!(|input: &[u8]| {
     for byte in input.iter().copied().take(64) {
         let policy = exit_policy(byte);
         let lifecycle = Recipient::<
-            MessageProtocol<
-                RuntimeAddress,
-                DynamicLifecycle<ServiceKey, Worker, ImmediateActivation>,
-            >,
+            MessageProtocol<RuntimeAddress, DynamicLifecycle<ServiceKey, Worker, ImmediateStartup>>,
         >::global(RuntimeAddress);
         let diagnostics = Recipient::<
             MessageProtocol<
                 RuntimeAddress,
-                DynamicDiagnostic<ServiceKey, Worker, ImmediateActivation>,
+                DynamicDiagnostic<ServiceKey, Worker, ImmediateStartup>,
             >,
         >::global(RuntimeAddress);
         let initialized = dynamic(
             EntryCapacity::new(1).expect("one entry is valid"),
-            ActivationPolicy::new(1).expect("one activation is valid"),
+            StartupLimit::new(1).expect("one startup is valid"),
             policy,
             ActorDrainPolicy::WaitForActorGraph,
             lifecycle,
@@ -240,7 +239,7 @@ fuzz_target!(|input: &[u8]| {
                 assert!(matches!(
                     &queried.sends.query_replies.as_slice()[0],
                     ReplyDelivery::Logical(delivery)
-                        if matches!(delivery.message, behavior_actors::atomic::QueryReply::Known {
+                        if matches!(delivery.message, behavior_actors::supervisor::directory::QueryReply::Known {
                             status: DynamicStatus::Empty,
                             ..
                         })
@@ -404,7 +403,7 @@ fuzz_target!(|input: &[u8]| {
                 assert!(matches!(
                     &queried.sends.query_replies.as_slice()[0],
                     ReplyDelivery::Logical(delivery)
-                        if matches!(delivery.message, behavior_actors::atomic::QueryReply::Known {
+                        if matches!(delivery.message, behavior_actors::supervisor::directory::QueryReply::Known {
                             status: DynamicStatus::CreatingProxy,
                             ..
                         })

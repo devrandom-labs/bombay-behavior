@@ -1,0 +1,80 @@
+//! Exact creation result for a StableProxy child.
+
+use behavior::{
+    Behavior, BehaviorAddr, ChildCreationOutcome, ChildHead, CreationId, CreationKind,
+    CreationRejection, EndpointAddress, EstablishedActor, ItemSettlement, Never, RoutedCreation,
+    SettledItem,
+};
+
+use crate::proxy::StableProxy;
+use crate::worker::StartupPlan;
+
+pub(crate) type StableProxyCreationSettlement<Worker, Plan> = SettledItem<
+    RoutedCreation<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
+    ItemSettlement<
+        RoutedCreation<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
+        ChildCreationOutcome<StableProxy<Worker, Plan>, ChildHead>,
+        CreationRejection,
+        Never,
+    >,
+>;
+
+pub(crate) enum StableProxyCreation<Worker, Plan>
+where
+    Worker: Behavior,
+    Plan: StartupPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    Committed(EstablishedActor<StableProxy<Worker, Plan>>),
+    Rejected(StableProxyCreationSettlement<Worker, Plan>),
+}
+
+pub(crate) fn identity<Worker, Plan>(
+    settlement: &StableProxyCreationSettlement<Worker, Plan>,
+) -> (CreationId, CreationKind)
+where
+    Worker: Behavior,
+    Plan: StartupPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    match settlement {
+        SettledItem::Attempted(ItemSettlement::Accepted(created)) => match created {
+            ChildCreationOutcome::Established(child) => (child.id(), child.kind()),
+            ChildCreationOutcome::Unavailable { id, kind } => (*id, *kind),
+            ChildCreationOutcome::InitializationRejected { creation, .. }
+            | ChildCreationOutcome::InitializationPanicked { creation }
+            | ChildCreationOutcome::HostRejected { creation, .. } => {
+                (creation.id(), creation.kind())
+            }
+        },
+        SettledItem::Attempted(ItemSettlement::Rejected { item, .. })
+        | SettledItem::Attempted(ItemSettlement::Corrupt { item, .. })
+        | SettledItem::Unattempted(item) => (item.id(), item.kind()),
+        SettledItem::Attempted(ItemSettlement::Blocked { prerequisite, .. }) => {
+            match *prerequisite {}
+        }
+    }
+}
+
+pub(crate) fn resolve<Worker, Plan>(
+    settlement: StableProxyCreationSettlement<Worker, Plan>,
+) -> StableProxyCreation<Worker, Plan>
+where
+    Worker: Behavior,
+    Plan: StartupPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    let (_, kind) = identity(&settlement);
+    match kind {
+        CreationKind::Birth => match settlement {
+            SettledItem::Attempted(ItemSettlement::Accepted(
+                ChildCreationOutcome::Established(child),
+            )) => StableProxyCreation::Committed(child.into_parts().2),
+            settlement => StableProxyCreation::Rejected(settlement),
+        },
+        CreationKind::Replacement { .. } => StableProxyCreation::Rejected(settlement),
+    }
+}

@@ -214,7 +214,7 @@ Initializing {
     settlement and the activation plan under this exact correlation; the proxy
     retains at most one already-arrived exact stop
 
-Activating {
+Starting {
     kind, worker: WorkerIncarnation,
     attempt: ActivationAttempt, phase: ActivationPhase,
     stopped: Option<ExitSettlement>
@@ -279,7 +279,7 @@ replacement provenance. The drain variants contain closed work/cause and join
 sums; they do not coordinate optional fields, cross-product flags, or
 already-settled live combinations.
 
-At most one of `Initializing`, `Activating`, `Ready`,
+At most one of `Initializing`, `Starting`, `Ready`,
 `StoppingForReplacement`, `DrainingInit*`, `DrainingActivation*`,
 or `DrainingWorker` can exist, proving the installed-incarnation bound
 structurally. `Creating` and `DrainingCreation*` own no installed capability.
@@ -659,7 +659,7 @@ emits creation and never replaces an existing binding.
 | `Dormant` | I0 | C- | U | S0 | F- | F- | F- | F- | F- |
 | `Creating` | C- | C- | U | S1 | BR | F- | F- | F- | WE |
 | `Initializing` | C- | C- | U | S1 | F- | IR | F- | F- | WE |
-| `Activating` | C- | C- | U | S1 | F- | F- | AS | AR | WE |
+| `Starting` | C- | C- | U | S1 | F- | F- | AS | AR | WE |
 | `Ready` | C- | R0 | D+ | S1 | F- | F- | F- | F- | WE |
 | `EmptyInitial` | C- | C- | U | S0 | F- | F- | F- | F- | F- |
 | `EmptyAfter` | C- | R1 | U | S0 | F- | F- | F- | F- | F- |
@@ -687,7 +687,7 @@ rules below make each matching cell exhaustive over its result sum.
 - `Initializing` with no stop becomes `DrainingInit(AwaitingBoth)` and initiates
   exact worker drain. With a stop it uses `ExitObserved` and emits no duplicate
   worker shutdown.
-- `Activating` becomes `DrainingActivation`, preserving its `ActivationPhase`
+- `Starting` becomes `DrainingActivation`, preserving its `ActivationPhase`
   in `AwaitingBoth` when no stop is present, logically closes readiness
   publication, and emits the exact cancellation/drain actions. With a stop it
   preserves the exit in `ExitObserved` and emits no duplicate worker shutdown.
@@ -736,7 +736,7 @@ creation is never reclassified as rejected because later initialization fails.
   `InitAttempt` is admissible. `Initialized` reserves a fresh
   activation attempt and, in the same fold, emits the exact `BeginActivation`
   action and enters
-  `Activating` with `AwaitingStartSettlement`. `EffectsRejected` enters
+  `Starting` with `AwaitingStartSettlement`. `EffectsRejected` enters
   `DrainingInitFailure` with both proxy-owned values returned by the result—the
   closed failure classification and still-unstarted activation plan—then
   initiates exact drain. `Stopped` settles its returned plan as never
@@ -784,18 +784,18 @@ they do not claim that AA-01 implements it.
 
 ### Activation start (`AS`) and result (`AR`)
 
-- In `Activating(AwaitingStartSettlement)` without a stop, exact start acceptance changes
+- In `Starting(AwaitingStartSettlement)` without a stop, exact start acceptance changes
   only `phase` to `InFlight`; the host then owns work and result authority.
   Exact start rejection enters `DrainingActivationFailure` with the complete
   unaccepted request and initiates exact drain.
-- An activation result is authorized only in `Activating(InFlight)`. Exact
+- An activation result is authorized only in `Starting(InFlight)`. Exact
   `Ready` enters `Ready` and emits the initial/replacement readiness outcome.
   Exact rejection enters `DrainingActivationFailure`, retains the complete
   rejection, and initiates exact drain. A result received before start
   acceptance is `F-`; the activation interpreter must causally publish
   acceptance before releasing its result authority. Cancellation-qualified
   results in a non-cancelling state are `F-` and cannot be reinterpreted.
-- In `Activating` with a stop, exact start acceptance changes `phase` to
+- In `Starting` with a stop, exact start acceptance changes `phase` to
   `InFlight`; exact start rejection emits its complete atomic outcome with the
   retained stop. An authorized exact result in `InFlight` emits
   `PreReadyStop::ReadyAfterExit` for `Ready`, carrying the
@@ -837,7 +837,7 @@ with a truthful closed out-of-order join before production code exists.
   provenance on this ingress is wrong-kind and follows `F-`. An accepted exit
   is stored or emitted only after wrapping that delivered value in
   `ExitSettlement::Observed`.
-- `Initializing` and `Activating` with no stop accept only `AfterBirth` with
+- `Initializing` and `Starting` with no stop accept only `AfterBirth` with
   their worker incarnation and store that exact stop. A second stop is `F-`.
 - `Ready` emits one complete `WorkerStopped` report and enters
   `EmptyAfter { previous: worker }`.

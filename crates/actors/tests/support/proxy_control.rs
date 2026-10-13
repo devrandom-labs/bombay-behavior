@@ -3,15 +3,15 @@ use behavior::{
     Behavior, BehaviorAddr, ChildInputReason, CreationId, EndpointAddress, EstablishedActor,
     ItemSettlement, Never,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ProxyControl, ProxyControlAdmission, ProxyInputReceipt, ProxyOperation,
-    StableProxy,
+use behavior_actors::proxy::{
+    ProxyControl, ProxyControlAdmission, ProxyInputReceipt, ProxyOperation, StableProxy,
 };
+use behavior_actors::worker::StartupPlan;
 
 struct ProxyControlHost<Worker, Plan>
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
@@ -22,7 +22,7 @@ where
 impl<Worker, Plan> ProxyControlAdmission<Worker, Plan> for ProxyControlHost<Worker, Plan>
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
@@ -61,7 +61,7 @@ pub fn admit_proxy_operation<Source, Worker, Plan>(
 )
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {

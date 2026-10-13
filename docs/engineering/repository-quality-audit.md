@@ -461,16 +461,16 @@ outcomes separately from the later Bombay integration result.
   | `PredecessorShutdown` | `Settled`: no outstanding shutdown; `Awaiting`: exact shutdown ID to match its later resolution. |
   | `ReplacementCompletion` | `Ready`: current worker plus result; `ReadyAfterStop`: worker attempt, result, exact stop; `Empty`: worker attempt plus result. Each joins a predecessor shutdown differently. |
   | `ProxyReplacement` | `ReturningPredecessor`: predecessor departure, pending successor, staged creation; `SuccessorResultAwaitingShutdown`: replaced attempt, shutdown ID, successor completion. |
-  | `ActivationProgress` | `WaitingForStart` and `Running` each retain the exact activation attempt; only `Running` has admitted `Started`, so readiness can be consumed there. |
-  | `ActivationDuringDeparture` | `Pending`: activation progress still awaiting input; `Returned`: completed activation value owed at retirement. |
-  | `WorkerActivationShutdown` | `Departing`: activation state plus worker departure; `WaitingForActivation`: activation progress, current worker, optional shutdown resolution, exact stop. |
-  | `WorkerStartPhase` | `Creating`: pending worker and optional early stop; `Initializing`: committed worker and optional stop; `Activating`: committed worker, progress, optional stop; `ReturningWorker`: departure and precise pre-ready failure. |
+  | `StartupProgress` | `WaitingForStart` and `Running` each retain the exact activation attempt; only `Running` has admitted `Started`, so readiness can be consumed there. |
+  | `StartupDuringDeparture` | `Pending`: activation progress still awaiting input; `Returned`: completed activation value owed at retirement. |
+  | `WorkerActivationShutdown` | `Departing`: activation state plus worker departure; `WaitingForStartup`: activation progress, current worker, optional shutdown resolution, exact stop. |
+  | `WorkerStartPhase` | `Creating`: pending worker and optional early stop; `Initializing`: committed worker and optional stop; `Starting`: committed worker, progress, optional stop; `ReturningWorker`: departure and precise pre-ready failure. |
   | `WorkerInitializationShutdown` | `Departing`: optional returned initialization value plus worker departure; `WaitingForInitialization`: worker, optional shutdown resolution, exact stop. |
   | `WorkerInitializationRetirement` | `Initialized`: permit plus plan; `EffectsRejected`: failure plus plan; `Stopped`: plan plus optional earlier initialization stop. |
   | `WorkerActivationRetirement` | `StartRejected`: complete request plus refusal; `Ready`: readiness value; `Rejected`: application rejection. |
   | `WorkerStartRetirement` | `Result`: start result; `Initialization`: initialization retirement, worker, optional shutdown resolution, stop; `Activation`: activation retirement, worker, optional resolution, stop; `ReadyWorker`: result plus returned worker; `ReplacementCompletion`: exact successor completion. |
   | `ProxyRetirement` | `Empty`: optional previous attempt; `ReplacementCancelled`: replaced and successor attempts plus predecessor; `Worker`: returned worker; `WorkerStart`: optional replaced attempt plus start retirement; `ReplacementAfterPredecessor`: replaced attempt, predecessor resolution, start retirement. These are whole stopped-state custody. |
-  | `ProxyShutdown` | `Starting`: start state; `ReturningWorker`: departure; `ReturningWorkerStart`: kind, departure, failure; `ReturningPredecessor`: departure and both attempts; `ReturningSuccessor`: replaced attempt, predecessor return, successor departure and result; `Initializing`: kind and initialization shutdown; `Activating`: kind and activation shutdown; `WaitingForPredecessor`: replaced attempt, shutdown ID, start retirement. |
+  | `ProxyShutdown` | `Starting`: start state; `ReturningWorker`: departure; `ReturningWorkerStart`: kind, departure, failure; `ReturningPredecessor`: departure and both attempts; `ReturningSuccessor`: replaced attempt, predecessor return, successor departure and result; `Initializing`: kind and initialization shutdown; `Starting`: kind and activation shutdown; `WaitingForPredecessor`: replaced attempt, shutdown ID, start retirement. |
   | `PredecessorReturn` | `Awaiting`: shutdown ID; `Returned`: exact shutdown resolution. |
 
   The subordinate sums store current affine custody and correlation, not an
@@ -589,7 +589,7 @@ outcomes separately from the later Bombay integration result.
   | `CreatingProxy` | The untransferred worker submission is returned on stop or cancellation, or sent to the committed proxy after its birth. |
   | `ShuttingDownProxyCreation` | The enclosing creation correlation remains pending; a committed proxy must be drained and a rejected birth must retire with shutdown provenance. |
   | `DrainingProxyCreationStop` | The same birth correlation remains pending, but a rejected birth must retire as an explicit stop. This cause changes the lifecycle report. |
-  | `WaitingForActivation` | The exact established proxy and still-owned worker submission await activation capacity. |
+  | `WaitingForStartup` | The exact established proxy and still-owned worker submission await activation capacity. |
   | `WaitingForProxyInput` | The exact proxy and input witness await ownership settlement of the initial operation. |
   | `WaitingForProxyOutcome` | The proxy and accepted operation ID await the later initial worker result. |
   | `CancellingProxyCreation` | The enclosing creation and operation correlations remain after the worker was returned; a later committed proxy still requires retirement. |
@@ -627,7 +627,7 @@ outcomes separately from the later Bombay integration result.
   | Current sum | Exact value needed by its next owner |
   |---|---|
   | `MemberState::{Creating,Worker,Recovering,Retired}` | The pending birth with activation and possible early stop; the established worker phase; the previous attempt plus recovery work; or absence of a live role. |
-  | `WorkerPhase::{Initializing,WaitingForActivation,ActivationDispatched,Activating,Idle,Busy,Stopping}` | Initialization correlation and possible stop; exact permit and plan; dispatched or accepted activation attempt with possible stop; available worker; one assigned job obligation; or the exact shutdown join. Dispatch and acceptance select different later acknowledgements. |
+  | `WorkerPhase::{Initializing,WaitingForStartup,StartupRequested,Starting,Idle,Busy,Stopping}` | Initialization correlation and possible stop; exact permit and plan; dispatched or accepted activation attempt with possible stop; available worker; one assigned job obligation; or the exact shutdown join. Dispatch and acceptance select different later acknowledgements. |
   | `RecoveringWorker::{WaitingForSource,Preparing,Scheduling,WaitingForTimer}` | Previous attempt and stop, plus respectively unavailable source, preparation ticket, pending replacement and timer, or the same replacement awaiting its timer. The latter two distinguish whether schedule admission still has to settle. |
   | `ShutdownJoin::{AwaitingBoth,AwaitingStop,AwaitingSettlement}` | Exact shutdown ID; accepted shutdown resolution awaiting stop; or exact stop awaiting settlement. Either arrival order must reunite both facts once. |
   | `RetirementStatus::{AwaitingCreation,Established,AwaitingPreparation,AwaitingRestartSchedule,Drained}` | Pending birth; current worker, optional startup and shutdown join; prior stop with preparation ticket; pending replacement with timer; or no remaining worker custody. |

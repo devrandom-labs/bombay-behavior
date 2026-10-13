@@ -23,15 +23,24 @@ use behavior::{
     InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
     Recipient, RecoverEvent, SettledItem, Step, User, UserEvent,
 };
-use behavior_actors::atomic::{
-    self, ActivationPlan, ActivationPolicy, ActorDrainPolicy, CapabilityResult, DiagnosticAction,
-    DiagnosticDisposition, FailureReaction, FixedCommand, FixedDiagnostic, FixedLifecycle,
-    FixedLifecycleEvent, FixedSupervisor, FixedSupervisorEvent, InitialWorkerOutcome, MemberStatus,
-    OrderedRoles, PendingWorkerPreparation, PrepareWorkers, ProxyControl, ProxyDiagnostic,
-    ProxyInputResult, ProxyOperation, ProxyOutcome, ProxyPhase, Recovery, RecoveryDenialReason,
-    RecoveryPolicy, ReplacementOutcome, RestartLimit, RestartRelease, StableProxy,
-    StartingWorkerPreparation, Strategy, WorkerInitializationOutcome, WorkerPreparation,
-    WorkerPreparationFailureReason, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{
+    InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyInputResult, ProxyOperation,
+    ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerStartResult,
+};
+use behavior_actors::supervisor::roster;
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FailureReaction, FixedCommand, FixedDiagnostic, FixedLifecycle,
+    FixedLifecycleEvent, FixedSupervisor, FixedSupervisorEvent, MemberStatus, Recovery,
+    RecoveryDenialReason, RecoveryPolicy, Strategy, WorkerPreparationFailureReason,
+};
+use behavior_actors::worker::{
+    OrderedRoles, RestartLimit, RestartRelease, StartingWorkerPreparation, StartupLimit,
+    StartupPlan, WorkerInitializationOutcome, WorkerSubmission,
+};
+use behavior_actors::worker::{
+    PendingWorkerPreparation, PrepareWorkers, WorkerPreparation, WorkerSource,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, Exit, ReplyDelivery, ScheduleAfter,
@@ -62,9 +71,11 @@ macro_rules! start_fixed_preparation {
 #[test]
 fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
     type Supervisor =
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>;
-    type Status =
-        MessageProtocol<RuntimeAddr, atomic::FixedSnapshot<<SearchWorker as Behavior>::Protocol>>;
+        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>;
+    type Status = MessageProtocol<
+        RuntimeAddr,
+        behavior_actors::supervisor::roster::FixedSnapshot<<SearchWorker as Behavior>::Protocol>,
+    >;
     type Capability = MessageProtocol<
         RuntimeAddr,
         CapabilityResult<SearchRole, <SearchWorker as Behavior>::Protocol>,
@@ -83,15 +94,15 @@ fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
 
 fn fixed_runtime_sources_are_distinct<Event>()
 where
-    Event: EventIngress<Here, ProxyInputResult<Here, SearchWorker, SearchActivation>>,
+    Event: EventIngress<Here, ProxyInputResult<Here, SearchWorker, SearchStartup>>,
     Event: EventIngress<
-            PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+            PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
             ActionItemResult<
-                PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+                PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
             >,
         >,
     Event: InjectEvent<
-            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
             Here,
         >,
 {
@@ -99,7 +110,7 @@ where
 
 struct SearchWorkshop;
 
-impl WorkerSource<SearchRole, SearchWorker, SearchActivation> for SearchWorkshop {
+impl WorkerSource<SearchRole, SearchWorker, SearchStartup> for SearchWorkshop {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -114,7 +125,7 @@ impl Drop for TrackedWorkshop {
     }
 }
 
-impl WorkerSource<SearchRole, SearchWorker, SearchActivation> for TrackedWorkshop {
+impl WorkerSource<SearchRole, SearchWorker, SearchStartup> for TrackedWorkshop {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -132,7 +143,7 @@ enum WorkshopRejection {
     SourceUnavailable,
 }
 
-impl WorkerSource<SearchRole, SearchWorker, SearchActivation> for FallibleWorkshop {
+impl WorkerSource<SearchRole, SearchWorker, SearchStartup> for FallibleWorkshop {
     type WorkerRejection = WorkshopRejection;
     type SourceRejection = WorkshopRejection;
 }
@@ -195,18 +206,18 @@ fn terminal_unexpected<Source>(
     mut diagnostics: Vec<
         DiagnosticAction<
             Infallible,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
         >,
     >,
 ) -> FixedSupervisorEvent<
     SearchRole,
     SearchWorker,
-    SearchActivation,
-    ActionItemResult<PrepareWorkers<Source, SearchRole, SearchWorker, SearchActivation>>,
-    WorkerPreparation<Source, SearchRole, SearchWorker, SearchActivation>,
+    SearchStartup,
+    ActionItemResult<PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>>,
+    WorkerPreparation<Source, SearchRole, SearchWorker, SearchStartup>,
 >
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
 {
     assert_eq!(diagnostics.len(), 1);
     match diagnostics.remove(0) {
@@ -304,39 +315,39 @@ impl Behavior for SearchWorker {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SearchActivation;
+struct SearchStartup;
 
 struct SearchLifecycleProtocol;
 
 struct ReadyMember {
     proxy: CreationId,
-    worker: atomic::WorkerAttempt,
+    worker: behavior_actors::worker::WorkerAttempt,
 }
 
 impl Protocol for SearchLifecycleProtocol {
     type Addr = RuntimeAddr;
-    type Msg = FixedLifecycle<SearchRole, SearchWorker, SearchActivation>;
+    type Msg = FixedLifecycle<SearchRole, SearchWorker, SearchStartup>;
 }
 
 struct SearchDiagnosticProtocol;
 
 impl Protocol for SearchDiagnosticProtocol {
     type Addr = RuntimeAddr;
-    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Never>;
+    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Never>;
 }
 
 struct SearchRecoveryDiagnosticProtocol;
 
 impl Protocol for SearchRecoveryDiagnosticProtocol {
     type Addr = RuntimeAddr;
-    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>;
+    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>;
 }
 
-impl ActivationPlan for SearchActivation {
+impl StartupPlan for SearchStartup {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(()))
@@ -346,9 +357,9 @@ impl ActivationPlan for SearchActivation {
 type SearchSupervisorEvent = FixedSupervisorEvent<
     SearchRole,
     SearchWorker,
-    SearchActivation,
-    ActionItemResult<PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>>,
-    WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    SearchStartup,
+    ActionItemResult<PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>>,
+    WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
 >;
 
 fn shutdown_supervisor_event(from: RuntimeAddr) -> SearchSupervisorEvent {
@@ -406,11 +417,11 @@ impl Drop for TrackedReadiness {
     }
 }
 
-impl ActivationPlan for TrackedActivation {
+impl StartupPlan for TrackedActivation {
     type Ready = Option<TrackedReadiness>;
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(self
@@ -435,14 +446,14 @@ fn roles() -> OrderedRoles<SearchRole> {
     .expect("search roles are unique")
 }
 
-fn initial_worker(role: &SearchRole) -> WorkerSubmission<SearchWorker, SearchActivation> {
-    WorkerSubmission::activated(worker(role), SearchActivation)
+fn initial_worker(role: &SearchRole) -> WorkerSubmission<SearchWorker, SearchStartup> {
+    WorkerSubmission::with_startup(worker(role), SearchStartup)
 }
 
 fn commit_proxy_births(
-    creations: Creations<CreateChild<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>>>,
+    creations: Creations<CreateChild<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>>>,
     endpoint: u64,
-) -> CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>> {
+) -> CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>> {
     let settlements = creations
         .into_iter()
         .enumerate()
@@ -466,19 +477,19 @@ fn commit_proxy_births(
 fn first_proxy_dispatched(
     endpoint: u64,
 ) -> (
-    Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>,
-    >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
+    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -517,22 +528,24 @@ fn routed_start(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Never,
             EstablishedRecipient<SearchDiagnosticProtocol>,
             Infallible,
         >,
     >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles,
-        ActivationPolicy::new(ONE_WORKER.get()).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        reaction,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::deliver_to(diagnostics),
+        roster::Config {
+            startup: StartupLimit::new(ONE_WORKER.get()).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: reaction,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -561,8 +574,8 @@ fn routed_start(
 }
 
 async fn ready_proxy_outcome(
-    control: ProxyControl<SearchWorker, SearchActivation>,
-) -> ProxyOutcome<SearchWorker, SearchActivation> {
+    control: ProxyControl<SearchWorker, SearchStartup>,
+) -> ProxyOutcome<SearchWorker, SearchStartup> {
     let initialized = StableProxy::activated()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
@@ -600,21 +613,21 @@ async fn ready_proxy_outcome(
         .pop()
         .expect("one worker initialization is awaited");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("initialization requests activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("initialization requests startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("one worker activation is requested");
+        .expect("one worker startup is requested");
     let started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("activation begins once"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("startup begins once"));
     assert_eq!(started.sends.owner_outcomes.len(), 0);
     proxy
-        .on(activation.activate().await)
-        .unwrap_or_else(|_| panic!("activation readiness completes startup"))
+        .on(startup.start().await)
+        .unwrap_or_else(|_| panic!("startup readiness completes startup"))
         .sends
         .owner_outcomes
         .into_requests()
@@ -663,20 +676,20 @@ async fn ready_tracked_proxy_outcome(
         .pop()
         .expect("one tracked worker initialization is awaited");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("tracked initialization requests activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("tracked initialization requests startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("one tracked worker activation is requested");
+        .expect("one tracked worker startup is requested");
     let started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("tracked activation begins once"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("tracked startup begins once"));
     assert!(started.sends.owner_outcomes.is_empty());
     proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|_| panic!("tracked readiness completes startup"))
         .sends
         .owner_outcomes
@@ -692,11 +705,11 @@ fn fixed_runtime_inputs_use_their_declared_sources() {
         FixedSupervisorEvent<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             ActionItemResult<
-                PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+                PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
             >,
-            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+            WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
         >,
     >();
 }
@@ -728,11 +741,11 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
         },
     );
     let event = <SearchSupervisorEvent as InjectEvent<
-        ChildReport<ProxyOutcome<SearchWorker, SearchActivation>>,
+        ChildReport<ProxyOutcome<SearchWorker, SearchStartup>>,
         Here,
     >>::inject_at(report);
     let Ok(recovered) = <SearchSupervisorEvent as RecoverEvent<
-        ChildReport<ProxyOutcome<SearchWorker, SearchActivation>>,
+        ChildReport<ProxyOutcome<SearchWorker, SearchStartup>>,
         Here,
     >>::recover(event) else {
         panic!("the proxy report recovers its exact payload")
@@ -755,21 +768,21 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
         }
     }
     let Err(foreign) = <SearchSupervisorEvent as RecoverEvent<
-        ChildReport<ProxyOutcome<SearchWorker, SearchActivation>>,
+        ChildReport<ProxyOutcome<SearchWorker, SearchStartup>>,
         Here,
     >>::recover(shutdown_supervisor_event(RuntimeAddr(49))) else {
         panic!("a command cannot recover as a proxy report")
     };
     assert_shutdown_supervisor_event(foreign, RuntimeAddr(49));
 
-    let settlement: CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>> =
+    let settlement: CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>> =
         CreationsSettled::new(CreationSettlement::Settled(Creations::empty()));
     let event = <SearchSupervisorEvent as InjectEvent<
-        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>>,
+        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>>,
         Here,
     >>::inject_at(settlement);
     let Ok(recovered) = <SearchSupervisorEvent as RecoverEvent<
-        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>>,
+        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>>,
         Here,
     >>::recover(event) else {
         panic!("the creation settlement recovers its exact payload")
@@ -779,7 +792,7 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
     };
     assert!(settlements.is_empty());
     let Err(foreign) = <SearchSupervisorEvent as RecoverEvent<
-        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchActivation>>,
+        CreationsSettled<RuntimeAddr, StableProxy<SearchWorker, SearchStartup>>,
         Here,
     >>::recover(shutdown_supervisor_event(RuntimeAddr(51))) else {
         panic!("a command cannot recover as a creation settlement")
@@ -831,21 +844,23 @@ fn fixed_event_adapters_recover_exact_values_and_return_foreign_events() {
 
 #[test]
 fn automatic_recovery_has_one_named_worker_preparation_lane() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(2).expect("activation capacity is positive"),
-        Recovery::permanent(
-            SearchWorkshop,
-            RecoveryPolicy {
-                strategy: Strategy::OneForOne,
-                limit: RestartLimit::new(3, Duration::from_secs(60)),
-                delay: RestartRelease::immediate(),
-            },
-        ),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(2).expect("startup capacity is positive"),
+            recovery: Recovery::permanent(
+                SearchWorkshop,
+                RecoveryPolicy {
+                    strategy: Strategy::OneForOne,
+                    limit: RestartLimit::new(3, Duration::from_secs(60)),
+                    delay: RestartRelease::immediate(),
+                },
+            ),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -857,14 +872,16 @@ fn automatic_recovery_has_one_named_worker_preparation_lane() {
 
 #[test]
 fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(3).expect("three proxies may start together"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(3).expect("three proxies may start together"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -930,14 +947,16 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
         rotated.map(|creation| (creation, CreationKind::Birth))
     );
 
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(3).expect("three proxies may start together"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(3).expect("three proxies may start together"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -1003,14 +1022,16 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
 #[test]
 fn failed_proxy_birth_batches_require_exact_pending_creations() {
     let shutdown_with_pending_proxy_births = || {
-        let initialized = fixed(
+        let initialized = roster::new(
             initial_worker,
             roles(),
-            ActivationPolicy::new(3).expect("three proxies may start together"),
-            Recovery::temporary(),
-            FailureReaction::StopSupervisor,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::terminate(),
+            roster::Config {
+                startup: StartupLimit::new(3).expect("three proxies may start together"),
+                recovery: Recovery::temporary(),
+                failure: FailureReaction::StopSupervisor,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+            },
         )
         .build()
         .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -1019,7 +1040,10 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
         let mut supervisor = initialized.behavior;
         let creations = initialized.actions.creates.into_iter().collect::<Vec<_>>();
         let shutdown = supervisor
-            .receive(RuntimeAddr(951), atomic::FixedCommand::shutdown())
+            .receive(
+                RuntimeAddr(951),
+                behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+            )
             .unwrap_or_else(|_| panic!("shutdown retains all three pending proxy births"));
         assert!(matches!(shutdown.become_, Step::Continue));
         assert!(shutdown.sends.proxy_operations.is_empty());
@@ -1100,7 +1124,7 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
 #[test]
 fn accepted_proxy_input_keeps_its_authorization_occupied() {
     let (mut fixed, operation) = first_proxy_dispatched(301);
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(401)),
     );
     let (_creation, _control, receipt) = admit_proxy_operation(operation, proxy);
@@ -1115,7 +1139,7 @@ fn accepted_proxy_input_keeps_its_authorization_occupied() {
 #[tokio::test]
 async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
     let (mut fixed, operation) = first_proxy_dispatched(401);
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(501)),
     );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
@@ -1149,7 +1173,7 @@ async fn exact_ready_proxy_report_releases_capacity_for_the_next_role() {
 #[test]
 fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
     let (mut fixed, operation) = first_proxy_dispatched(451);
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(551)),
     );
     let (creation, _control, receipt) = admit_proxy_operation(operation, proxy);
@@ -1167,7 +1191,7 @@ fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
             ProxyOutcome::Initial {
                 outcome: InitialWorkerOutcome::Overlap {
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                     phase: ProxyPhase::Creating,
                 },
             },
@@ -1179,7 +1203,7 @@ fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
     let mut diagnostics = stopped.sends.diagnostics.into_requests();
     assert_eq!(diagnostics.len(), 1);
     match diagnostics.remove(0) {
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(failure),
         } => {
             assert_eq!(failure.role(), &SearchRole::Search);
@@ -1199,22 +1223,22 @@ fn exact_non_ready_proxy_report_transfers_one_terminal_diagnostic_and_stops() {
                 }
             }
         }
-        atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("terminate policy cannot fabricate a diagnostic route")
         }
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::WorkerPreparationFailed(_),
         } => panic!("an initial proxy failure cannot become a preparation failure"),
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::RecoveryDenied(_),
         } => panic!("an initial proxy failure cannot become a recovery denial"),
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::RestartScheduleFailed(_),
         } => panic!("an initial proxy failure cannot become a schedule failure"),
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::ProxyInputRejected(_),
         } => panic!("an initial proxy failure cannot become an input rejection"),
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic:
                 FixedDiagnostic::WorkerUnavailable(_) | FixedDiagnostic::UnexpectedInput { .. },
         } => panic!("an initial proxy failure cannot become an unavailable command"),
@@ -1230,13 +1254,13 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
     let replica_tracker = Arc::clone(&replica_drops);
     let roles = OrderedRoles::new(TrackedRole::Primary, [TrackedRole::Replica])
         .expect("tracked roles are unique");
-    let initialized = fixed(
+    let initialized = roster::new(
         move |role: &TrackedRole| {
             let drops = match role {
                 TrackedRole::Primary => Arc::clone(&primary_tracker),
                 TrackedRole::Replica => Arc::clone(&replica_tracker),
             };
-            WorkerSubmission::activated(
+            WorkerSubmission::with_startup(
                 TrackedWorker { drops },
                 TrackedActivation {
                     readiness_drops: None,
@@ -1244,11 +1268,13 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
             )
         },
         roles,
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("both tracked workers prepare"))
@@ -1313,7 +1339,7 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
                     worker: TrackedWorker {
                         drops: Arc::clone(&failed_worker_drops),
                     },
-                    activation: TrackedActivation {
+                    startup: TrackedActivation {
                         readiness_drops: None,
                     },
                     phase: ProxyPhase::Creating,
@@ -1338,12 +1364,12 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
     let readiness_drops = Arc::new(AtomicUsize::new(0));
     let replacement_drops = Arc::new(AtomicUsize::new(0));
     let source_drops = Arc::new(AtomicUsize::new(0));
-    let initialized = fixed(
+    let initialized = roster::new(
         {
             let initial_worker_drops = Arc::clone(&initial_worker_drops);
             let readiness_drops = Arc::clone(&readiness_drops);
             move |_: &TrackedRole| {
-                WorkerSubmission::activated(
+                WorkerSubmission::with_startup(
                     TrackedWorker {
                         drops: Arc::clone(&initial_worker_drops),
                     },
@@ -1354,20 +1380,22 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
             }
         },
         OrderedRoles::new(TrackedRole::Primary, []).expect("one tracked role is unique"),
-        ActivationPolicy::new(1).expect("one tracked proxy may start"),
-        Recovery::permanent(
-            TrackedWorkshop {
-                drops: Arc::clone(&source_drops),
-            },
-            RecoveryPolicy {
-                strategy: Strategy::OneForOne,
-                limit: RestartLimit::new(0, Duration::from_secs(60)),
-                delay: RestartRelease::immediate(),
-            },
-        ),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("one tracked proxy may start"),
+            recovery: Recovery::permanent(
+                TrackedWorkshop {
+                    drops: Arc::clone(&source_drops),
+                },
+                RecoveryPolicy {
+                    strategy: Strategy::OneForOne,
+                    limit: RestartLimit::new(0, Duration::from_secs(60)),
+                    delay: RestartRelease::immediate(),
+                },
+            ),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("the tracked worker prepares"))
@@ -1461,7 +1489,7 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
         SettledItem::Attempted(_) => panic!("the test intercepts tracked preparation"),
     };
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         TrackedWorker {
             drops: Arc::clone(&replacement_drops),
         },
@@ -1495,7 +1523,7 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
         diagnostic_route.clone(),
         FailureReaction::RetireMember,
     );
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(654)),
     );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
@@ -1510,7 +1538,7 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
             ProxyOutcome::Initial {
                 outcome: InitialWorkerOutcome::Overlap {
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                     phase: ProxyPhase::Creating,
                 },
             },
@@ -1519,7 +1547,7 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
     assert!(matches!(failing.become_, Step::Continue));
     let mut diagnostics = failing.sends.diagnostics.into_requests();
     match diagnostics.remove(0) {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(failure),
             ..
         } => {
@@ -1531,26 +1559,26 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
                 }
             ));
         }
-        atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("routed policy cannot become terminal custody")
         }
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::WorkerPreparationFailed(_),
             ..
         } => panic!("an initial proxy failure cannot become a preparation failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RecoveryDenied(_),
             ..
         } => panic!("an initial proxy failure cannot become a recovery denial"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RestartScheduleFailed(_),
             ..
         } => panic!("an initial proxy failure cannot become a schedule failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyInputRejected(_),
             ..
         } => panic!("an initial proxy failure cannot become an input rejection"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic:
                 FixedDiagnostic::WorkerUnavailable(_) | FixedDiagnostic::UnexpectedInput { .. },
             ..
@@ -1570,13 +1598,16 @@ async fn routed_non_ready_report_delivers_diagnostic_and_retires_after_proxy_exi
         SettledItem::Attempted(_) => panic!("the shutdown has not been interpreted"),
     };
     let fleet_shutdown = fixed
-        .receive(RuntimeAddr(653), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(653),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("fleet shutdown adopts a member stop already in progress"));
     assert!(matches!(fleet_shutdown.become_, Step::Continue));
     assert_eq!(fleet_shutdown.sends.proxy_operations.len(), 0);
     let (_shutdown_creation, _shutdown_control, shutdown_receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(654)),
         ),
     );
@@ -1635,7 +1666,7 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
     );
     let (route, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(762)),
         ),
     );
@@ -1650,7 +1681,7 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
             ProxyOutcome::Initial {
                 outcome: InitialWorkerOutcome::Overlap {
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                     phase: ProxyPhase::Creating,
                 },
             },
@@ -1659,14 +1690,15 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
     assert!(matches!(failed.become_, Step::Continue));
     let mut diagnostic_actions = failed.sends.diagnostics.into_requests();
     match diagnostic_actions.pop().expect("one routed diagnostic") {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             route,
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(failure),
         } => {
             assert_eq!(route, diagnostics);
             assert_eq!(failure.role(), &SearchRole::Search);
         }
-        atomic::DiagnosticAction::Deliver { .. } | atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. }
+        | behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("the exact initial outcome keeps its routed diagnostic")
         }
     }
@@ -1684,7 +1716,7 @@ fn routed_initial_failure_stops_the_complete_supervisor() {
 #[tokio::test]
 async fn replacement_outcome_cannot_satisfy_initial_startup() {
     let (mut fixed, operation) = first_proxy_dispatched(1001);
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(1101)),
     );
     let (creation, control, receipt) = admit_proxy_operation(operation, proxy);
@@ -1698,7 +1730,7 @@ async fn replacement_outcome_cannot_satisfy_initial_startup() {
         ProxyOutcome::Replacement {
             outcome: ReplacementOutcome::NotReplaceable {
                 worker: SearchWorker(SearchRole::Search),
-                activation: SearchActivation,
+                startup: SearchStartup,
                 phase: ProxyPhase::Ready,
             },
         },
@@ -1731,7 +1763,7 @@ async fn replacement_outcome_cannot_satisfy_initial_startup() {
 fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     let (mut owner, owner_operation) = first_proxy_dispatched(501);
     let (mut source, source_operation) = first_proxy_dispatched(601);
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(701)),
     );
     let (_source_creation, _source_control, source_receipt) =
@@ -1751,7 +1783,7 @@ fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
     assert_eq!(accepted.sends.proxy_operations.len(), 0);
     let (_owner_creation, _owner_control, owner_receipt) = admit_proxy_operation(
         owner_operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(702)),
         ),
     );
@@ -1766,10 +1798,8 @@ fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
 fn single_proxy_dispatched(
     nonce: u64,
 ) -> (
-    Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>,
-    >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
+    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) {
     single_proxy_dispatched_with_recovery(nonce, Recovery::temporary())
 }
@@ -1779,12 +1809,12 @@ fn single_proxy_dispatched_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Source, Infallible, Infallible>,
+        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
     >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
 {
     single_proxy_dispatched_with_policies(
         nonce,
@@ -1806,28 +1836,31 @@ fn single_proxy_dispatched_with_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             Infallible,
         >,
     >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, [])
             .unwrap_or_else(|_| panic!("the single role is unique")),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        recovery,
-        failure_reaction,
-        actor_drain,
-        diagnostics,
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: recovery,
+            failure: failure_reaction,
+            shutdown: actor_drain,
+            diagnostics: diagnostics,
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
@@ -1859,9 +1892,7 @@ where
 }
 
 async fn ready_single_proxy_with_worker() -> (
-    Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Never, Infallible, Infallible>,
-    >,
+    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
     ReadyMember,
 ) {
     ready_single_proxy_with_recovery(Recovery::temporary()).await
@@ -1871,12 +1902,12 @@ async fn ready_single_proxy_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Source, Infallible, Infallible>,
+        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
     >,
     ReadyMember,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
 {
     ready_single_proxy_with_policies(
         recovery,
@@ -1897,7 +1928,7 @@ async fn ready_single_proxy_with_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             Infallible,
@@ -1906,9 +1937,10 @@ async fn ready_single_proxy_with_policies<Source, DiagnosticRoute>(
     ReadyMember,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
     let (mut fixed, initial) = single_proxy_dispatched_with_policies(
         701,
@@ -1919,7 +1951,7 @@ where
     );
     let (route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -1928,7 +1960,7 @@ where
         ProxyOutcome::Initial {
             outcome:
                 InitialWorkerOutcome::Resolved {
-                    result: atomic::WorkerStartResult::Ready { attempt, .. },
+                    result: behavior_actors::proxy::WorkerStartResult::Ready { attempt, .. },
                 },
         } => attempt.clone(),
         ProxyOutcome::Initial { .. }
@@ -1958,7 +1990,7 @@ async fn ready_single_proxy_with_lifecycle() -> (
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Never,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
@@ -1983,7 +2015,7 @@ async fn ready_single_proxy_with_lifecycle_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
@@ -1992,18 +2024,21 @@ async fn ready_single_proxy_with_lifecycle_policies<Source, DiagnosticRoute>(
     ReadyMember,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, []).expect("one role is non-empty"),
-        ActivationPolicy::new(ONE_WORKER.get()).expect("activation capacity is positive"),
-        recovery,
-        failure_reaction,
-        ActorDrainPolicy::WaitForActorGraph,
-        diagnostics,
+        roster::Config {
+            startup: StartupLimit::new(ONE_WORKER.get()).expect("startup capacity is positive"),
+            recovery: recovery,
+            failure: failure_reaction,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: diagnostics,
+        },
     )
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
@@ -2033,7 +2068,7 @@ where
     };
     let (route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -2074,14 +2109,16 @@ where
 #[tokio::test]
 async fn logical_lifecycle_route_publishes_exact_started_event() {
     let lifecycle = Recipient::<SearchLifecycleProtocol>::global(RuntimeAddr(972));
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, []).expect("one role is non-empty"),
-        ActivationPolicy::new(ONE_WORKER.get()).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(ONE_WORKER.get()).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .publish_lifecycle(lifecycle.clone())
     .build()
@@ -2107,7 +2144,7 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
             panic!("the test intercepts an uninterpreted operation")
         }
     };
-    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+    let proxy = EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
         installed_control::InstalledControl::new(Endpoint(802)),
     );
     let expected_proxy = proxy.clone();
@@ -2148,13 +2185,13 @@ fn three_role_initial_operations(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    Vec<ProxyOperation<Here, SearchWorker, SearchActivation>>,
+    Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
 ) {
     three_role_initial_operations_with_policies(
         Recovery::permanent(
@@ -2181,27 +2218,30 @@ fn three_role_initial_operations_with_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    Vec<ProxyOperation<Here, SearchWorker, SearchActivation>>,
+    Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(maximum.get()).expect("activation capacity is positive"),
-        recovery,
-        failure_reaction,
-        ActorDrainPolicy::WaitForActorGraph,
-        diagnostics,
+        roster::Config {
+            startup: StartupLimit::new(maximum.get()).expect("startup capacity is positive"),
+            recovery: recovery,
+            failure: failure_reaction,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: diagnostics,
+        },
     )
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
@@ -2237,26 +2277,27 @@ async fn accept_initial_operation<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    operation: ProxyOperation<Here, SearchWorker, SearchActivation>,
+    operation: ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) -> (
     ReadyMember,
-    Vec<ProxyOperation<Here, SearchWorker, SearchActivation>>,
+    Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
     let endpoint = Endpoint(operation.creation().get() + 100);
     let (creation, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(endpoint),
         ),
     );
@@ -2265,7 +2306,7 @@ where
         ProxyOutcome::Initial {
             outcome:
                 InitialWorkerOutcome::Resolved {
-                    result: atomic::WorkerStartResult::Ready { attempt, .. },
+                    result: behavior_actors::proxy::WorkerStartResult::Ready { attempt, .. },
                 },
         } => attempt.clone(),
         ProxyOutcome::Initial { .. }
@@ -2336,7 +2377,7 @@ async fn ready_three_role_roster(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
@@ -2370,7 +2411,7 @@ async fn ready_three_role_roster_with_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
@@ -2379,9 +2420,10 @@ async fn ready_three_role_roster_with_policies<Source, DiagnosticRoute>(
     Vec<ReadyMember>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
     let (mut fixed, operations) = three_role_initial_operations_with_policies(
         recovery,
@@ -2408,13 +2450,13 @@ async fn coordinated_preparation(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     Vec<ReadyMember>,
 ) {
     let (mut fixed, members) = ready_three_role_roster(strategy, maximum).await;
@@ -2449,21 +2491,21 @@ async fn coordinated_preparation(
 }
 
 fn complete_coordinated_preparation(
-    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
-) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
+) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup> {
     prepare_selected_workers(request, &SEARCH_ROLES)
 }
 
 fn prepare_selected_workers(
-    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     selected_roles: &[SearchRole],
-) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
+) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup> {
     let (role, remaining_roles) = selected_roles
         .split_first()
         .expect("every admitted recovery selects at least one role");
-    let preparation = request.accept(WorkerSubmission::activated(
+    let preparation = request.accept(WorkerSubmission::with_startup(
         SearchWorker(*role),
-        SearchActivation,
+        SearchStartup,
     ));
     match (remaining_roles, preparation) {
         ([], ControlFlow::Break(preparation)) => preparation,
@@ -2480,15 +2522,15 @@ fn prepare_selected_workers(
 }
 
 fn prepare_remaining_workers(
-    request: PendingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: PendingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     selected_roles: &[SearchRole],
-) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
+) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup> {
     let (role, remaining_roles) = selected_roles
         .split_first()
         .expect("a pending preparation has another selected role");
-    let preparation = request.accept(WorkerSubmission::activated(
+    let preparation = request.accept(WorkerSubmission::with_startup(
         SearchWorker(*role),
-        SearchActivation,
+        SearchStartup,
     ));
     match (remaining_roles, preparation) {
         ([], ControlFlow::Break(preparation)) => preparation,
@@ -2613,7 +2655,7 @@ async fn coordinated_preparation_shutdown_accepts_every_arrival_order() {
                             .get_mut(&role)
                             .and_then(Option::take)
                             .expect("each role's proxy shutdown returns exactly once"),
-                        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+                        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
                             installed_control::InstalledControl::new(Endpoint(992)),
                         ),
                     );
@@ -2880,7 +2922,7 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                                 .get_mut(role)
                                 .and_then(Option::take)
                                 .expect("each proxy receipt returns exactly once"),
-                            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+                            EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
                                 installed_control::InstalledControl::new(Endpoint(996)),
                             ),
                         );
@@ -2976,7 +3018,7 @@ async fn three_disjoint_recoveries_keep_exact_correlation_in_every_lawful_order(
                             capability,
                             CapabilityResult::Unavailable {
                                 role,
-                                phase: atomic::UnavailablePhase::Recovering,
+                                phase: behavior_actors::supervisor::roster::UnavailablePhase::Recovering,
                             } if role == queried_role
                         ));
                     }
@@ -2999,14 +3041,14 @@ async fn admitted_one_for_all(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
     Vec<ReadyMember>,
-    Vec<ProxyOperation<Here, SearchWorker, SearchActivation>>,
+    Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
 ) {
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::OneForAll, maximum, 1).await;
@@ -3037,15 +3079,15 @@ async fn one_for_all_with_dispatched_initial_peers() -> (
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     ReadyMember,
-    Vec<ProxyOperation<Here, SearchWorker, SearchActivation>>,
+    Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
 ) {
     let (mut fixed, mut operations) =
         three_role_initial_operations(Strategy::OneForAll, THREE_WORKERS);
@@ -3087,18 +3129,19 @@ fn begin_recovery<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
     member: &ReadyMember,
-) -> PrepareWorkers<Source, SearchRole, SearchWorker, SearchActivation>
+) -> PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
     let worker_stop = ChildStopped::new(member.worker.creation(), Ok(Exit::Normal), Instant::now());
     let selected = fixed
@@ -3164,11 +3207,11 @@ fn reject_selected_worker(
         FallibleWorkshop,
         SearchRole,
         SearchWorker,
-        SearchActivation,
+        SearchStartup,
     >,
     selected_roles: &[SearchRole],
     rejected_role: SearchRole,
-) -> WorkerPreparation<FallibleWorkshop, SearchRole, SearchWorker, SearchActivation> {
+) -> WorkerPreparation<FallibleWorkshop, SearchRole, SearchWorker, SearchStartup> {
     let rejected_position = selected_roles
         .iter()
         .position(|role| *role == rejected_role)
@@ -3178,9 +3221,9 @@ fn reject_selected_worker(
         return preparation.reject(WorkshopRejection::WorkerUnavailable);
     }
 
-    let mut preparation = match preparation.accept(WorkerSubmission::activated(
+    let mut preparation = match preparation.accept(WorkerSubmission::with_startup(
         worker(&selected_roles[0]),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(preparation) => preparation,
         ControlFlow::Break(_) => panic!("the selected recovery has another role"),
@@ -3190,9 +3233,9 @@ fn reject_selected_worker(
         return preparation.reject(WorkshopRejection::WorkerUnavailable);
     }
 
-    let mut preparation = match preparation.accept(WorkerSubmission::activated(
+    let mut preparation = match preparation.accept(WorkerSubmission::with_startup(
         worker(&selected_roles[1]),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(preparation) => preparation,
         ControlFlow::Break(_) => panic!("the selected recovery has a third role"),
@@ -3203,9 +3246,9 @@ fn reject_selected_worker(
 }
 
 fn complete_one_for_one_preparation(
-    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    request: StartingWorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     role: SearchRole,
-) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchActivation> {
+) -> WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup> {
     prepare_selected_workers(request, core::slice::from_ref(&role))
 }
 
@@ -3215,9 +3258,9 @@ async fn one_for_all_prepares_every_role_in_declaration_order() {
         coordinated_preparation(Strategy::OneForAll, THREE_WORKERS, 1).await;
     assert_eq!(request.source_and_role().1, &SearchRole::Search);
     let request = start_fixed_preparation!(fixed, request);
-    let mut request = match request.accept(WorkerSubmission::activated(
+    let mut request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
@@ -3225,9 +3268,9 @@ async fn one_for_all_prepares_every_role_in_declaration_order() {
         }
     };
     assert_eq!(request.source_and_role().1, &SearchRole::Index);
-    let mut request = match request.accept(WorkerSubmission::activated(
+    let mut request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Index),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
@@ -3235,9 +3278,9 @@ async fn one_for_all_prepares_every_role_in_declaration_order() {
         }
     };
     assert_eq!(request.source_and_role().1, &SearchRole::Spellcheck);
-    match request.accept(WorkerSubmission::activated(
+    match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Spellcheck),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(_) => {}
         ControlFlow::Continue(_) => {
@@ -3269,7 +3312,7 @@ async fn every_strategy_selects_each_declared_trigger_range() {
             let first = expected.first().expect("every strategy selects a trigger");
             assert_eq!(request.source_and_role().1, first);
             let request = start_fixed_preparation!(fixed, request);
-            match request.accept(WorkerSubmission::activated(worker(first), SearchActivation)) {
+            match request.accept(WorkerSubmission::with_startup(worker(first), SearchStartup)) {
                 ControlFlow::Break(_) => assert_eq!(expected.len(), 1),
                 ControlFlow::Continue(request) => {
                     assert_ne!(expected.len(), 1);
@@ -3279,9 +3322,9 @@ async fn every_strategy_selects_each_declared_trigger_range() {
                             .take()
                             .expect("every remaining role has one pending preparation");
                         assert_eq!(request.source_and_role().1, expected_role);
-                        match request.accept(WorkerSubmission::activated(
+                        match request.accept(WorkerSubmission::with_startup(
                             worker(expected_role),
-                            SearchActivation,
+                            SearchStartup,
                         )) {
                             ControlFlow::Continue(request) => {
                                 assert_ne!(selected + 2, expected.len());
@@ -3309,9 +3352,9 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
     let mut request = request;
     assert_eq!(request.source_and_role().1, &SearchRole::Search);
     let request = start_fixed_preparation!(fixed, request);
-    let mut request = match request.accept(WorkerSubmission::activated(
+    let mut request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
@@ -3319,9 +3362,9 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
         }
     };
     assert_eq!(request.source_and_role().1, &SearchRole::Index);
-    let mut request = match request.accept(WorkerSubmission::activated(
+    let mut request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Index),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
@@ -3330,9 +3373,9 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
     };
     assert_eq!(request.source_and_role().1, &SearchRole::Spellcheck);
     assert_eq!(pending_proxy_ids, [2, 3]);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Spellcheck),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -3359,7 +3402,10 @@ async fn one_for_all_includes_dispatched_initial_peers_without_marking_them_read
         .collect::<Vec<_>>();
     assert_eq!(replacement_proxy_ids, [search.proxy.get()]);
     let shutdown = fixed
-        .receive(RuntimeAddr(944), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(944),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains initial operations and prepared workers"));
     assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
@@ -3376,7 +3422,7 @@ async fn preparing_recovery_maps_a_dispatched_peer_only_from_its_proxy() {
             pending_proxy,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(901),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("pending initial worker".to_owned()),
             },
         ))
@@ -3393,7 +3439,7 @@ async fn preparing_recovery_maps_a_dispatched_peer_only_from_its_proxy() {
         } => {
             assert_eq!(role, &SearchRole::Index);
             assert_eq!(sender, &RuntimeAddr(901));
-            assert_eq!(phase, ProxyPhase::Activating);
+            assert_eq!(phase, ProxyPhase::Starting);
             assert_eq!(
                 command,
                 &SearchCommand::Find("pending initial worker".to_owned())
@@ -3429,7 +3475,7 @@ async fn preparing_recovery_maps_a_dispatched_peer_only_from_its_proxy() {
             foreign,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(902),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("outside roster".to_owned()),
             },
         ))
@@ -3447,7 +3493,7 @@ async fn preparing_recovery_maps_a_dispatched_peer_only_from_its_proxy() {
             command,
         } => {
             assert_eq!(sender, RuntimeAddr(902));
-            assert_eq!(phase, ProxyPhase::Activating);
+            assert_eq!(phase, ProxyPhase::Starting);
             assert_eq!(command, SearchCommand::Find("outside roster".to_owned()));
         }
         ProxyOutcome::Initial { .. }
@@ -3554,9 +3600,9 @@ async fn rest_for_one_prepares_the_trigger_and_declared_suffix() {
         coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
     assert_eq!(request.source_and_role().1, &SearchRole::Index);
     let request = start_fixed_preparation!(fixed, request);
-    let mut request = match request.accept(WorkerSubmission::activated(
+    let mut request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Index),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
@@ -3564,9 +3610,9 @@ async fn rest_for_one_prepares_the_trigger_and_declared_suffix() {
         }
     };
     assert_eq!(request.source_and_role().1, &SearchRole::Spellcheck);
-    match request.accept(WorkerSubmission::activated(
+    match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Spellcheck),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(_) => {}
         ControlFlow::Continue(_) => {
@@ -3582,7 +3628,10 @@ async fn shutdown_drains_every_proxy_selected_for_coordinated_recovery_in_roster
     assert_eq!(preparation.source_and_role().1, &SearchRole::Search);
 
     let shutdown = fixed
-        .receive(RuntimeAddr(941), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(941),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown adopts every selected proxy"));
     assert!(shutdown.creates.is_empty());
     assert!(shutdown.sends.proxy_observations.is_empty());
@@ -3653,7 +3702,10 @@ async fn coordinated_preparation_issues_ready_replacements_in_declaration_order(
     assert!(matches!(accepted.become_, Step::Continue));
 
     let shutdown = fixed
-        .receive(RuntimeAddr(942), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(942),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains every prepared participant"));
     assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
@@ -3765,7 +3817,7 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(811)),
         ),
     );
@@ -3816,7 +3868,10 @@ async fn coordinated_peer_restarts_when_replacement_outcome_precedes_worker_stop
     ));
 
     let shutdown = fixed
-        .receive(RuntimeAddr(943), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(943),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the declared roster"));
     let proxy_ids = shutdown
         .sends
@@ -3860,7 +3915,7 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
         .collect::<Vec<_>>();
     let replacement = match replacements
         .pop()
-        .expect("one replacement occupies the single activation slot")
+        .expect("one replacement occupies the single startup slot")
     {
         SettledItem::Unattempted(operation) => operation,
         SettledItem::Attempted(_) => {
@@ -3874,7 +3929,7 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(811)),
         ),
     );
@@ -3897,7 +3952,7 @@ async fn replacement_outcome_releases_capacity_while_predecessor_stop_is_pending
                 },
             },
         ))
-        .unwrap_or_else(|_| panic!("the exact outcome releases its activation slot"));
+        .unwrap_or_else(|_| panic!("the exact outcome releases its startup slot"));
     let next = match outcome_first
         .sends
         .proxy_operations
@@ -3958,7 +4013,7 @@ async fn coordinated_peer_restarts_when_worker_stop_precedes_replacement_outcome
     let predecessor = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(811)),
         ),
     );
@@ -4013,18 +4068,18 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
     let (mut fixed, request, members) =
         coordinated_preparation(Strategy::RestForOne, THREE_WORKERS, 1).await;
     let request = start_fixed_preparation!(fixed, request);
-    let request = match request.accept(WorkerSubmission::activated(
+    let request = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Index),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(request) => request,
         ControlFlow::Break(_) => {
             panic!("the suffix still needs one prepared worker")
         }
     };
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Spellcheck),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -4053,7 +4108,7 @@ async fn rest_for_one_rejects_returned_trigger_while_its_suffix_is_still_recover
     let previous = members[1].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(812)),
         ),
     );
@@ -4134,7 +4189,7 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     let predecessor = members[2].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         spellcheck_replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(813)),
         ),
     );
@@ -4180,9 +4235,9 @@ async fn returned_rest_for_one_suffix_can_begin_disjoint_recovery() {
     let mut second = begin_recovery(&mut fixed, &successor);
     assert_eq!(second.source_and_role().1, &SearchRole::Spellcheck);
     let second = start_fixed_preparation!(fixed, second);
-    match second.accept(WorkerSubmission::activated(
+    match second.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Spellcheck),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(_) => {}
         ControlFlow::Continue(_) => {
@@ -4203,7 +4258,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     );
     let search_issued = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(search))
-        .unwrap_or_else(|_| panic!("the first recovery occupies the activation slot"));
+        .unwrap_or_else(|_| panic!("the first recovery occupies the startup slot"));
     let search_operation = match search_issued
         .sends
         .proxy_operations
@@ -4228,7 +4283,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     );
     let spellcheck_waiting = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(spellcheck))
-        .unwrap_or_else(|_| panic!("the later role waits for activation capacity"));
+        .unwrap_or_else(|_| panic!("the later role waits for startup capacity"));
     assert!(spellcheck_waiting.sends.proxy_operations.is_empty());
 
     let index = begin_recovery(&mut fixed, &members[1]);
@@ -4236,7 +4291,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
         complete_one_for_one_preparation(start_fixed_preparation!(fixed, index), SearchRole::Index);
     let index_waiting = fixed
         .transition(FixedSupervisorEvent::WorkerPreparationReturned(index))
-        .unwrap_or_else(|_| panic!("the earlier role also waits for activation capacity"));
+        .unwrap_or_else(|_| panic!("the earlier role also waits for startup capacity"));
     assert!(index_waiting.sends.proxy_operations.is_empty());
 
     let waiting_unavailable = fixed
@@ -4245,7 +4300,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(809),
                 phase: ProxyPhase::EmptyAfter,
-                command: SearchCommand::Find("waiting for activation capacity".to_owned()),
+                command: SearchCommand::Find("waiting for startup capacity".to_owned()),
             },
         ))
         .unwrap_or_else(|_| panic!("a waiting replacement retains its live proxy"));
@@ -4268,7 +4323,7 @@ async fn released_capacity_authorizes_waiting_recoveries_in_roster_order() {
     let previous = members[0].worker.clone();
     let (creation, control, receipt) = admit_proxy_operation(
         search_operation,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(811)),
         ),
     );
@@ -4357,21 +4412,26 @@ async fn rest_for_one_returns_the_stop_when_its_suffix_is_already_recovering() {
     }
 
     let shutdown = fixed
-        .receive(RuntimeAddr(943), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(943),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("the unchanged roster still owns all three proxies"));
     assert_eq!(shutdown.sends.proxy_operations.len(), 3);
 }
 
 #[test]
 fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -4397,7 +4457,10 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
         .pop()
         .expect("only search receives an initial input");
     let shutting_down = fixed
-        .receive(RuntimeAddr(931), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(931),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("every committed proxy can begin shutdown"));
     assert!(matches!(shutting_down.become_, Step::Continue));
     let operations = shutting_down
@@ -4420,7 +4483,7 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
         };
         let (creation, control, receipt) = admit_proxy_operation(
             operation,
-            EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+            EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
                 installed_control::InstalledControl::new(Endpoint(841 + position as u64)),
             ),
         );
@@ -4443,7 +4506,10 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
     let (mut owner, owner_initial) = single_proxy_dispatched(751);
     let (mut visitor, visitor_initial) = single_proxy_dispatched(752);
     let shutting_down = owner
-        .receive(RuntimeAddr(932), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(932),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("owner begins shutdown"));
     let owner_shutdown = shutting_down
         .sends
@@ -4469,7 +4535,7 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
 
     let (_route, control, receipt) = admit_proxy_operation(
         owner_initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(851)),
         ),
     );
@@ -4483,15 +4549,17 @@ fn shutdown_rejects_another_supervisors_initial_input_without_consuming_its_own(
 
 #[test]
 fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, [])
             .unwrap_or_else(|_| panic!("the single role is unique")),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
@@ -4508,7 +4576,10 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     drop(proxy);
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(933), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(933),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains an unresolved proxy creation"));
     assert!(matches!(shutting_down.become_, Step::Continue));
     assert_eq!(shutting_down.sends.proxy_operations.len(), 0);
@@ -4581,7 +4652,7 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
     };
     let (creation, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(861)),
         ),
     );
@@ -4614,14 +4685,17 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
     let (mut fixed, initial) = single_proxy_dispatched(731);
     let (initial_route, initial_control, initial_receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(831)),
         ),
     );
     let initial_outcome = ready_proxy_outcome(initial_control).await;
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(930), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(930),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("committed startup accepts shutdown"));
     assert!(matches!(shutting_down.become_, Step::Continue));
     let proxy_shutdown = match shutting_down
@@ -4652,7 +4726,7 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
         ProxyOutcome::Replacement {
             outcome: ReplacementOutcome::NotReplaceable {
                 worker: SearchWorker(SearchRole::Search),
-                activation: SearchActivation,
+                startup: SearchStartup,
                 phase: ProxyPhase::Ready,
             },
         },
@@ -4681,7 +4755,7 @@ async fn shutdown_retains_emitted_initial_input_and_its_late_outcome() {
 
     let (shutdown_route, shutdown_control, shutdown_receipt) = admit_proxy_operation(
         proxy_shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(831)),
         ),
     );
@@ -4707,7 +4781,10 @@ async fn ready_roster_shutdown_waits_for_operation_and_proxy_exit() {
     let (mut fixed, _) = ready_single_proxy_with_worker().await;
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(900), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(900),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("a ready roster accepts shutdown"));
     assert!(matches!(shutting_down.become_, Step::Continue));
     let shutdown = match shutting_down
@@ -4727,14 +4804,17 @@ async fn ready_roster_shutdown_waits_for_operation_and_proxy_exit() {
     };
 
     let repeated = fixed
-        .receive(RuntimeAddr(901), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(901),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("repeated shutdown is idempotent"));
     assert!(matches!(repeated.become_, Step::Continue));
     assert_eq!(repeated.sends.proxy_operations.len(), 0);
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -4793,7 +4873,10 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
     }
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(930), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(930),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("the empty member still owns its live proxy"));
     let shutdown = match shutting_down
         .sends
@@ -4812,7 +4895,7 @@ async fn temporary_worker_stop_leaves_one_empty_member_with_a_live_proxy() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -4860,7 +4943,10 @@ async fn transient_normal_stop_leaves_one_empty_member_with_a_live_proxy() {
     assert!(left_empty.sends.diagnostics.is_empty());
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(931), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(931),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("the empty transient member retains its live proxy"));
     let mut operations = shutting_down
         .sends
@@ -4960,7 +5046,10 @@ async fn configured_temporary_stop_publishes_exact_ineligible_lifecycle_once() {
     assert_eq!(returned.child, member.proxy);
 
     let shutdown = fixed
-        .receive(RuntimeAddr(971), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(971),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("the empty role still owns its live proxy"));
     assert_eq!(shutdown.sends.lifecycle.len(), 0);
     assert_eq!(shutdown.sends.proxy_operations.len(), 1);
@@ -5065,7 +5154,7 @@ async fn exact_unavailable_command_uses_diagnostics_when_lifecycle_is_omitted() 
             member.proxy,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(983),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("typed actors".to_owned()),
             },
         ))
@@ -5077,23 +5166,23 @@ async fn exact_unavailable_command_uses_diagnostics_when_lifecycle_is_omitted() 
     let mut delivered = unavailable.sends.diagnostics.into_requests();
     assert_eq!(delivered.len(), 1);
     match delivered.remove(0) {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             route,
             diagnostic: FixedDiagnostic::WorkerUnavailable(unavailable),
         } => {
             assert_eq!(route, diagnostics);
             assert_eq!(unavailable.role(), &SearchRole::Search);
             assert_eq!(unavailable.sender(), &RuntimeAddr(983));
-            assert_eq!(unavailable.phase(), ProxyPhase::Activating);
+            assert_eq!(unavailable.phase(), ProxyPhase::Starting);
             assert_eq!(
                 unavailable.command(),
                 &SearchCommand::Find("typed actors".to_owned())
             );
         }
-        atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("a routed diagnostic cannot become terminal custody")
         }
-        atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("the unavailable command keeps its diagnostic meaning")
         }
     }
@@ -5102,14 +5191,17 @@ async fn exact_unavailable_command_uses_diagnostics_when_lifecycle_is_omitted() 
 #[test]
 fn starting_roles_accept_unavailable_only_from_their_proxy() {
     let diagnostics = EstablishedRecipient::<SearchDiagnosticProtocol>::issued(Endpoint(992));
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(1).expect("one proxy input may remain outside the supervisor"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::deliver_to(diagnostics.clone()),
+        roster::Config {
+            startup: StartupLimit::new(1)
+                .expect("one proxy input may remain outside the supervisor"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::deliver_to(diagnostics.clone()),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -5234,7 +5326,7 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
             foreign,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(995),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("unowned proxy".to_owned()),
             },
         ))
@@ -5258,7 +5350,7 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
                     command,
                 } => {
                     assert_eq!(sender, RuntimeAddr(995));
-                    assert_eq!(phase, ProxyPhase::Activating);
+                    assert_eq!(phase, ProxyPhase::Starting);
                     assert_eq!(command, SearchCommand::Find("unowned proxy".to_owned()));
                 }
                 ProxyOutcome::Initial { .. }
@@ -5276,7 +5368,7 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(996)),
         ),
     );
@@ -5374,9 +5466,9 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
     )
     .await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -5393,7 +5485,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
             proxy,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(998),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("during replacement".to_owned()),
             },
         ))
@@ -5409,7 +5501,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
             assert_eq!(route, diagnostics);
             assert_eq!(unavailable.role(), &SearchRole::Search);
             assert_eq!(unavailable.sender(), &RuntimeAddr(998));
-            assert_eq!(unavailable.phase(), ProxyPhase::Activating);
+            assert_eq!(unavailable.phase(), ProxyPhase::Starting);
             assert_eq!(
                 unavailable.command(),
                 &SearchCommand::Find("during replacement".to_owned())
@@ -5437,7 +5529,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
             foreign,
             ProxyOutcome::Unavailable {
                 sender: RuntimeAddr(999),
-                phase: ProxyPhase::Activating,
+                phase: ProxyPhase::Starting,
                 command: SearchCommand::Find("unowned proxy".to_owned()),
             },
         ))
@@ -5462,7 +5554,7 @@ async fn admitted_replacement_accepts_unavailable_from_its_live_proxy() {
                     command,
                 } => {
                     assert_eq!(sender, RuntimeAddr(999));
-                    assert_eq!(phase, ProxyPhase::Activating);
+                    assert_eq!(phase, ProxyPhase::Starting);
                     assert_eq!(command, SearchCommand::Find("unowned proxy".to_owned()));
                 }
                 ProxyOutcome::Initial { .. }
@@ -5504,7 +5596,7 @@ async fn terminal_unavailable_diagnostic_stops_with_the_complete_command() {
         .pop()
         .expect("one terminal diagnostic owns the command")
     {
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::WorkerUnavailable(unavailable),
         } => {
             assert_eq!(unavailable.role(), &SearchRole::Search);
@@ -5515,10 +5607,10 @@ async fn terminal_unavailable_diagnostic_stops_with_the_complete_command() {
                 &SearchCommand::Find("terminal command".to_owned())
             );
         }
-        atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("terminal policy cannot fabricate a diagnostic route")
         }
-        atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("the unavailable command keeps its diagnostic meaning")
         }
     }
@@ -5526,14 +5618,16 @@ async fn terminal_unavailable_diagnostic_stops_with_the_complete_command() {
 
 #[test]
 fn unavailable_report_before_proxy_creation_returns_complete() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, []).expect("one role is non-empty"),
-        ActivationPolicy::new(ONE_WORKER.get()).expect("activation capacity is positive"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(ONE_WORKER.get()).expect("startup capacity is positive"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
@@ -5754,7 +5848,7 @@ async fn shutdown_accepts_unavailable_until_the_exact_proxy_exit() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(991)),
         ),
     );
@@ -5818,7 +5912,10 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
     assert_eq!(duplicate.child, member.proxy);
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(940), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(940),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown drains the proxy while preparation is outside"));
     let shutdown = match shutting_down
         .sends
@@ -5837,7 +5934,7 @@ async fn eligible_worker_stop_emits_one_exact_preparation_request() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -5863,14 +5960,14 @@ async fn one_replacement_operation() -> (
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
         >,
     >,
-    ProxyOperation<Here, SearchWorker, SearchActivation>,
-    atomic::WorkerAttempt,
+    ProxyOperation<Here, SearchWorker, SearchStartup>,
+    behavior_actors::worker::WorkerAttempt,
 ) {
     let recovery = Recovery::permanent(
         SearchWorkshop,
@@ -5880,15 +5977,17 @@ async fn one_replacement_operation() -> (
             delay: RestartRelease::immediate(),
         },
     );
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(SearchRole::Search, [])
             .unwrap_or_else(|_| panic!("the single role is unique")),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        recovery,
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: recovery,
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
@@ -5918,7 +6017,7 @@ async fn one_replacement_operation() -> (
     };
     let (proxy, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -5965,7 +6064,7 @@ async fn one_replacement_operation() -> (
         SettledItem::Attempted(_) => panic!("the test intercepts an uninterpreted request"),
     };
     let submission =
-        WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+        WorkerSubmission::with_startup(SearchWorker(SearchRole::Search), SearchStartup);
     let request = start_fixed_preparation!(fixed, request);
     let preparation = match request.accept(submission) {
         ControlFlow::Break(preparation) => preparation,
@@ -6007,7 +6106,7 @@ async fn replacement_rejects_an_outcome_for_another_predecessor() {
     assert_ne!(foreign, previous);
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -6024,7 +6123,7 @@ async fn replacement_rejects_an_outcome_for_another_predecessor() {
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: foreign.clone(),
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -6055,7 +6154,7 @@ async fn replacement_rejects_its_outcome_from_another_proxy() {
     let previous = members[0].worker.clone();
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(803)),
         ),
     );
@@ -6074,7 +6173,7 @@ async fn replacement_rejects_its_outcome_from_another_proxy() {
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: previous.clone(),
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -6159,7 +6258,7 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let (replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -6172,7 +6271,10 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     assert!(matches!(replacement_accepted.become_, Step::Continue));
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(941), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(941),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the prepared replacement"));
     let shutdown = match shutting_down
         .sends
@@ -6191,7 +6293,7 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -6214,7 +6316,7 @@ async fn accepted_replacement_receipt_keeps_shutdown_live_until_outcome_returns(
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: previous,
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -6228,7 +6330,7 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     let (mut fixed, replacement, previous) = one_replacement_operation().await;
     let (_replacement_route, replacement_control, replacement_receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -6241,7 +6343,10 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     assert!(matches!(replacement_accepted.become_, Step::Continue));
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(941), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(941),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the prepared replacement"));
     let shutdown = match shutting_down
         .sends
@@ -6260,7 +6365,7 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -6292,7 +6397,7 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: previous.clone(),
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -6309,12 +6414,12 @@ async fn retired_proxy_rejects_a_later_outcome_from_a_foreign_child() {
                 ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces,
                     worker,
-                    activation,
+                    startup,
                 },
         } => {
             assert_eq!(replaces, previous);
             assert_eq!(worker, SearchWorker(SearchRole::Search));
-            assert_eq!(activation, SearchActivation);
+            assert_eq!(startup, SearchStartup);
         }
         ProxyOutcome::Initial { .. }
         | ProxyOutcome::Replacement { .. }
@@ -6331,7 +6436,7 @@ async fn ready_replacement_restores_the_role_before_the_next_worker_stop() {
     let successor = ready_single_proxy_with_worker().await.1.worker;
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -6411,7 +6516,7 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
     let expected = previous.clone();
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -6428,7 +6533,7 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: previous,
                     worker: SearchWorker(SearchRole::Search),
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -6442,7 +6547,7 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
         .pop()
         .expect("one terminal proxy-outcome diagnostic is emitted")
     {
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(failure),
         } => match failure.outcome() {
             ProxyOutcome::Replacement {
@@ -6455,10 +6560,10 @@ async fn failed_replacement_outcome_enters_terminal_custody_complete() {
                 panic!("the exact failed replacement remains in the diagnostic")
             }
         },
-        atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("terminal policy cannot fabricate a diagnostic route")
         }
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic:
                 FixedDiagnostic::ProxyInputRejected(_)
                 | FixedDiagnostic::WorkerPreparationFailed(_)
@@ -6489,17 +6594,17 @@ async fn rejected_replacement_input_enters_terminal_custody_complete() {
         .pop()
         .expect("one terminal input-rejection diagnostic is emitted");
     match diagnostic {
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::ProxyInputRejected(failure),
         } => {
             assert_eq!(failure.role(), &SearchRole::Search);
             assert_eq!(failure.reason(), ChildInputReason::ClosedControlLane);
             assert_eq!(failure.operation().creation(), expected_creation);
         }
-        atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("terminal policy cannot fabricate a diagnostic route")
         }
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic:
                 FixedDiagnostic::ProxyOutcomeFailed(_)
                 | FixedDiagnostic::WorkerPreparationFailed(_)
@@ -6528,9 +6633,9 @@ async fn zero_restart_limit_denies_prepared_recovery_without_replacement() {
     )
     .await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -6549,7 +6654,7 @@ async fn zero_restart_limit_denies_prepared_recovery_without_replacement() {
         .into_requests()
         .pop()
         .expect("restart denial emits one terminal diagnostic");
-    let atomic::DiagnosticAction::Terminal {
+    let behavior_actors::diagnostic::DiagnosticAction::Terminal {
         diagnostic: FixedDiagnostic::RecoveryDenied(denial),
     } = diagnostic
     else {
@@ -6619,7 +6724,7 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         >,
     >::issued(Endpoint(709));
     let recovery = Recovery::permanent(
@@ -6637,9 +6742,9 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     )
     .await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -6680,14 +6785,15 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
         .pop()
         .expect("one exact rejection diagnostic is routed")
     {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyInputRejected(failure),
             ..
         } => {
             assert_eq!(failure.role(), &SearchRole::Search);
             assert_eq!(failure.reason(), ChildInputReason::ClosedControlLane);
         }
-        atomic::DiagnosticAction::Terminal { .. } | atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. }
+        | behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("the exact routed proxy-input diagnostic is required")
         }
     }
@@ -6709,7 +6815,7 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -6724,7 +6830,10 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     assert!(matches!(proxy_retired.become_, Step::Continue));
 
     let stopped = fixed
-        .receive(RuntimeAddr(945), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(945),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| {
             panic!("the remaining supervisor can stop without another proxy input")
         });
@@ -6737,7 +6846,7 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         >,
     >::issued(Endpoint(710));
     let recovery = Recovery::permanent(
@@ -6755,9 +6864,9 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
     )
     .await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -6770,7 +6879,7 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
         .unwrap_or_else(|_| panic!("routed denial applies its topology reaction"));
     let mut diagnostics = denied.sends.diagnostics.into_requests();
     match diagnostics.pop().expect("one restart denial is delivered") {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RecoveryDenied(denial),
             ..
         } => {
@@ -6781,7 +6890,8 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
                 RecoveryDenialReason::RestartLimitReached { maximum: 0, .. }
             ));
         }
-        atomic::DiagnosticAction::Terminal { .. } | atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. }
+        | behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("the exact routed restart denial is required")
         }
     }
@@ -6809,7 +6919,7 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         >,
     >::issued(Endpoint(711));
     let recovery = Recovery::permanent(
@@ -6827,9 +6937,9 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     )
     .await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -6841,11 +6951,12 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
         .unwrap_or_else(|_| panic!("routed denial starts complete shutdown"));
     let mut diagnostics = denied.sends.diagnostics.into_requests();
     match diagnostics.pop().expect("one restart denial is delivered") {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RecoveryDenied(denial),
             ..
         } => assert_eq!(denial.stopped(), &expected_stop),
-        atomic::DiagnosticAction::Terminal { .. } | atomic::DiagnosticAction::Deliver { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. }
+        | behavior_actors::diagnostic::DiagnosticAction::Deliver { .. } => {
             panic!("the exact routed restart denial is required")
         }
     }
@@ -6867,7 +6978,7 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -6895,9 +7006,9 @@ async fn delayed_prepared_recovery_emits_exact_schedule_before_replacement() {
     );
     let (mut fixed, request, proxy) = preparing_one_for_one_with_recovery(recovery).await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -7003,9 +7114,9 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -7044,14 +7155,15 @@ async fn exact_restart_schedule_rejection_enters_terminal_custody() {
         .pop()
         .expect("one exact schedule failure enters terminal custody")
     {
-        atomic::DiagnosticAction::Terminal {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal {
             diagnostic: FixedDiagnostic::RestartScheduleFailed(failure),
         } => {
             assert_eq!(failure.role(), &SearchRole::Search);
             assert_eq!(failure.request(), schedule);
             assert_eq!(failure.reason(), ScheduleAfterRejection::DeadlineOverflow);
         }
-        atomic::DiagnosticAction::Deliver { .. } | atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver { .. }
+        | behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("the exact restart schedule diagnostic is required")
         }
     }
@@ -7076,7 +7188,7 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         >,
     >::issued(Endpoint(712));
     let (mut fixed, schedule) = delayed_schedule_with_policies(
@@ -7111,7 +7223,7 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7132,7 +7244,7 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         >,
     >::issued(Endpoint(713));
     let (mut fixed, schedule) = delayed_schedule_with_policies(
@@ -7167,7 +7279,7 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7294,9 +7406,9 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -7321,7 +7433,10 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     };
 
     let shutting_down = fixed
-        .receive(RuntimeAddr(946), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(946),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown adopts the delayed recovery"));
     let shutdown = match shutting_down
         .sends
@@ -7340,7 +7455,7 @@ async fn shutdown_waits_for_an_emitted_restart_schedule_settlement() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7377,7 +7492,10 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
     assert!(matches!(started.become_, Step::Continue));
     assert!(started.creates.is_empty());
     let shutting_down = fixed
-        .receive(RuntimeAddr(942), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(942),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the outstanding preparation"));
     let shutdown = match shutting_down
         .sends
@@ -7396,7 +7514,7 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
     };
 
     let submission =
-        WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+        WorkerSubmission::with_startup(SearchWorker(SearchRole::Search), SearchStartup);
     let preparation = match starting.accept(submission) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -7412,7 +7530,7 @@ async fn late_preparation_and_proxy_exit_close_shutdown_in_either_order() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7442,7 +7560,10 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
     );
     let (mut fixed, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let shutting_down = fixed
-        .receive(RuntimeAddr(943), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(943),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the outstanding preparation"));
     let shutdown = match shutting_down
         .sends
@@ -7472,7 +7593,7 @@ async fn late_corrupt_preparation_remains_owned_until_proxy_exit() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7502,7 +7623,10 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     );
     let (mut source_rejected, request, _) = preparing_one_for_one_with_recovery(recovery).await;
     let shutting_down = source_rejected
-        .receive(RuntimeAddr(944), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(944),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the outstanding preparation"));
     let shutdown = match shutting_down
         .sends
@@ -7521,7 +7645,7 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7554,7 +7678,10 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     let request = start_fixed_preparation!(worker_rejected, request);
     let preparation = request.reject(WorkshopRejection::WorkerUnavailable);
     let shutting_down = worker_rejected
-        .receive(RuntimeAddr(945), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(945),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown retains the worker rejection"));
     let shutdown = match shutting_down
         .sends
@@ -7577,7 +7704,7 @@ async fn late_source_and_worker_rejections_remain_owned_through_shutdown() {
     assert!(matches!(retained.become_, Step::Continue));
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7597,7 +7724,10 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
     let (mut owner, owner_request, _) = preparing_one_for_one().await;
     let (mut source, source_request, _) = preparing_one_for_one().await;
     let owner_shutdown = owner
-        .receive(RuntimeAddr(946), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(946),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("owner shutdown retains its preparation"));
     let shutdown = match owner_shutdown
         .sends
@@ -7628,7 +7758,7 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -7643,7 +7773,10 @@ async fn foreign_late_preparation_cannot_close_another_shutdown() {
     assert!(matches!(still_waiting.become_, Step::Continue));
 
     let source_shutdown = source
-        .receive(RuntimeAddr(947), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(947),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("source shutdown retains its preparation"));
     assert!(matches!(source_shutdown.become_, Step::Continue));
     let accepted_by_source = source
@@ -7687,7 +7820,7 @@ async fn terminal_source_rejection_stops_with_one_complete_diagnostic() {
         .into_requests()
         .pop()
         .expect("one terminal diagnostic is emitted");
-    let atomic::DiagnosticAction::Terminal {
+    let behavior_actors::diagnostic::DiagnosticAction::Terminal {
         diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
     } = diagnostic
     else {
@@ -7724,7 +7857,7 @@ async fn terminal_worker_rejection_keeps_the_exact_failed_role() {
         .into_requests()
         .pop()
         .expect("one terminal diagnostic is emitted");
-    let atomic::DiagnosticAction::Terminal {
+    let behavior_actors::diagnostic::DiagnosticAction::Terminal {
         diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
     } = diagnostic
     else {
@@ -7748,7 +7881,7 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, FallibleWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
         >,
     >::issued(Endpoint(985));
     let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -7769,9 +7902,9 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
     let mut preparation = begin_recovery(&mut fixed, &members[1]);
     assert_eq!(preparation.source_and_role().1, &SearchRole::Search);
     let preparation = start_fixed_preparation!(fixed, preparation);
-    let mut preparation = match preparation.accept(WorkerSubmission::activated(
+    let mut preparation = match preparation.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Continue(preparation) => preparation,
         ControlFlow::Break(_) => panic!("Index and Spellcheck remain selected"),
@@ -7876,12 +8009,7 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                 let diagnostics = EstablishedRecipient::<
                     MessageProtocol<
                         RuntimeAddr,
-                        FixedDiagnostic<
-                            SearchRole,
-                            SearchWorker,
-                            SearchActivation,
-                            FallibleWorkshop,
-                        >,
+                        FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
                     >,
                 >::issued(Endpoint(986));
                 let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -8024,7 +8152,7 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                                 capability,
                                 CapabilityResult::Unavailable {
                                     role,
-                                    phase: atomic::UnavailablePhase::Stopping,
+                                    phase: behavior_actors::supervisor::roster::UnavailablePhase::Stopping,
                                 } if role == queried_role
                             ));
                         }
@@ -8056,12 +8184,7 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                 let diagnostics = EstablishedRecipient::<
                     MessageProtocol<
                         RuntimeAddr,
-                        FixedDiagnostic<
-                            SearchRole,
-                            SearchWorker,
-                            SearchActivation,
-                            FallibleWorkshop,
-                        >,
+                        FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
                     >,
                 >::issued(Endpoint(987));
                 let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -8127,9 +8250,9 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                             assert_eq!(prepared_role, expected_role);
                             assert_eq!(
                                 submission,
-                                &WorkerSubmission::activated(
+                                &WorkerSubmission::with_startup(
                                     worker(expected_role),
-                                    SearchActivation,
+                                    SearchStartup,
                                 )
                             );
                         }
@@ -8199,7 +8322,7 @@ async fn terminal_corrupt_preparation_keeps_interpreter_fault_and_selected_role(
         .into_requests()
         .pop()
         .expect("one terminal diagnostic is emitted");
-    let atomic::DiagnosticAction::Terminal {
+    let behavior_actors::diagnostic::DiagnosticAction::Terminal {
         diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
     } = diagnostic
     else {
@@ -8237,7 +8360,7 @@ async fn terminal_unattempted_preparation_keeps_selected_role() {
         .into_requests()
         .pop()
         .expect("one terminal diagnostic is emitted");
-    let atomic::DiagnosticAction::Terminal {
+    let behavior_actors::diagnostic::DiagnosticAction::Terminal {
         diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
     } = diagnostic
     else {
@@ -8258,7 +8381,7 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, FallibleWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
         >,
     >::issued(Endpoint(911));
     let recovery = Recovery::permanent(
@@ -8290,7 +8413,7 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
         .pop()
         .expect("one routed diagnostic is emitted");
     match diagnostic {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             route,
             diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
         } => {
@@ -8303,26 +8426,26 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
                 )
             ));
         }
-        atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("a routed diagnostic cannot become terminal custody")
         }
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(_),
             ..
         } => panic!("a preparation rejection cannot become a proxy-outcome failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RecoveryDenied(_),
             ..
         } => panic!("a preparation rejection cannot become a recovery denial"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RestartScheduleFailed(_),
             ..
         } => panic!("a preparation rejection cannot become a schedule failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyInputRejected(_),
             ..
         } => panic!("a preparation rejection cannot become an input rejection"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic:
                 FixedDiagnostic::WorkerUnavailable(_) | FixedDiagnostic::UnexpectedInput { .. },
             ..
@@ -8425,7 +8548,7 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     assert!(matches!(exit_first.become_, Step::Continue));
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -8436,7 +8559,10 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     assert!(matches!(retired.become_, Step::Continue));
 
     let stopped = fixed
-        .receive(RuntimeAddr(912), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(912),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("shutdown sees the retired member and restored source"));
     assert!(matches!(stopped.become_, Step::Stop(_)));
     assert_eq!(stopped.sends.proxy_operations.len(), 0);
@@ -8518,7 +8644,7 @@ async fn later_retiring_member_accepts_its_own_proxy_exit() {
 
     let (_route, control, receipt) = admit_proxy_operation(
         index_shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(802)),
         ),
     );
@@ -8546,7 +8672,7 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, FallibleWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
         >,
     >::issued(Endpoint(913));
     let recovery = Recovery::permanent(
@@ -8618,7 +8744,7 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
 
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -8670,7 +8796,7 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, FallibleWorkshop>,
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
         >,
     >::issued(Endpoint(921));
     let recovery = Recovery::permanent(
@@ -8701,7 +8827,7 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
         .pop()
         .expect("one routed diagnostic is emitted")
     {
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             route,
             diagnostic: FixedDiagnostic::WorkerPreparationFailed(failure),
         } => {
@@ -8711,26 +8837,26 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
                 WorkerPreparationFailureReason::Unattempted
             ));
         }
-        atomic::DiagnosticAction::Terminal { .. } => {
+        behavior_actors::diagnostic::DiagnosticAction::Terminal { .. } => {
             panic!("a routed diagnostic cannot become terminal custody")
         }
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyOutcomeFailed(_),
             ..
         } => panic!("a preparation failure cannot become a proxy-outcome failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RecoveryDenied(_),
             ..
         } => panic!("a preparation failure cannot become a recovery denial"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::RestartScheduleFailed(_),
             ..
         } => panic!("a preparation failure cannot become a schedule failure"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic: FixedDiagnostic::ProxyInputRejected(_),
             ..
         } => panic!("a preparation failure cannot become an input rejection"),
-        atomic::DiagnosticAction::Deliver {
+        behavior_actors::diagnostic::DiagnosticAction::Deliver {
             diagnostic:
                 FixedDiagnostic::WorkerUnavailable(_) | FixedDiagnostic::UnexpectedInput { .. },
             ..
@@ -8753,7 +8879,7 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -8773,13 +8899,13 @@ async fn preparing_one_for_one() -> (
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             Infallible,
             Infallible,
         >,
     >,
-    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchActivation>,
+    PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
     CreationId,
 ) {
     let recovery = Recovery::permanent(
@@ -8797,13 +8923,13 @@ async fn preparing_one_for_one_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchActivation, Source, Infallible, Infallible>,
+        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
     >,
-    PrepareWorkers<Source, SearchRole, SearchWorker, SearchActivation>,
+    PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>,
     CreationId,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
 {
     let (fixed, request, proxy, _) = preparing_one_for_one_with_policies(
         recovery,
@@ -8823,20 +8949,21 @@ async fn preparing_one_for_one_with_policies<Source, DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Source,
             DiagnosticRoute,
             Infallible,
         >,
     >,
-    PrepareWorkers<Source, SearchRole, SearchWorker, SearchActivation>,
+    PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>,
     CreationId,
     ChildStopped<RuntimeAddr>,
 )
 where
-    Source: WorkerSource<SearchRole, SearchWorker, SearchActivation>,
-    DiagnosticRoute: atomic::DiagnosticRoute<FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, Source>>
-        + Clone,
+    Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+        > + Clone,
 {
     let (mut fixed, member) = ready_single_proxy_with_policies(
         recovery,
@@ -8880,7 +9007,7 @@ async fn delayed_schedule_with_policies<DiagnosticRoute>(
         FixedSupervisor<
             SearchRole,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             SearchWorkshop,
             DiagnosticRoute,
             Infallible,
@@ -8889,8 +9016,8 @@ async fn delayed_schedule_with_policies<DiagnosticRoute>(
     ScheduleAfter,
 )
 where
-    DiagnosticRoute: atomic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchActivation, SearchWorkshop>,
+    DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
+            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
         > + Clone,
 {
     let recovery = Recovery::permanent(
@@ -8904,9 +9031,9 @@ where
     let (mut fixed, request, _, _) =
         preparing_one_for_one_with_policies(recovery, failure_reaction, diagnostics).await;
     let request = start_fixed_preparation!(fixed, request);
-    let preparation = match request.accept(WorkerSubmission::activated(
+    let preparation = match request.accept(WorkerSubmission::with_startup(
         SearchWorker(SearchRole::Search),
-        SearchActivation,
+        SearchStartup,
     )) {
         ControlFlow::Break(preparation) => preparation,
         ControlFlow::Continue(_) => {
@@ -8937,7 +9064,7 @@ async fn another_recoverys_preparation_returns_unchanged_to_its_owner() {
     let (mut owner, owner_request, _) = preparing_one_for_one().await;
     let (mut source, source_request, _) = preparing_one_for_one().await;
     let source_submission =
-        WorkerSubmission::activated(SearchWorker(SearchRole::Search), SearchActivation);
+        WorkerSubmission::with_startup(SearchWorker(SearchRole::Search), SearchStartup);
     let source_request = start_fixed_preparation!(source, source_request);
     let source_preparation = match source_request.accept(source_submission) {
         ControlFlow::Break(preparation) => preparation,
@@ -9012,7 +9139,10 @@ async fn another_recoverys_source_rejection_returns_unchanged_to_its_owner() {
 async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() {
     let (mut fixed, _) = ready_single_proxy_with_worker().await;
     let shutting_down = fixed
-        .receive(RuntimeAddr(910), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(910),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("a ready roster accepts shutdown"));
     let shutdown = match shutting_down
         .sends
@@ -9041,7 +9171,7 @@ async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() 
 
     let (_route, control, receipt) = admit_proxy_operation(
         shutdown,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -9056,7 +9186,10 @@ async fn ready_roster_shutdown_accepts_proxy_exit_before_operation_settlement() 
 async fn ready_roster_shutdown_retires_after_rejection_and_exact_proxy_exit() {
     let (mut fixed, _) = ready_single_proxy_with_worker().await;
     let shutting_down = fixed
-        .receive(RuntimeAddr(920), atomic::FixedCommand::shutdown())
+        .receive(
+            RuntimeAddr(920),
+            behavior_actors::supervisor::roster::FixedCommand::shutdown(),
+        )
         .unwrap_or_else(|_| panic!("a ready roster accepts shutdown"));
     let shutdown = match shutting_down
         .sends
@@ -9288,14 +9421,16 @@ async fn ready_management_queries_return_the_stable_proxy_without_mutating_the_r
 
 #[test]
 fn pending_proxy_births_are_observable_as_creating_proxy() {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         roles(),
-        ActivationPolicy::new(3).expect("three proxies may start together"),
-        Recovery::temporary(),
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(3).expect("three proxies may start together"),
+            recovery: Recovery::temporary(),
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
@@ -9332,7 +9467,7 @@ fn pending_proxy_births_are_observable_as_creating_proxy() {
         capability,
         CapabilityResult::Unavailable {
             role: SearchRole::Search,
-            phase: atomic::UnavailablePhase::CreatingProxy,
+            phase: behavior_actors::supervisor::roster::UnavailablePhase::CreatingProxy,
         }
     ));
     assert_eq!(pending_creations.len(), 3);
@@ -9358,7 +9493,7 @@ async fn draining_management_queries_distinguish_retired_and_stopping_roles() {
     };
     let (route, control, receipt) = admit_proxy_operation(
         first,
-        EstablishedActor::<StableProxy<SearchWorker, SearchActivation>>::issued(
+        EstablishedActor::<StableProxy<SearchWorker, SearchStartup>>::issued(
             installed_control::InstalledControl::new(Endpoint(801)),
         ),
     );
@@ -9399,7 +9534,7 @@ async fn draining_management_queries_distinguish_retired_and_stopping_roles() {
         capability,
         CapabilityResult::Unavailable {
             role: SearchRole::Search,
-            phase: atomic::UnavailablePhase::Retired,
+            phase: behavior_actors::supervisor::roster::UnavailablePhase::Retired,
         }
     ));
 }
@@ -9418,8 +9553,8 @@ fn management_status_preserves_semantic_order_during_proxy_startup() {
         status.members.as_slice(),
         [
             MemberStatus::AwaitingProxy,
-            MemberStatus::WaitingForActivation,
-            MemberStatus::WaitingForActivation,
+            MemberStatus::WaitingForStartup,
+            MemberStatus::WaitingForStartup,
         ]
     ));
     drop(first_operation);
@@ -9460,7 +9595,7 @@ async fn management_queries_project_coordinated_recovery_and_empty_roles() {
         recovery_capability,
         CapabilityResult::Unavailable {
             role: SearchRole::Index,
-            phase: atomic::UnavailablePhase::Recovering,
+            phase: behavior_actors::supervisor::roster::UnavailablePhase::Recovering,
         }
     ));
     drop(request);
@@ -9505,7 +9640,7 @@ async fn one_role_recovery_distinguishes_an_undeclared_capability_role() {
         known,
         CapabilityResult::Unavailable {
             role: SearchRole::Search,
-            phase: atomic::UnavailablePhase::Recovering,
+            phase: behavior_actors::supervisor::roster::UnavailablePhase::Recovering,
         }
     ));
     let unknown = preparing
@@ -9536,7 +9671,7 @@ async fn one_role_recovery_distinguishes_an_undeclared_capability_role() {
         known,
         CapabilityResult::Unavailable {
             role: SearchRole::Search,
-            phase: atomic::UnavailablePhase::Recovering,
+            phase: behavior_actors::supervisor::roster::UnavailablePhase::Recovering,
         }
     ));
     let unknown = admitted

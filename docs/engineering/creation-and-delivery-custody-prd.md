@@ -439,7 +439,7 @@ initialization rejection or panic must never be counted as a successful child.
 | Interpreter returns typed corruption | Still committed `Established` | `EffectsRejected(InterpreterCorrupt)` report; complete prefix, faulting request, untouched suffix, and runtime work remain owned. No publication. |
 | Initialization selects `Stop`, all effects accepted | Still committed `Established` | Settle final effects, produce exact normal stop, never publish or run ordinary ingress; `InitializeWorker` resolves `Stopped`. |
 | Initialization selects `Stop` with rejected/corrupt effects | Still committed `Established` | Corruption outranks rejection; either outranks stop for initialization classification. Preserve the stop decision in settlement and independent termination evidence. |
-| Successful continuing initialization | `Established` | Record success, settle source custody, permit publication; later request can resolve `ReadyForActivation` once with its plan and permit. |
+| Successful continuing initialization | `Established` | Record success, settle source custody, permit publication; later request can resolve `ReadyForStartup` once with its plan and permit. |
 | Cooperative owner shutdown before child fold | No false commitment | Return untouched creation using existing environment-failure projection; retain exact cancellation disposition in runtime custody. Do not relabel it as initialization failure. |
 | Cooperative owner shutdown after fold, before commitment | `HostRejected` | Return current child and untouched Actions with environment-failure projection, retaining cancellation disposition downstream. |
 | Shutdown after commitment, before publication | Committed birth remains true | Close publication/ingress, settle or retain accepted work, then exact cancellation/stop and complete retirement. Return plan/report if source has closed. |
@@ -499,7 +499,7 @@ replacement child to satisfy this request.
 | Initialization corrupt | `EffectsRejected(InterpreterCorrupt)` |
 | Initialization rejected/blocked | `EffectsRejected(EffectsRejected)` |
 | No initialization failure, exact termination already known | `Stopped` with that exact stop |
-| Successful continuing initialization, no terminal evidence yet | `ReadyForActivation` with original plan and one permit |
+| Successful continuing initialization, no terminal evidence yet | `ReadyForStartup` with original plan and one permit |
 | Initialization still executing | Keep the request/plan owned until an outcome is known; do not fabricate success |
 
 Failure evidence takes priority over a simultaneous stop. If readiness was

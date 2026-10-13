@@ -4,9 +4,8 @@ use behavior::{
     ActionItem, ActionItemResult, ActiveTurn, Address, Behavior, BehaviorActed, ChildInputReason,
     EndpointAddress, Never, NoBirths, NoSends, Protocol, SourceAction, User,
 };
-use behavior_actors::atomic::{
-    ImmediateActivation, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
-};
+use behavior_actors::proxy::{ProxyInputReceipt, ProxyInputResult, ProxyOperation};
+use behavior_actors::worker::ImmediateStartup;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -65,7 +64,7 @@ struct Owner;
 fn exact_proxy_operation_contract<Item>()
 where
     Item: ActionItem<
-            Accepted = ProxyInputReceipt<Worker, ImmediateActivation>,
+            Accepted = ProxyInputReceipt<Worker, ImmediateStartup>,
             Rejection = ChildInputReason,
             Prerequisite = Never,
         > + SourceAction<Source = Owner>,
@@ -73,14 +72,14 @@ where
 }
 
 fn exact_proxy_result(
-    result: ProxyInputResult<Owner, Worker, ImmediateActivation>,
-) -> ActionItemResult<ProxyOperation<Owner, Worker, ImmediateActivation>> {
+    result: ProxyInputResult<Owner, Worker, ImmediateStartup>,
+) -> ActionItemResult<ProxyOperation<Owner, Worker, ImmediateStartup>> {
     result
 }
 
 #[test]
 fn proxy_operation_uses_the_generic_source_settlement_contract() {
-    exact_proxy_operation_contract::<ProxyOperation<Owner, Worker, ImmediateActivation>>();
-    let result = None::<ProxyInputResult<Owner, Worker, ImmediateActivation>>;
+    exact_proxy_operation_contract::<ProxyOperation<Owner, Worker, ImmediateStartup>>();
+    let result = None::<ProxyInputResult<Owner, Worker, ImmediateStartup>>;
     assert!(result.map(exact_proxy_result).is_none());
 }

@@ -14,16 +14,25 @@ use behavior::{
     InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
     Recipient, RoutedCreation, SettledItem, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationPolicy, ActorDrainPolicy, CancellationOutcome, CancellationReceipt,
-    DiagnosticAction, DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
-    DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryCapacity, EntryRetirement,
-    EntryStopFailureReason, InitialWorkerOutcome, InterruptedWorker, ProxyControl,
-    ProxyControlAdmission, ProxyDiagnostic, ProxyDrain, ProxyInputReceipt, ProxyInputResult,
-    ProxyOperation, ProxyOutcome, ProxyPhase, QueryReply, ReplacementFailure, ReplacementOutcome,
-    StableProxy, StartRejection, UnexpectedExit, WorkerChange, WorkerChangeInterruption,
-    WorkerChangeReceipt, WorkerChangeRejection, WorkerCreationRejection,
-    WorkerInitializationOutcome, WorkerStartResult, WorkerSubmission, ZeroCapacity, dynamic,
+use behavior_actors::ZeroCapacity;
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{
+    InitialWorkerOutcome, ProxyControl, ProxyControlAdmission, ProxyDiagnostic, ProxyDrain,
+    ProxyInputReceipt, ProxyInputResult, ProxyOperation, ProxyOutcome, ProxyPhase,
+    ReplacementOutcome, StableProxy, WorkerStartResult,
+};
+use behavior_actors::supervisor::directory::EntryCapacity;
+use behavior_actors::supervisor::directory::{
+    CancellationOutcome, CancellationReceipt, DynamicCommand, DynamicDiagnostic, DynamicLifecycle,
+    DynamicStatus, DynamicSupervisor, DynamicSupervisorEvent, EntryRetirement,
+    EntryStopFailureReason, InterruptedWorker, QueryReply, ReplacementFailure, StartRejection,
+    UnexpectedExit, WorkerChange, WorkerChangeInterruption, WorkerChangeReceipt,
+    WorkerChangeRejection, dynamic,
+};
+use behavior_actors::worker::{
+    StartupLimit, StartupPlan, WorkerCreationRejection, WorkerInitializationOutcome,
+    WorkerSubmission,
 };
 use behavior_actors::{
     Activate, Active, ChildStopped, Exit, ReplyDelivery, ReplyRoute, ScheduleAfterRejection,
@@ -99,7 +108,7 @@ impl Behavior for SearchWorker {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SearchActivation;
+struct SearchStartup;
 
 #[derive(Clone, Copy)]
 enum CancellationOrder {
@@ -144,20 +153,20 @@ enum CustomerCatalogue {
     Empty,
     Pending {
         service: ServiceName,
-        creation: CreateChild<SearchAddress, StableProxy<SearchWorker, SearchActivation>>,
-        authority: behavior_actors::atomic::CancelAuthority<SearchKey>,
+        creation: CreateChild<SearchAddress, StableProxy<SearchWorker, SearchStartup>>,
+        authority: behavior_actors::supervisor::directory::CancelAuthority<SearchKey>,
     },
 }
 
 fn overlapping_initial_report(
     creation: behavior::CreationId,
-) -> ChildReport<ProxyOutcome<SearchWorker, SearchActivation>> {
+) -> ChildReport<ProxyOutcome<SearchWorker, SearchStartup>> {
     ChildReport::new(
         creation,
         ProxyOutcome::Initial {
             outcome: InitialWorkerOutcome::Overlap {
                 worker: SearchWorker,
-                activation: SearchActivation,
+                startup: SearchStartup,
                 phase: ProxyPhase::Ready,
             },
         },
@@ -165,10 +174,10 @@ fn overlapping_initial_report(
 }
 
 fn committed_proxy(
-    created: CreateChild<SearchAddress, StableProxy<SearchWorker, SearchActivation>>,
+    created: CreateChild<SearchAddress, StableProxy<SearchWorker, SearchStartup>>,
 ) -> (
     CreationId,
-    CreationsSettled<SearchAddress, StableProxy<SearchWorker, SearchActivation>>,
+    CreationsSettled<SearchAddress, StableProxy<SearchWorker, SearchStartup>>,
 ) {
     let (creation, _proxy, kind) = created.into_parts();
     let settled = SettledItem::Attempted(ItemSettlement::Accepted(
@@ -187,18 +196,18 @@ fn committed_proxy(
 }
 
 fn accepted_search_input(
-    receipt: ProxyInputReceipt<SearchWorker, SearchActivation>,
-) -> ProxyInputResult<Here, SearchWorker, SearchActivation> {
+    receipt: ProxyInputReceipt<SearchWorker, SearchStartup>,
+) -> ProxyInputResult<Here, SearchWorker, SearchStartup> {
     SettledItem::Attempted(ItemSettlement::Accepted(receipt))
 }
 
 async fn ready_search_proxy(
-    control: ProxyControl<SearchWorker, SearchActivation>,
+    control: ProxyControl<SearchWorker, SearchStartup>,
 ) -> (
-    Active<StableProxy<SearchWorker, SearchActivation>>,
-    ProxyOutcome<SearchWorker, SearchActivation>,
+    Active<StableProxy<SearchWorker, SearchStartup>>,
+    ProxyOutcome<SearchWorker, SearchStartup>,
 ) {
-    let initialized = StableProxy::<SearchWorker, SearchActivation>::activated()
+    let initialized = StableProxy::<SearchWorker, SearchStartup>::activated()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized.behavior;
@@ -233,22 +242,22 @@ async fn ready_search_proxy(
         .next()
         .unwrap_or_else(|| panic!("the worker initialization is requested"));
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("worker initialization accepts activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("worker initialization accepts startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("one activation is requested"));
+        .unwrap_or_else(|| panic!("one startup is requested"));
     let started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("activation starts"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("startup starts"));
     assert!(started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
-        .unwrap_or_else(|_| panic!("activation completes"));
+        .on(startup.start().await)
+        .unwrap_or_else(|_| panic!("startup completes"));
     let outcome = ready
         .sends
         .owner_outcomes
@@ -260,11 +269,11 @@ async fn ready_search_proxy(
     (proxy, outcome)
 }
 
-impl ActivationPlan for SearchActivation {
+impl StartupPlan for SearchStartup {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(()))
@@ -273,43 +282,40 @@ impl ActivationPlan for SearchActivation {
 
 struct RootPeers {
     lifecycle: Recipient<
-        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>>,
+        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>>,
     >,
     diagnostics: Recipient<
-        MessageProtocol<
-            SearchAddress,
-            DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
-        >,
+        MessageProtocol<SearchAddress, DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>>,
     >,
 }
 
 fn search_supervisor(
     entries: EntryCapacity,
-    activation: ActivationPolicy,
+    startup: StartupLimit,
     actor_drain: ActorDrainPolicy,
     peers: RootPeers,
 ) -> Active<
     DynamicSupervisor<
         SearchKey,
         SearchWorker,
-        SearchActivation,
+        SearchStartup,
         Recipient<
             MessageProtocol<
                 SearchAddress,
-                DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>,
+                DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
             >,
         >,
         Recipient<
             MessageProtocol<
                 SearchAddress,
-                DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+                DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >,
     >,
 > {
     dynamic(
         entries,
-        activation,
+        startup,
         UnexpectedExit::KeepEmpty,
         actor_drain,
         peers.lifecycle,
@@ -329,7 +335,7 @@ fn dynamic_supervisor_routes_the_complete_proxy_diagnostic() {
     let returned_worker = ChildStopped::new(worker, Ok(Exit::Normal), stopped_at);
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(40)),
@@ -380,18 +386,18 @@ fn dynamic_supervisor_routes_the_complete_proxy_diagnostic() {
 
 struct DynamicProxyHost {
     creation: CreationId,
-    proxy: Active<StableProxy<SearchWorker, SearchActivation>>,
+    proxy: Active<StableProxy<SearchWorker, SearchStartup>>,
     worker_creations: usize,
 }
 
-impl ProxyControlAdmission<SearchWorker, SearchActivation> for DynamicProxyHost {
+impl ProxyControlAdmission<SearchWorker, SearchStartup> for DynamicProxyHost {
     fn admit_proxy_control(
         &mut self,
         creation: CreationId,
-        control: ProxyControl<SearchWorker, SearchActivation>,
+        control: ProxyControl<SearchWorker, SearchStartup>,
     ) -> ItemSettlement<
-        ProxyControl<SearchWorker, SearchActivation>,
-        EstablishedActor<StableProxy<SearchWorker, SearchActivation>>,
+        ProxyControl<SearchWorker, SearchStartup>,
+        EstablishedActor<StableProxy<SearchWorker, SearchStartup>>,
         ChildInputReason,
         Never,
     > {
@@ -416,7 +422,7 @@ impl ProxyControlAdmission<SearchWorker, SearchActivation> for DynamicProxyHost 
 fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(801)),
@@ -428,7 +434,7 @@ fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
             SearchAddress(803),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(804))),
             },
         )
@@ -449,7 +455,7 @@ fn dynamic_start_settles_exact_proxy_control_before_owner_admission() {
         .pop()
         .unwrap_or_else(|| panic!("the dynamic supervisor emits one owner input"));
     assert_eq!(operation.creation(), creation);
-    let proxy = StableProxy::<SearchWorker, SearchActivation>::activated()
+    let proxy = StableProxy::<SearchWorker, SearchStartup>::activated()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"))
         .behavior;
@@ -479,17 +485,17 @@ fn admit_search_replacement(
         DynamicSupervisor<
             SearchKey,
             SearchWorker,
-            SearchActivation,
+            SearchStartup,
             Recipient<
                 MessageProtocol<
                     SearchAddress,
-                    DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>,
+                    DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
                 >,
             >,
             Recipient<
                 MessageProtocol<
                     SearchAddress,
-                    DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+                    DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
                 >,
             >,
         >,
@@ -500,7 +506,7 @@ fn admit_search_replacement(
             SearchAddress(90),
             DynamicCommand::Replace {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(91))),
             },
         )
@@ -525,7 +531,7 @@ fn admit_search_replacement(
 #[test]
 fn capacities_reject_zero_before_supervisor_construction() {
     assert_eq!(EntryCapacity::new(0), Err(ZeroCapacity));
-    assert_eq!(ActivationPolicy::new(0), Err(ZeroCapacity));
+    assert_eq!(StartupLimit::new(0), Err(ZeroCapacity));
 }
 
 #[test]
@@ -536,7 +542,7 @@ fn role_first_construction_returns_the_complete_behavior() {
     };
     let supervisor = dynamic(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         UnexpectedExit::KeepEmpty,
         ActorDrainPolicy::WaitForActorGraph,
         peers.lifecycle,
@@ -549,7 +555,7 @@ fn role_first_construction_returns_the_complete_behavior() {
         SearchAddress,
         Result<
             WorkerChangeReceipt<SearchKey>,
-            WorkerChangeRejection<SearchKey, SearchWorker, SearchActivation, StartRejection>,
+            WorkerChangeRejection<SearchKey, SearchWorker, SearchStartup, StartRejection>,
         >,
     >;
     type Replace = MessageProtocol<
@@ -559,27 +565,23 @@ fn role_first_construction_returns_the_complete_behavior() {
             WorkerChangeRejection<
                 SearchKey,
                 SearchWorker,
-                SearchActivation,
-                behavior_actors::atomic::ReplaceRejection,
+                SearchStartup,
+                behavior_actors::supervisor::directory::ReplaceRejection,
             >,
         >,
     >;
     type Stop = MessageProtocol<
         SearchAddress,
-        Result<SearchKey, behavior_actors::atomic::StopRejection<SearchKey>>,
+        Result<SearchKey, behavior_actors::supervisor::directory::StopRejection<SearchKey>>,
     >;
     type Query =
         MessageProtocol<SearchAddress, QueryReply<SearchKey, <SearchWorker as Behavior>::Protocol>>;
-    type Cancel = MessageProtocol<
-        SearchAddress,
-        CancellationReceipt<SearchKey, SearchWorker, SearchActivation>,
-    >;
+    type Cancel =
+        MessageProtocol<SearchAddress, CancellationReceipt<SearchKey, SearchWorker, SearchStartup>>;
     type Lifecycle =
-        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>>;
-    type Diagnostic = MessageProtocol<
-        SearchAddress,
-        DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
-    >;
+        MessageProtocol<SearchAddress, DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>>;
+    type Diagnostic =
+        MessageProtocol<SearchAddress, DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>>;
     type Expected = behavior::BirthProtocol<
         Start,
         behavior::BirthProtocol<
@@ -615,7 +617,7 @@ fn role_first_construction_returns_the_complete_behavior() {
 fn empty_global_shutdown_stops_without_runtime_work() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(1)),
@@ -644,7 +646,7 @@ fn empty_global_shutdown_stops_without_runtime_work() {
 fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(2).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(1)),
@@ -656,7 +658,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
             SearchAddress(3),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(4))),
             },
         )
@@ -731,7 +733,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
             SearchAddress(9),
             DynamicCommand::Start {
                 key: SearchKey("cache"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(10))),
             },
         )
@@ -788,7 +790,7 @@ fn global_shutdown_drains_a_pending_proxy_creation_and_closes_management() {
 fn global_shutdown_preserves_a_locally_cancelled_start() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(103)),
@@ -800,7 +802,7 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
             SearchAddress(105),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(106))),
             },
         )
@@ -905,7 +907,7 @@ fn global_shutdown_preserves_a_locally_cancelled_start() {
     assert_eq!(draining_authority.key().0, "search");
     assert_eq!(
         submission,
-        WorkerSubmission::activated(SearchWorker, SearchActivation)
+        WorkerSubmission::with_startup(SearchWorker, SearchStartup)
     );
 }
 
@@ -914,7 +916,7 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
     for result in [DeadlineResult::Rejected, DeadlineResult::Elapsed] {
         let mut supervisor = search_supervisor(
             EntryCapacity::new(1).expect("entry capacity is positive"),
-            ActivationPolicy::new(1).expect("activation capacity is positive"),
+            StartupLimit::new(1).expect("startup capacity is positive"),
             ActorDrainPolicy::RetireActorGraphAfter {
                 deadline: Duration::from_secs(5),
             },
@@ -928,7 +930,7 @@ fn shutdown_deadline_rejection_and_elapsed_force_retirement() {
                 SearchAddress(13),
                 DynamicCommand::Start {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(14))),
                 },
             )
@@ -990,7 +992,7 @@ fn stop_waits_for_pending_proxy_creation() {
     ] {
         let mut supervisor = search_supervisor(
             EntryCapacity::new(1).expect("entry capacity is positive"),
-            ActivationPolicy::new(1).expect("activation capacity is positive"),
+            StartupLimit::new(1).expect("startup capacity is positive"),
             ActorDrainPolicy::WaitForActorGraph,
             RootPeers {
                 lifecycle: Recipient::global(SearchAddress(55)),
@@ -1002,7 +1004,7 @@ fn stop_waits_for_pending_proxy_creation() {
                 SearchAddress(57),
                 DynamicCommand::Start {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(58))),
                 },
             )
@@ -1169,7 +1171,7 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
     for order in [StopOrder::ReceiptFirst, StopOrder::ProxyFirst] {
         let mut supervisor = search_supervisor(
             EntryCapacity::new(2).expect("entry capacity is positive"),
-            ActivationPolicy::new(1).expect("activation capacity is positive"),
+            StartupLimit::new(1).expect("startup capacity is positive"),
             ActorDrainPolicy::WaitForActorGraph,
             RootPeers {
                 lifecycle: Recipient::global(SearchAddress(65)),
@@ -1181,11 +1183,11 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
                 SearchAddress(67),
                 DynamicCommand::Start {
                     key: SearchKey("occupied"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(68))),
                 },
             )
-            .unwrap_or_else(|_| panic!("the first start occupies activation capacity"));
+            .unwrap_or_else(|_| panic!("the first start occupies startup capacity"));
         let (_, occupied_created) = committed_proxy(
             occupied
                 .creates
@@ -1214,7 +1216,7 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
                 SearchAddress(69),
                 DynamicCommand::Start {
                     key: SearchKey("waiting"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(70))),
                 },
             )
@@ -1228,7 +1230,7 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
         );
         let waiting = supervisor
             .on(waiting_created)
-            .unwrap_or_else(|_| panic!("the second worker waits for activation capacity"));
+            .unwrap_or_else(|_| panic!("the second worker waits for startup capacity"));
         assert!(waiting.sends.proxy_operations.is_empty());
         let stopping = supervisor
             .receive(
@@ -1312,7 +1314,7 @@ fn stop_interrupts_a_worker_waiting_for_activation() {
 fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(2).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(107)),
@@ -1324,11 +1326,11 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
             SearchAddress(109),
             DynamicCommand::Start {
                 key: SearchKey("occupied"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(110))),
             },
         )
-        .unwrap_or_else(|_| panic!("the first start occupies activation capacity"));
+        .unwrap_or_else(|_| panic!("the first start occupies startup capacity"));
     let (_, occupying_proxy) = committed_proxy(
         occupying_start
             .creates
@@ -1350,7 +1352,7 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
     );
     let occupied = supervisor
         .on(accepted_search_input(occupying_operation))
-        .unwrap_or_else(|_| panic!("the first worker input occupies activation capacity"));
+        .unwrap_or_else(|_| panic!("the first worker input occupies startup capacity"));
     assert!(occupied.sends.proxy_operations.is_empty());
 
     let waiting_start = supervisor
@@ -1358,7 +1360,7 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
             SearchAddress(111),
             DynamicCommand::Start {
                 key: SearchKey("waiting"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(112))),
             },
         )
@@ -1372,7 +1374,7 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
     );
     let waiting = supervisor
         .on(waiting_proxy)
-        .unwrap_or_else(|_| panic!("the second worker waits for activation capacity"));
+        .unwrap_or_else(|_| panic!("the second worker waits for startup capacity"));
     assert!(waiting.sends.proxy_operations.is_empty());
     let stopping = supervisor
         .receive(
@@ -1447,7 +1449,7 @@ fn rejected_proxy_shutdown_still_retires_an_interrupted_start_as_stop() {
 fn global_shutdown_retains_a_worker_rejected_after_proxy_input_transfer() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(73)),
@@ -1459,7 +1461,7 @@ fn global_shutdown_retains_a_worker_rejected_after_proxy_input_transfer() {
             SearchAddress(75),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(76))),
             },
         )
@@ -1546,7 +1548,7 @@ fn global_shutdown_retains_a_worker_rejected_after_proxy_input_transfer() {
 fn global_shutdown_retains_the_exact_late_proxy_result() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(79)),
@@ -1558,7 +1560,7 @@ fn global_shutdown_retains_the_exact_late_proxy_result() {
             SearchAddress(81),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(82))),
             },
         )
@@ -1645,7 +1647,7 @@ fn global_shutdown_retains_the_exact_late_proxy_result() {
 async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(201)),
@@ -1657,7 +1659,7 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
             SearchAddress(203),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(204))),
             },
         )
@@ -1699,7 +1701,7 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
             SearchAddress(205),
             DynamicCommand::Replace {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(206))),
             },
         )
@@ -1782,7 +1784,7 @@ async fn global_shutdown_retains_a_replacement_awaiting_input_settlement() {
 async fn global_shutdown_retains_an_accepted_replacement_report() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(211)),
@@ -1794,7 +1796,7 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
             SearchAddress(213),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(214))),
             },
         )
@@ -1846,7 +1848,7 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
             SearchAddress(215),
             DynamicCommand::Replace {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(216))),
             },
         )
@@ -1883,7 +1885,7 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
                 outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                     replaces: previous,
                     worker: SearchWorker,
-                    activation: SearchActivation,
+                    startup: SearchStartup,
                 },
             },
         ))
@@ -1932,7 +1934,7 @@ async fn global_shutdown_retains_an_accepted_replacement_report() {
 async fn global_shutdown_retires_an_available_service_once() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(221)),
@@ -1944,7 +1946,7 @@ async fn global_shutdown_retires_an_available_service_once() {
             SearchAddress(223),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(224))),
             },
         )
@@ -2021,7 +2023,7 @@ async fn global_shutdown_retires_an_available_service_once() {
 fn global_shutdown_preserves_start_failure_retirement() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(231)),
@@ -2033,7 +2035,7 @@ fn global_shutdown_preserves_start_failure_retirement() {
             SearchAddress(233),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(234))),
             },
         )
@@ -2098,7 +2100,7 @@ fn global_shutdown_preserves_start_failure_retirement() {
 fn rejected_shutdown_finishes_stop_before_exact_proxy_exit() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(85)),
@@ -2110,7 +2112,7 @@ fn rejected_shutdown_finishes_stop_before_exact_proxy_exit() {
             SearchAddress(87),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(88))),
             },
         )
@@ -2216,7 +2218,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
     for order in [StopOrder::ReceiptFirst, StopOrder::ProxyFirst] {
         let mut supervisor = search_supervisor(
             EntryCapacity::new(1).expect("entry capacity is positive"),
-            ActivationPolicy::new(1).expect("activation capacity is positive"),
+            StartupLimit::new(1).expect("startup capacity is positive"),
             ActorDrainPolicy::WaitForActorGraph,
             RootPeers {
                 lifecycle: Recipient::global(SearchAddress(31)),
@@ -2228,7 +2230,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                 SearchAddress(33),
                 DynamicCommand::Start {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(34))),
                 },
             )
@@ -2286,7 +2288,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                 SearchAddress(35),
                 DynamicCommand::Replace {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(36))),
                 },
             )
@@ -2321,7 +2323,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
         assert!(accepted.sends.lifecycle.is_empty());
 
         let (_foreign_proxy, foreign_outcome) =
-            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchActivation)).await;
+            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchStartup)).await;
         let foreign = match foreign_outcome {
             ProxyOutcome::Initial {
                 outcome:
@@ -2338,7 +2340,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                     outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                         replaces: foreign,
                         worker: SearchWorker,
-                        activation: SearchActivation,
+                        startup: SearchStartup,
                     },
                 },
             ))
@@ -2367,7 +2369,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                     outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                         replaces: previous.clone(),
                         worker: SearchWorker,
-                        activation: SearchActivation,
+                        startup: SearchStartup,
                     },
                 },
             ))
@@ -2400,7 +2402,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                 SearchAddress(39),
                 DynamicCommand::Replace {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(40))),
                 },
             )
@@ -2458,7 +2460,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                             rejection: WorkerCreationRejection::NamespaceExhausted {
                                 worker: SearchWorker,
                             },
-                            activation: SearchActivation,
+                            startup: SearchStartup,
                             stopped: None,
                         },
                     },
@@ -2489,7 +2491,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
 
         admit_search_replacement(&mut supervisor);
         let (_successor_proxy, successor_outcome) =
-            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchActivation)).await;
+            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchStartup)).await;
         let successor = match successor_outcome {
             ProxyOutcome::Initial {
                 outcome:
@@ -2544,7 +2546,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
 
         admit_search_replacement(&mut supervisor);
         let (_post_birth_proxy, post_birth_outcome) =
-            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchActivation)).await;
+            ready_search_proxy(ProxyControl::start_with(SearchWorker, SearchStartup)).await;
         let post_birth_worker = match post_birth_outcome {
             ProxyOutcome::Initial {
                 outcome:
@@ -2564,7 +2566,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                         result: WorkerStartResult::Unavailable {
                             attempt: post_birth_worker.clone(),
                             drain: ProxyDrain::InitializationStopped {
-                                activation: SearchActivation,
+                                startup: SearchStartup,
                                 observed: None,
                                 returned: ChildStopped::new(
                                     post_birth_creation,
@@ -2593,7 +2595,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                     outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                         replaces: empty_worker,
                         worker: SearchWorker,
-                        activation: SearchActivation,
+                        startup: SearchStartup,
                     },
                 },
             ))
@@ -2607,7 +2609,7 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
                     outcome: ReplacementOutcome::WorkerAttemptsExhausted {
                         replaces: post_birth_worker,
                         worker: SearchWorker,
-                        activation: SearchActivation,
+                        startup: SearchStartup,
                     },
                 },
             ))
@@ -2779,19 +2781,19 @@ async fn ready_service_accepts_one_replacement_on_its_current_proxy() {
 async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
     let initialized = dynamic(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         UnexpectedExit::Retire,
         ActorDrainPolicy::WaitForActorGraph,
         Recipient::<
             MessageProtocol<
                 SearchAddress,
-                DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>,
+                DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(101)),
         DiagnosticDisposition::deliver_to(Recipient::<
             MessageProtocol<
                 SearchAddress,
-                DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+                DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(102))),
     )
@@ -2803,7 +2805,7 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
             SearchAddress(103),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(104))),
             },
         )
@@ -2916,7 +2918,7 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
 async fn corrupt_and_unattempted_proxy_shutdowns_restore_the_ready_service() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(111)),
@@ -2928,7 +2930,7 @@ async fn corrupt_and_unattempted_proxy_shutdowns_restore_the_ready_service() {
             SearchAddress(113),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(114))),
             },
         )
@@ -3094,7 +3096,7 @@ async fn corrupt_and_unattempted_proxy_shutdowns_restore_the_ready_service() {
 async fn a_ready_service_rejects_another_services_worker_stop() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(2).expect("entry capacity admits both services"),
-        ActivationPolicy::new(2).expect("both workers may activate"),
+        StartupLimit::new(2).expect("both workers may activate"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(123)),
@@ -3107,7 +3109,7 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
             SearchAddress(125),
             DynamicCommand::Start {
                 key: ServiceName::Search.key(),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(126))),
             },
         )
@@ -3152,7 +3154,7 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
             SearchAddress(127),
             DynamicCommand::Start {
                 key: ServiceName::Cache.key(),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(128))),
             },
         )
@@ -3256,19 +3258,19 @@ async fn a_ready_service_rejects_another_services_worker_stop() {
 fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
     let initialized = dynamic(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         UnexpectedExit::KeepEmpty,
         ActorDrainPolicy::WaitForActorGraph,
         Recipient::<
             MessageProtocol<
                 SearchAddress,
-                DynamicLifecycle<SearchKey, SearchWorker, SearchActivation>,
+                DynamicLifecycle<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(1)),
         DiagnosticDisposition::deliver_to(Recipient::<
             MessageProtocol<
                 SearchAddress,
-                DynamicDiagnostic<SearchKey, SearchWorker, SearchActivation>,
+                DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >::global(SearchAddress(2))),
     )
@@ -3282,7 +3284,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
             SearchAddress(4),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: reply,
             },
         )
@@ -3525,7 +3527,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
             SearchAddress(7),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(8))),
             },
         )
@@ -3666,7 +3668,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
 async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(3).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(11)),
@@ -3678,7 +3680,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
             SearchAddress(13),
             DynamicCommand::Start {
                 key: SearchKey("index"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(14))),
             },
         )
@@ -3713,7 +3715,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
                 sender,
                 DynamicCommand::Start {
                     key,
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(reply)),
                 },
             )
@@ -3726,7 +3728,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
         let (waiting_creation, committed) = committed_proxy(created);
         let waiting = supervisor
             .on(committed)
-            .unwrap_or_else(|_| panic!("the committed proxy waits for activation capacity"));
+            .unwrap_or_else(|_| panic!("the committed proxy waits for startup capacity"));
         assert!(waiting.sends.proxy_operations.is_empty());
         waiting_creations.push_back(waiting_creation);
     }
@@ -3747,7 +3749,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
     assert!(settled.creates.is_empty());
     assert!(settled.sends.proxy_operations.is_empty());
 
-    let initialized_proxy = StableProxy::<SearchWorker, SearchActivation>::activated()
+    let initialized_proxy = StableProxy::<SearchWorker, SearchStartup>::activated()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized_proxy.behavior;
@@ -3784,23 +3786,23 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
         .next()
         .unwrap_or_else(|| panic!("the worker initialization is requested"));
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("worker initialization accepts activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("worker initialization accepts startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("one activation is requested"));
+        .unwrap_or_else(|| panic!("one startup is requested"));
     let activation_started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("activation starts"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("startup starts"));
     assert!(activation_started.creates.is_empty());
     assert!(activation_started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
-        .unwrap_or_else(|_| panic!("activation completes"));
+        .on(startup.start().await)
+        .unwrap_or_else(|_| panic!("startup completes"));
     let outcome = ready
         .sends
         .owner_outcomes
@@ -3827,7 +3829,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
 
     let next = supervisor
         .on(SettledItem::Unattempted(authorized))
-        .unwrap_or_else(|_| panic!("returned input releases its activation capacity"));
+        .unwrap_or_else(|_| panic!("returned input releases its startup capacity"));
     let next_operations = next.sends.proxy_operations.into_items();
     assert_eq!(next_operations.len(), 2);
     assert_eq!(next_operations[1].creation(), last_creation);
@@ -3857,7 +3859,7 @@ async fn committed_proxy_creation_emits_the_exact_initial_worker_input() {
 fn activation_capacity_two_preserves_admission_order() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(3).expect("entry capacity is positive"),
-        ActivationPolicy::new(2).expect("activation capacity is positive"),
+        StartupLimit::new(2).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(301)),
@@ -3877,7 +3879,7 @@ fn activation_capacity_two_preserves_admission_order() {
                 sender,
                 DynamicCommand::Start {
                     key,
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(sender)),
                 },
             )
@@ -3974,7 +3976,7 @@ fn activation_capacity_two_preserves_admission_order() {
 async fn global_shutdown_orders_local_start_and_replacement_by_key() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(3).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(93)),
@@ -3986,7 +3988,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
             SearchAddress(95),
             DynamicCommand::Start {
                 key: SearchKey("service"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(96))),
             },
         )
@@ -4028,7 +4030,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
             SearchAddress(97),
             DynamicCommand::Start {
                 key: SearchKey("occupied"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(98))),
             },
         )
@@ -4054,7 +4056,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
     );
     let occupied = supervisor
         .on(accepted_search_input(operation))
-        .unwrap_or_else(|_| panic!("the occupied input takes activation capacity"));
+        .unwrap_or_else(|_| panic!("the occupied input takes startup capacity"));
     assert!(occupied.sends.proxy_operations.is_empty());
 
     let waiting = supervisor
@@ -4062,7 +4064,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
             SearchAddress(99),
             DynamicCommand::Start {
                 key: SearchKey("waiting"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(100))),
             },
         )
@@ -4083,7 +4085,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
             SearchAddress(101),
             DynamicCommand::Replace {
                 key: SearchKey("service"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(102))),
             },
         )
@@ -4128,7 +4130,7 @@ async fn global_shutdown_orders_local_start_and_replacement_by_key() {
 fn cancelled_transferred_start_retains_its_rejected_input_outcome() {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(117)),
@@ -4140,7 +4142,7 @@ fn cancelled_transferred_start_retains_its_rejected_input_outcome() {
             SearchAddress(119),
             DynamicCommand::Start {
                 key: SearchKey("search"),
-                submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                 reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(120))),
             },
         )
@@ -4257,7 +4259,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
     ] {
         let mut supervisor = search_supervisor(
             EntryCapacity::new(2).expect("entry capacity is positive"),
-            ActivationPolicy::new(1).expect("activation capacity is positive"),
+            StartupLimit::new(1).expect("startup capacity is positive"),
             ActorDrainPolicy::WaitForActorGraph,
             RootPeers {
                 lifecycle: Recipient::global(SearchAddress(21)),
@@ -4269,7 +4271,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
                 SearchAddress(23),
                 DynamicCommand::Start {
                     key: SearchKey("search"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(24))),
                 },
             )
@@ -4309,7 +4311,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
                 SearchAddress(25),
                 DynamicCommand::Start {
                     key: SearchKey("cache"),
-                    submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                    submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                     reply_to: ReplyRoute::logical(Recipient::global(SearchAddress(26))),
                 },
             )
@@ -4421,7 +4423,7 @@ fn cancelled_transferred_start_reunites_its_late_report_with_proxy_retirement() 
 fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
     let mut supervisor = search_supervisor(
         EntryCapacity::new(1).expect("entry capacity is positive"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
+        StartupLimit::new(1).expect("startup capacity is positive"),
         ActorDrainPolicy::WaitForActorGraph,
         RootPeers {
             lifecycle: Recipient::global(SearchAddress(201)),
@@ -4452,7 +4454,7 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                         sender,
                         DynamicCommand::Start {
                             key: service.key(),
-                            submission: WorkerSubmission::activated(SearchWorker, SearchActivation),
+                            submission: WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                             reply_to: ReplyRoute::logical(Recipient::global(sender)),
                         },
                     )
@@ -4495,7 +4497,7 @@ fn admission_queries_match_one_customer_catalogue(bytes: Vec<u8>) {
                         assert_eq!(rejection.reason, reason);
                         assert_eq!(
                             rejection.submission,
-                            WorkerSubmission::activated(SearchWorker, SearchActivation),
+                            WorkerSubmission::with_startup(SearchWorker, SearchStartup),
                         );
                         assert!(acted.creates.is_empty());
                         assert!(acted.sends.proxy_observations.is_empty());

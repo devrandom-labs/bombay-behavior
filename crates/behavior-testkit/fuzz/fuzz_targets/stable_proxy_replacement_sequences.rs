@@ -2,7 +2,7 @@
 //! Arbitrary overlap, correlation, and cancellation during proxy replacement.
 mod stable_proxy;
 mod worker_return;
-use behavior_actors::atomic::{
+use behavior_actors::proxy::{
     ProxyControl, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy,
 };
 use behavior_actors::{EstablishedShutdownResolved, ShutdownId};
@@ -189,7 +189,7 @@ fn exercise(inputs: &[u8]) {
         };
         assert_eq!(actions.sends.worker_observations.len(), observations);
         assert!(actions.sends.worker_initializations.is_empty());
-        assert!(actions.sends.worker_activations.is_empty());
+        assert!(actions.sends.worker_startups.is_empty());
         assert!(actions.sends.worker_shutdowns.is_empty());
         assert!(actions.sends.worker_deliveries.is_empty());
         match decision {

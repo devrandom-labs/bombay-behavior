@@ -9,11 +9,10 @@ mod stable_proxy;
 use core::ops::ControlFlow;
 use std::time::Duration;
 
-use behavior_actors::atomic::{
-    CapabilityResult, FixedSupervisorEvent, ImmediateActivation, ProxyOutcome, Recovery,
-    RecoveryPolicy, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase,
-    WorkerSource, WorkerSubmission,
-};
+use behavior_actors::proxy::{ProxyOutcome, StableProxy};
+use behavior_actors::supervisor::roster::{CapabilityResult, FixedSupervisorEvent, Recovery, RecoveryPolicy, Strategy, UnavailablePhase};
+use behavior_actors::worker::{WorkerSource};
+use behavior_actors::worker::{ImmediateStartup, RestartLimit, RestartRelease, WorkerSubmission};
 use behavior_core::{
     ActionItemResult, ChildReport, CreationSequence, EstablishedActor, ItemSettlement, Never,
     NoSends, SettledItem, Step,
@@ -26,7 +25,7 @@ use stable_proxy::{Worker, WorkerEndpoint, start_ready_worker, worker_stopped};
 
 struct Workshop;
 
-impl WorkerSource<Role, Worker, ImmediateActivation> for Workshop {
+impl WorkerSource<Role, Worker, ImmediateStartup> for Workshop {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -138,7 +137,7 @@ fn exercise(inputs: &[u8]) {
     };
     let (route, control, receipt) = admit_proxy_operation(
         replacement,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+        EstablishedActor::<StableProxy<Worker, ImmediateStartup>>::issued(
             stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
         ),
     );

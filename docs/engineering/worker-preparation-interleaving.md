@@ -128,7 +128,7 @@ application adapter is justified by this comparison.
   regression: the held-source FIFO shutdown/job witness above. The first
   owner-local probe will use a one-role FIFO request, start it, fold shutdown,
   then return its exact prepared worker; it must fail against the old API.
-- First focused stage forecast: `crates/actors/src/atomic/worker/preparation.rs`,
+- First focused stage forecast: `crates/actors/src/templates/worker/preparation.rs`,
   the worker and atomic re-exports, FIFO event and aggregate modules, the
   shared direct-pool worker owner, one focused FIFO test, and this ledger;
   production about `+260/-165/net +95`, tests about `+75/-10/net +65`, two new
@@ -303,7 +303,7 @@ cancellation, but not interpreter-owned tasks. `ActivationTasks::settle`
 joins and resumes panic only after retirement. A new delayed source task
 that panics before sending its typed late result would therefore leave a
 live pool waiting indefinitely unless the active environment observes task
-failure. The existing `BeginActivation` pattern proves typed return through
+failure. The existing `StartWorker` pattern proves typed return through
 the control lane and exact closed-lane recovery, but does not prove live panic
 observation. A Bombay implementation must show one active failure path and
 one retirement path using the existing actor-owned task hierarchy; merely

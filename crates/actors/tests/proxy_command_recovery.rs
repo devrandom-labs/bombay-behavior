@@ -15,14 +15,18 @@ use behavior::{
     EstablishedRecipient, EventIngress, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation,
     SettledItem, Step, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationStartRejection, BeginActivation, DynamicSupervisorEvent,
-    FixedSupervisorEvent, ImmediateActivation, InitialWorkerOutcome, InitializeWorker,
-    PrepareWorkers, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyEffects, ProxyOutcome,
-    ProxyPhase, ReplacementOutcome, StableProxy, WorkerActivation, WorkerAttempt,
-    WorkerCreationRejection, WorkerInitializationFailure, WorkerInitializationOutcome,
-    WorkerInitializationReport, WorkerPreparation, WorkerStartResult,
+use behavior_actors::proxy::{
+    InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyEffects, ProxyOutcome,
+    ProxyPhase, ReplacementOutcome, StableProxy, WorkerStartResult,
 };
+use behavior_actors::supervisor::directory::DynamicSupervisorEvent;
+use behavior_actors::supervisor::roster::FixedSupervisorEvent;
+use behavior_actors::worker::{
+    ImmediateStartup, InitializeWorker, StartWorker, StartupPlan, StartupRejection, WorkerAttempt,
+    WorkerCreationRejection, WorkerInitializationFailure, WorkerInitializationOutcome,
+    WorkerInitializationReport, WorkerStartup,
+};
+use behavior_actors::worker::{PrepareWorkers, WorkerPreparation};
 use behavior_actors::{
     Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ObserveChild,
     ShutdownId, StopOnShutdown,
@@ -93,11 +97,11 @@ struct Hydrate(u8);
 #[derive(Debug, Eq, PartialEq)]
 struct HydrationUnavailable;
 
-impl ActivationPlan for Hydrate {
+impl StartupPlan for Hydrate {
     type Ready = u8;
     type Rejection = HydrationUnavailable;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move { Ok(self.0 + 1) }
@@ -136,11 +140,11 @@ enum DrainArrival {
     ShutdownThenStop,
 }
 
-impl ActivationPlan for RejectHydration {
+impl StartupPlan for RejectHydration {
     type Ready = Never;
     type Rejection = HydrationUnavailable;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move {
@@ -197,10 +201,10 @@ fn worker_start_result_has_three_domain_decisions() {
         match result {
             WorkerStartResult::CreationRejected {
                 rejection,
-                activation,
+                startup,
                 stopped,
             } => {
-                let _ = (rejection, activation, stopped);
+                let _ = (rejection, startup, stopped);
             }
             WorkerStartResult::Ready { attempt, readiness } => {
                 let _ = (attempt, readiness);
@@ -215,10 +219,10 @@ fn worker_start_result_has_three_domain_decisions() {
     let _ = contract;
 }
 
-fn activation_request_item(_: &BeginActivation<Worker, Hydrate>)
+fn activation_request_item(_: &StartWorker<Worker, Hydrate>)
 where
-    BeginActivation<Worker, Hydrate>:
-        ActionItem<Accepted = (), Rejection = ActivationStartRejection, Prerequisite = Never>,
+    StartWorker<Worker, Hydrate>:
+        ActionItem<Accepted = (), Rejection = StartupRejection, Prerequisite = Never>,
 {
 }
 
@@ -226,20 +230,20 @@ fn awaiting_activation<P>(
     worker: Worker,
     plan: P,
     endpoint: Endpoint,
-) -> (Active<StableProxy<Worker, P>>, BeginActivation<Worker, P>)
+) -> (Active<StableProxy<Worker, P>>, StartWorker<Worker, P>)
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
     let (mut proxy, initialization) = awaiting_initialization(worker, plan, endpoint);
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("successful initialization begins activation");
-    let mut activations = activating.sends.worker_activations.into_requests();
-    let activation = activations
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("successful initialization begins startup");
+    let mut activations = activating.sends.worker_startups.into_requests();
+    let startup = activations
         .pop()
-        .expect("the activation owner receives one request");
+        .expect("the startup owner receives one request");
     assert!(activations.is_empty());
-    (proxy, activation)
+    (proxy, startup)
 }
 
 fn awaiting_initialization<P>(
@@ -248,7 +252,7 @@ fn awaiting_initialization<P>(
     endpoint: Endpoint,
 ) -> (Active<StableProxy<Worker, P>>, InitializeWorker<Worker, P>)
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
     let initialized = StableProxy::activated()
         .initialize()
@@ -276,7 +280,7 @@ where
 
 fn initial_worker_result<P>(outcome: ProxyOutcome<Worker, P>) -> WorkerStartResult<Worker, P>
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
     match outcome {
         ProxyOutcome::Initial {
@@ -295,10 +299,10 @@ async fn ready_hydrated_proxy(
     let worker = request.worker();
     let start = proxy
         .on(request.started())
-        .expect("activation start is admitted before readiness");
+        .expect("startup start is admitted before readiness");
     assert!(start.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(request.activate().await)
+        .on(request.start().await)
         .expect("matching readiness completes the worker start");
     match ready
         .sends
@@ -323,7 +327,7 @@ fn commit_hydrated_worker(
     proxy: &mut Active<StableProxy<Worker, Hydrate>>,
     creation: CreateChild<RuntimeAddr, StopOnShutdown<Worker>>,
     endpoint: Endpoint,
-) -> BeginActivation<Worker, Hydrate> {
+) -> StartWorker<Worker, Hydrate> {
     let settled = created_worker(creation, endpoint);
     let committed = proxy
         .on(settled)
@@ -335,14 +339,14 @@ fn commit_hydrated_worker(
         .pop()
         .expect("the successor initialization is requested once");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("the successor initialization authorizes activation");
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("the successor initialization authorizes startup");
     activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("the successor activation is requested once")
+        .expect("the successor startup is requested once")
 }
 
 #[test]
@@ -361,7 +365,7 @@ fn dormant_owner_shutdown_stops_without_fabricating_an_owner_outcome() {
     assert!(stopped.creates.is_empty());
     assert!(stopped.sends.worker_observations.is_empty());
     assert!(stopped.sends.worker_initializations.is_empty());
-    assert!(stopped.sends.worker_activations.is_empty());
+    assert!(stopped.sends.worker_startups.is_empty());
     assert!(stopped.sends.worker_shutdowns.is_empty());
     assert!(stopped.sends.worker_deliveries.is_empty());
     assert!(stopped.sends.owner_outcomes.is_empty());
@@ -498,7 +502,7 @@ fn owner_shutdown_after_committed_creation_waits_for_initialization_and_worker_d
     let duplicate = WorkerInitializationReport::EffectsRejected {
         worker: initialization.worker(),
         initialization: initialization.initialization(),
-        activation: Hydrate(99),
+        startup: Hydrate(99),
         failure: WorkerInitializationFailure::EffectsRejected,
     };
     let shutdown = draining
@@ -509,9 +513,9 @@ fn owner_shutdown_after_committed_creation_waits_for_initialization_and_worker_d
         .expect("the committed worker begins one exact departure");
 
     let initialized = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("initialization settles without beginning activation");
-    assert!(initialized.sends.worker_activations.is_empty());
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("initialization settles without beginning startup");
+    assert!(initialized.sends.worker_startups.is_empty());
     assert_eq!(proxy.phase(), ProxyPhase::ShuttingDown);
     let duplicate = proxy
         .on(duplicate)
@@ -526,8 +530,8 @@ fn owner_shutdown_after_committed_creation_waits_for_initialization_and_worker_d
     {
         ProxyDiagnostic::UnexpectedWorkerInitialization { initialization, .. } => {
             match initialization {
-                WorkerInitializationReport::EffectsRejected { activation, .. } => {
-                    assert_eq!(activation, Hydrate(99));
+                WorkerInitializationReport::EffectsRejected { startup, .. } => {
+                    assert_eq!(startup, Hydrate(99));
                 }
                 _ => panic!("the duplicate initialization result changed"),
             }
@@ -588,11 +592,11 @@ fn owner_shutdown_after_stop_before_creation_never_sends_duplicate_worker_shutdo
         .pop()
         .expect("initialization result remains required");
     let terminal = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("initialization closes the already stopped worker");
     assert_eq!(proxy.phase(), ProxyPhase::Stopped);
     assert!(matches!(terminal.become_, Step::Stop(_)));
-    assert!(terminal.sends.worker_activations.is_empty());
+    assert!(terminal.sends.worker_startups.is_empty());
     assert!(terminal.sends.worker_shutdowns.is_empty());
 }
 
@@ -602,7 +606,7 @@ fn owner_shutdown_waiting_for_activation_start_retains_the_returned_request() {
     let worker = request.worker();
     let draining = proxy
         .on(ProxyControl::shutdown())
-        .expect("activation-start shutdown begins exact worker departure");
+        .expect("startup-start shutdown begins exact worker departure");
     let shutdown = draining
         .sends
         .worker_shutdowns
@@ -610,12 +614,12 @@ fn owner_shutdown_waiting_for_activation_start_retains_the_returned_request() {
         .pop()
         .expect("one exact shutdown is emitted");
 
-    let activation = proxy
-        .on(request.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("the complete unaccepted activation request is retained");
+    let startup = proxy
+        .on(request.start_rejected(StartupRejection::OwnerStopped))
+        .expect("the complete unaccepted startup request is retained");
     assert_eq!(proxy.phase(), ProxyPhase::ShuttingDown);
-    assert!(matches!(activation.become_, Step::Continue));
-    assert!(activation.sends.owner_outcomes.is_empty());
+    assert!(matches!(startup.become_, Step::Continue));
+    assert!(startup.sends.owner_outcomes.is_empty());
 
     let waiting = proxy
         .on(ChildStopped::new(
@@ -627,7 +631,7 @@ fn owner_shutdown_waiting_for_activation_start_retains_the_returned_request() {
     assert!(matches!(waiting.become_, Step::Continue));
     let terminal = proxy
         .on(EstablishedShutdownResolved::accepted(shutdown.id))
-        .expect("activation return and worker departure close shutdown");
+        .expect("startup return and worker departure close shutdown");
     assert_eq!(shutdown.id, ShutdownId(worker.creation().get()));
     assert_eq!(proxy.phase(), ProxyPhase::Stopped);
     assert!(matches!(terminal.become_, Step::Stop(_)));
@@ -640,11 +644,11 @@ async fn owner_shutdown_during_running_activation_never_publishes_late_readiness
     let worker = request.worker();
     let started = proxy
         .on(request.started())
-        .expect("activation work is admitted before owner shutdown");
+        .expect("startup work is admitted before owner shutdown");
     assert!(started.sends.owner_outcomes.is_empty());
     let draining = proxy
         .on(ProxyControl::shutdown())
-        .expect("running activation closes readiness and begins worker departure");
+        .expect("running startup closes readiness and begins worker departure");
     let shutdown = draining
         .sends
         .worker_shutdowns
@@ -652,12 +656,12 @@ async fn owner_shutdown_during_running_activation_never_publishes_late_readiness
         .pop()
         .expect("one exact shutdown is emitted");
 
-    let activation = proxy
-        .on(request.activate().await)
+    let startup = proxy
+        .on(request.start().await)
         .expect("late readiness is retained without opening service");
     assert_eq!(proxy.phase(), ProxyPhase::ShuttingDown);
-    assert!(matches!(activation.become_, Step::Continue));
-    assert!(activation.sends.owner_outcomes.is_empty());
+    assert!(matches!(startup.become_, Step::Continue));
+    assert!(startup.sends.owner_outcomes.is_empty());
 
     let waiting = proxy
         .on(EstablishedShutdownResolved::accepted(shutdown.id))
@@ -681,7 +685,7 @@ async fn worker_stop_during_running_activation_prevents_availability() {
     let worker = request.worker();
     let admitted = proxy
         .on(request.started())
-        .expect("activation work is admitted before the worker stops");
+        .expect("startup work is admitted before the worker stops");
     assert!(admitted.sends.owner_outcomes.is_empty());
 
     let waiting = proxy
@@ -690,11 +694,11 @@ async fn worker_stop_during_running_activation_prevents_availability() {
             Ok(Exit::Normal),
             Instant::now(),
         ))
-        .expect("the exact worker stop is retained until activation returns");
+        .expect("the exact worker stop is retained until startup returns");
     assert!(waiting.sends.owner_outcomes.is_empty());
 
     let completed = proxy
-        .on(request.activate().await)
+        .on(request.start().await)
         .expect("readiness after the exact stop closes the unavailable worker");
     assert_eq!(proxy.phase(), ProxyPhase::EmptyAfter);
     match completed
@@ -712,7 +716,7 @@ async fn worker_stop_during_running_activation_prevents_availability() {
                 },
         } => {
             assert_eq!(attempt, worker);
-            let ProxyDrain::ActivationCompleted { readiness, stopped } = drain else {
+            let ProxyDrain::StartupCompleted { readiness, stopped } = drain else {
                 panic!("readiness or the exact stop was lost");
             };
             assert_eq!(readiness, 22);
@@ -724,18 +728,18 @@ async fn worker_stop_during_running_activation_prevents_availability() {
 
 #[tokio::test]
 async fn worker_stop_before_activation_admission_returns_the_plan_without_shutdown() {
-    let (mut proxy, activation) = awaiting_activation(Worker(94), Hydrate(22), Endpoint(194));
-    let worker = activation.worker();
+    let (mut proxy, startup) = awaiting_activation(Worker(94), Hydrate(22), Endpoint(194));
+    let worker = startup.worker();
     let worker_stopped = ChildStopped::new(worker.creation(), Ok(Exit::Normal), Instant::now());
 
     let waiting_for_activation = proxy
         .on(worker_stopped)
-        .expect("the proxy retains its worker's stop while activation admission is pending");
+        .expect("the proxy retains its worker's stop while startup admission is pending");
     assert!(waiting_for_activation.sends.worker_shutdowns.is_empty());
 
     let worker_unavailable = proxy
-        .on(activation.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("rejected activation admission returns the stopped worker's plan");
+        .on(startup.start_rejected(StartupRejection::OwnerStopped))
+        .expect("rejected startup admission returns the stopped worker's plan");
     let result = initial_worker_result(
         worker_unavailable
             .sends
@@ -749,43 +753,42 @@ async fn worker_stop_before_activation_admission_returns_the_plan_without_shutdo
         panic!("the stopped worker became available");
     };
     assert_eq!(attempt, worker);
-    let ProxyDrain::ActivationStartRejected {
+    let ProxyDrain::StartupRefused {
         request,
         reason,
         shutdown,
         stopped,
     } = drain
     else {
-        panic!("the proxy lost the rejected activation request");
+        panic!("the proxy lost the rejected startup request");
     };
-    assert_eq!(reason, ActivationStartRejection::OwnerStopped);
+    assert_eq!(reason, StartupRejection::OwnerStopped);
     assert!(shutdown.is_none());
     assert_eq!(stopped, worker_stopped);
-    let readiness = match request.activate().await.into_ready() {
+    let readiness = match request.start().await.into_ready() {
         Ok(readiness) => readiness,
-        Err(_) => panic!("the returned activation plan did not complete"),
+        Err(_) => panic!("the returned startup plan did not complete"),
     };
     assert_eq!(readiness, 23);
 }
 
 #[tokio::test]
 async fn worker_stop_before_activation_failure_returns_the_failure_without_shutdown() {
-    let (mut proxy, activation) =
-        awaiting_activation(Worker(95), RejectHydration(30), Endpoint(195));
-    let worker = activation.worker();
+    let (mut proxy, startup) = awaiting_activation(Worker(95), RejectHydration(30), Endpoint(195));
+    let worker = startup.worker();
     let admitted = proxy
-        .on(activation.started())
-        .expect("the worker begins its activation plan");
+        .on(startup.started())
+        .expect("the worker begins its startup plan");
     assert!(admitted.sends.worker_shutdowns.is_empty());
     let worker_stopped = ChildStopped::new(worker.creation(), Ok(Exit::Normal), Instant::now());
     let waiting_for_activation = proxy
         .on(worker_stopped)
-        .expect("the proxy retains its worker's stop while activation is running");
+        .expect("the proxy retains its worker's stop while startup is running");
     assert!(waiting_for_activation.sends.worker_shutdowns.is_empty());
 
     let worker_unavailable = proxy
-        .on(activation.activate().await)
-        .expect("activation failure returns the already stopped worker");
+        .on(startup.start().await)
+        .expect("startup failure returns the already stopped worker");
     let result = initial_worker_result(
         worker_unavailable
             .sends
@@ -799,13 +802,13 @@ async fn worker_stop_before_activation_failure_returns_the_failure_without_shutd
         panic!("the stopped worker became available");
     };
     assert_eq!(attempt, worker);
-    let ProxyDrain::ActivationRejected {
+    let ProxyDrain::StartupRejected {
         rejection,
         shutdown,
         stopped,
     } = drain
     else {
-        panic!("the proxy lost the activation failure");
+        panic!("the proxy lost the startup failure");
     };
     assert_eq!(rejection, HydrationUnavailable);
     assert!(shutdown.is_none());
@@ -822,7 +825,7 @@ fn owner_shutdown_after_activation_worker_stop_emits_no_duplicate_shutdown() {
             Ok(Exit::Normal),
             Instant::now(),
         ))
-        .expect("early worker stop is retained while activation start settles");
+        .expect("early worker stop is retained while startup start settles");
     assert!(matches!(stopped.become_, Step::Continue));
     let draining = proxy
         .on(ProxyControl::shutdown())
@@ -830,8 +833,8 @@ fn owner_shutdown_after_activation_worker_stop_emits_no_duplicate_shutdown() {
     assert!(draining.sends.worker_shutdowns.is_empty());
 
     let terminal = proxy
-        .on(request.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("activation return closes the already stopped worker");
+        .on(request.start_rejected(StartupRejection::OwnerStopped))
+        .expect("startup return closes the already stopped worker");
     assert_eq!(proxy.phase(), ProxyPhase::Stopped);
     assert!(matches!(terminal.become_, Step::Stop(_)));
     assert!(terminal.sends.owner_outcomes.is_empty());
@@ -842,8 +845,8 @@ fn owner_shutdown_during_pre_ready_return_emits_no_duplicate_shutdown_or_outcome
     let (mut proxy, request) = awaiting_activation(Worker(92), Hydrate(20), Endpoint(192));
     let worker = request.worker();
     let returning = proxy
-        .on(request.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("activation rejection begins the existing worker departure");
+        .on(request.start_rejected(StartupRejection::OwnerStopped))
+        .expect("startup rejection begins the existing worker departure");
     let shutdown = returning
         .sends
         .worker_shutdowns
@@ -981,15 +984,15 @@ async fn ready_successor_waits_for_late_predecessor_shutdown_resolution() {
         .into_iter()
         .next()
         .expect("the successor is created only after predecessor stop");
-    let activation = commit_hydrated_worker(&mut proxy, creation, Endpoint(169));
-    let successor = activation.worker();
+    let startup = commit_hydrated_worker(&mut proxy, creation, Endpoint(169));
+    let successor = startup.worker();
     let activation_started = proxy
-        .on(activation.started())
-        .expect("successor activation begins exactly once");
+        .on(startup.started())
+        .expect("successor startup begins exactly once");
     assert!(activation_started.creates.is_empty());
     assert!(activation_started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .expect("successor readiness joins the pending predecessor settlement");
 
     assert_eq!(proxy.phase(), ProxyPhase::Replacing);
@@ -1047,14 +1050,14 @@ async fn owner_shutdown_returns_ready_successor_before_late_predecessor_resoluti
         .into_iter()
         .next()
         .expect("the successor is created only after predecessor stop");
-    let activation = commit_hydrated_worker(&mut proxy, creation, Endpoint(194));
-    let successor = activation.worker();
+    let startup = commit_hydrated_worker(&mut proxy, creation, Endpoint(194));
+    let successor = startup.worker();
     let started = proxy
-        .on(activation.started())
-        .expect("successor activation starts exactly once");
+        .on(startup.started())
+        .expect("successor startup starts exactly once");
     assert!(started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .expect("successor readiness remains private until predecessor settlement");
     assert!(ready.sends.owner_outcomes.is_empty());
     assert_eq!(proxy.phase(), ProxyPhase::Replacing);
@@ -1119,15 +1122,15 @@ async fn replacement_from_empty_after_starts_a_fresh_worker() {
         .into_iter()
         .next()
         .expect("empty replacement creates one successor");
-    let activation = commit_hydrated_worker(&mut proxy, creation, Endpoint(171));
-    let successor = activation.worker();
+    let startup = commit_hydrated_worker(&mut proxy, creation, Endpoint(171));
+    let successor = startup.worker();
     let activation_started = proxy
-        .on(activation.started())
-        .expect("successor activation begins exactly once");
+        .on(startup.started())
+        .expect("successor startup begins exactly once");
     assert!(activation_started.creates.is_empty());
     assert!(activation_started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .expect("successor readiness completes empty replacement");
     assert_eq!(proxy.phase(), ProxyPhase::Ready);
     match ready
@@ -1176,12 +1179,12 @@ async fn overlapping_replacement_returns_the_complete_successor() {
             outcome:
                 ReplacementOutcome::NotReplaceable {
                     worker,
-                    activation,
+                    startup,
                     phase,
                 },
         } => {
             assert_eq!(worker, Worker(74));
-            assert_eq!(activation, Hydrate(18));
+            assert_eq!(startup, Hydrate(18));
             assert_eq!(phase, ProxyPhase::Replacing);
         }
         _ => panic!("overlap produced the wrong replacement outcome"),
@@ -1294,7 +1297,7 @@ async fn rejected_successor_waits_for_late_predecessor_shutdown_resolution() {
                     result:
                         WorkerStartResult::CreationRejected {
                             rejection: WorkerCreationRejection::WorkerRejected { worker, error },
-                            activation,
+                            startup,
                             stopped: None,
                         },
                 },
@@ -1302,7 +1305,7 @@ async fn rejected_successor_waits_for_late_predecessor_shutdown_resolution() {
             assert_eq!(replaces, previous);
             assert_eq!(worker, Worker(78));
             assert_eq!(error, WorkerRejected(23));
-            assert_eq!(activation, Hydrate(22));
+            assert_eq!(startup, Hydrate(22));
         }
         _ => panic!("late predecessor settlement lost the successor rejection"),
     }
@@ -1380,7 +1383,7 @@ fn canonical_construction_infers_worker_and_activation_without_runtime_types() {
     let mut proxy = initialized.behavior;
     let start = proxy
         .on(ProxyControl::start_with(Worker(2), Hydrate(9)))
-        .expect("reported activation is inferred from its plan");
+        .expect("reported startup is inferred from its plan");
     assert_eq!(start.creates.len(), 1);
     assert_eq!(start.sends.worker_observations.len(), 1);
     worker_observation(&start.sends.worker_observations[0]);
@@ -1388,7 +1391,7 @@ fn canonical_construction_infers_worker_and_activation_without_runtime_types() {
 
 #[test]
 fn immediate_start_has_no_unused_plan_input() {
-    fn accepts(_: ProxyControl<Worker, ImmediateActivation>) {}
+    fn accepts(_: ProxyControl<Worker, ImmediateStartup>) {}
     accepts(ProxyControl::start(Worker(1)));
 }
 
@@ -1430,14 +1433,14 @@ fn rejected_worker_is_returned_and_initial_empty_provenance_is_preserved() {
                 InitialWorkerOutcome::Resolved {
                     result:
                         WorkerStartResult::CreationRejected {
-                            activation,
+                            startup,
                             rejection: WorkerCreationRejection::WorkerRejected { worker, error },
                             stopped: None,
                         },
                 },
         } => {
             assert_eq!(worker, Worker(7));
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(error, WorkerRejected(11));
         }
         _ => panic!("unexpected proxy outcome"),
@@ -1482,7 +1485,7 @@ fn panicked_initial_worker_returns_its_current_definition_without_a_birth() {
                 InitialWorkerOutcome::Resolved {
                     result:
                         WorkerStartResult::CreationRejected {
-                            activation: ImmediateActivation,
+                            startup: ImmediateStartup,
                             rejection: WorkerCreationRejection::WorkerPanicked { worker },
                             stopped: None,
                         },
@@ -1520,12 +1523,12 @@ fn overlapping_start_returns_the_complete_submission() {
             outcome:
                 InitialWorkerOutcome::Overlap {
                     worker,
-                    activation,
+                    startup,
                     phase,
                 },
         } => {
             assert_eq!(worker, Worker(2));
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(phase, ProxyPhase::Creating);
         }
         _ => panic!("unexpected proxy outcome"),
@@ -1755,16 +1758,16 @@ fn committed_worker_enters_initializing_without_publishing_readiness() {
         .expect("the child host receives one initialization request");
     let expected_worker = request.worker();
     let expected_initialization = request.initialization();
-    match request.resolve(WorkerInitializationOutcome::ReadyForActivation) {
-        WorkerInitializationReport::ReadyForActivation {
+    match request.resolve(WorkerInitializationOutcome::ReadyForStartup) {
+        WorkerInitializationReport::ReadyForStartup {
             worker,
             initialization,
-            activation,
+            startup,
             permit,
         } => {
             assert_eq!(worker, expected_worker);
             assert_eq!(initialization, expected_initialization);
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(permit.worker(), expected_worker);
             assert_eq!(permit.initialization(), expected_initialization);
         }
@@ -1798,19 +1801,18 @@ async fn successful_initialization_authorizes_one_correlated_activation() {
         .expect("the child host receives one initialization request");
     let expected_worker = initialization.worker();
     let expected_initialization = initialization.initialization();
-    let worker_initialized =
-        initialization.resolve(WorkerInitializationOutcome::ReadyForActivation);
+    let worker_initialized = initialization.resolve(WorkerInitializationOutcome::ReadyForStartup);
     let activating = proxy
         .on(worker_initialized)
         .expect("matching initialization is a total proxy transition");
-    assert_eq!(proxy.phase(), ProxyPhase::Activating);
+    assert_eq!(proxy.phase(), ProxyPhase::Starting);
     assert!(activating.sends.owner_outcomes.is_empty());
     assert!(activating.sends.worker_deliveries.is_empty());
-    assert_eq!(activating.sends.worker_activations.len(), 1);
-    let mut activation_requests = activating.sends.worker_activations.into_requests();
+    assert_eq!(activating.sends.worker_startups.len(), 1);
+    let mut activation_requests = activating.sends.worker_startups.into_requests();
     let request = activation_requests
         .pop()
-        .expect("successful initialization emits one activation request");
+        .expect("successful initialization emits one startup request");
     assert!(activation_requests.is_empty());
 
     assert_eq!(request.target(), EstablishedRecipient::issued(Endpoint(51)));
@@ -1818,19 +1820,19 @@ async fn successful_initialization_authorizes_one_correlated_activation() {
     assert_eq!(request.initialization(), expected_initialization);
     activation_request_item(&request);
 
-    match ActivationStartRejection::OwnerStopped {
-        ActivationStartRejection::OwnerStopped => {}
+    match StartupRejection::OwnerStopped {
+        StartupRejection::OwnerStopped => {}
     }
 
     let activation_started = request.started();
     assert_eq!(activation_started.worker(), expected_worker);
     let accepted = proxy
         .on(activation_started)
-        .expect("activation start is a total proxy transition");
-    assert_eq!(proxy.phase(), ProxyPhase::Activating);
+        .expect("startup start is a total proxy transition");
+    assert_eq!(proxy.phase(), ProxyPhase::Starting);
     assert!(accepted.sends.owner_outcomes.is_empty());
 
-    let ready = request.activate().await;
+    let ready = request.start().await;
     let activated = proxy
         .on(ready)
         .expect("matching readiness is a total proxy transition");
@@ -1852,7 +1854,7 @@ async fn successful_initialization_authorizes_one_correlated_activation() {
             assert_eq!(attempt, expected_worker);
             assert_eq!(readiness, 10);
         }
-        _ => panic!("matching activation produced the wrong owner result"),
+        _ => panic!("matching startup produced the wrong owner result"),
     }
 
     let forwarded = proxy
@@ -1872,11 +1874,11 @@ async fn readiness_before_activation_start_is_returned_and_cannot_open_service()
     let (mut proxy, request) = awaiting_activation(Worker(40), Hydrate(19), Endpoint(89));
     let worker = request.worker();
     let started = request.started();
-    let ready = request.activate().await;
+    let ready = request.start().await;
     let rejected = proxy
         .on(ready)
-        .expect("readiness before activation start is a total diagnostic transition");
-    assert_eq!(proxy.phase(), ProxyPhase::Activating);
+        .expect("readiness before startup start is a total diagnostic transition");
+    assert_eq!(proxy.phase(), ProxyPhase::Starting);
     assert!(rejected.sends.owner_outcomes.is_empty());
     assert!(rejected.sends.worker_deliveries.is_empty());
     let ready = match rejected
@@ -1887,16 +1889,16 @@ async fn readiness_before_activation_start_is_returned_and_cannot_open_service()
         .expect("the early readiness is returned")
         .into_inner()
     {
-        ProxyDiagnostic::UnexpectedWorkerActivation { phase, activation } => {
-            assert_eq!(phase, ProxyPhase::Activating);
-            activation
+        ProxyDiagnostic::UnexpectedWorkerStartup { phase, startup } => {
+            assert_eq!(phase, ProxyPhase::Starting);
+            startup
         }
         _ => panic!("early readiness changed lifecycle category"),
     };
 
     let accepted = proxy
         .on(started)
-        .expect("the exact activation start advances its phase");
+        .expect("the exact startup start advances its phase");
     assert!(accepted.sends.owner_outcomes.is_empty());
     let completed = proxy
         .on(ready)
@@ -1928,8 +1930,8 @@ async fn activation_start_rejection_drains_the_exact_worker_before_reporting() {
     let (mut proxy, request) = awaiting_activation(Worker(41), Hydrate(23), Endpoint(97));
     let worker = request.worker();
     let draining = proxy
-        .on(request.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("exact activation start rejection begins worker drain");
+        .on(request.start_rejected(StartupRejection::OwnerStopped))
+        .expect("exact startup start rejection begins worker drain");
     assert_eq!(proxy.phase(), ProxyPhase::ReturningWorker);
     assert_eq!(draining.sends.worker_shutdowns.len(), 1);
     assert!(draining.sends.owner_outcomes.is_empty());
@@ -1944,14 +1946,14 @@ async fn activation_start_rejection_drains_the_exact_worker_before_reporting() {
     assert!(waiting.sends.owner_outcomes.is_empty());
     let completed = proxy
         .on(stopped)
-        .expect("worker stop completes activation-start rejection drain");
+        .expect("worker stop completes startup-start rejection drain");
 
     match completed
         .sends
         .owner_outcomes
         .into_iter()
         .next()
-        .expect("the owner receives one activation-start rejection")
+        .expect("the owner receives one startup-start rejection")
         .into_inner()
     {
         ProxyOutcome::Initial {
@@ -1961,7 +1963,7 @@ async fn activation_start_rejection_drains_the_exact_worker_before_reporting() {
                 },
         } => {
             assert_eq!(attempt, worker);
-            let ProxyDrain::ActivationStartRejected {
+            let ProxyDrain::StartupRefused {
                 request,
                 reason,
                 shutdown: Some(shutdown),
@@ -1970,16 +1972,16 @@ async fn activation_start_rejection_drains_the_exact_worker_before_reporting() {
             else {
                 panic!("the drain lost the complete unaccepted request");
             };
-            assert_eq!(reason, ActivationStartRejection::OwnerStopped);
+            assert_eq!(reason, StartupRejection::OwnerStopped);
             assert_eq!(shutdown.id(), ShutdownId(worker.creation().get()));
             assert_eq!(stopped.child, worker.creation());
-            let readiness = match request.activate().await.into_ready() {
+            let readiness = match request.start().await.into_ready() {
                 Ok(readiness) => readiness,
-                Err(_) => panic!("the returned request lost its activation plan"),
+                Err(_) => panic!("the returned request lost its startup plan"),
             };
             assert_eq!(readiness, 24);
         }
-        _ => panic!("activation-start rejection produced the wrong owner result"),
+        _ => panic!("startup-start rejection produced the wrong owner result"),
     }
 }
 
@@ -1990,12 +1992,12 @@ async fn accepted_activation_rejection_drains_the_exact_worker_before_reporting(
     let started = request.started();
     let accepted = proxy
         .on(started)
-        .expect("activation start is a total proxy transition");
+        .expect("startup start is a total proxy transition");
     assert!(accepted.sends.owner_outcomes.is_empty());
-    let rejected = request.activate().await;
+    let rejected = request.start().await;
     let draining = proxy
         .on(rejected)
-        .expect("application activation rejection begins worker drain");
+        .expect("application startup rejection begins worker drain");
     assert_eq!(proxy.phase(), ProxyPhase::ReturningWorker);
     assert_eq!(draining.sends.worker_shutdowns.len(), 1);
     assert!(draining.sends.owner_outcomes.is_empty());
@@ -2010,14 +2012,14 @@ async fn accepted_activation_rejection_drains_the_exact_worker_before_reporting(
     assert!(waiting.sends.owner_outcomes.is_empty());
     let completed = proxy
         .on(EstablishedShutdownResolved::<Worker>::accepted(shutdown.id))
-        .expect("shutdown resolution completes activation rejection drain");
+        .expect("shutdown resolution completes startup rejection drain");
 
     match completed
         .sends
         .owner_outcomes
         .into_iter()
         .next()
-        .expect("the owner receives one activation rejection")
+        .expect("the owner receives one startup rejection")
         .into_inner()
     {
         ProxyOutcome::Initial {
@@ -2027,7 +2029,7 @@ async fn accepted_activation_rejection_drains_the_exact_worker_before_reporting(
                 },
         } => {
             assert_eq!(attempt, worker);
-            let ProxyDrain::ActivationRejected {
+            let ProxyDrain::StartupRejected {
                 rejection,
                 shutdown: Some(shutdown),
                 stopped,
@@ -2039,7 +2041,7 @@ async fn accepted_activation_rejection_drains_the_exact_worker_before_reporting(
             assert_eq!(shutdown.id(), ShutdownId(worker.creation().get()));
             assert_eq!(stopped.child, worker.creation());
         }
-        _ => panic!("activation rejection produced the wrong owner result"),
+        _ => panic!("startup rejection produced the wrong owner result"),
     }
 }
 
@@ -2067,14 +2069,14 @@ async fn activation_plan_rejection_remains_distinct_from_start_rejection() {
         .into_requests()
         .pop()
         .expect("the child host receives one initialization request");
-    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForActivation) {
-        WorkerInitializationReport::ReadyForActivation {
-            activation, permit, ..
-        } => BeginActivation::new(activation, permit),
+    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForStartup) {
+        WorkerInitializationReport::ReadyForStartup {
+            startup, permit, ..
+        } => StartWorker::new(startup, permit),
         _ => panic!("successful initialization returned the wrong authority"),
     };
 
-    match request.activate().await.into_rejection() {
+    match request.start().await.into_rejection() {
         Ok(rejection) => assert_eq!(rejection, HydrationUnavailable),
         Err(_) => panic!("the plan rejection was not retained"),
     }
@@ -2112,15 +2114,15 @@ fn rejected_initialization_effects_return_the_plan_without_activation_authority(
         WorkerInitializationReport::EffectsRejected {
             worker,
             initialization,
-            activation,
+            startup,
             failure,
         } => {
             assert_eq!(worker, expected_worker);
             assert_eq!(initialization, expected_initialization);
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(failure, WorkerInitializationFailure::EffectsRejected);
         }
-        _ => panic!("rejected initialization effects returned activation authority"),
+        _ => panic!("rejected initialization effects returned startup authority"),
     }
 }
 
@@ -2159,7 +2161,7 @@ fn initialization_effect_rejection_drains_in(
         )
         .expect("matching initialization rejection begins exact worker drain");
     assert_eq!(proxy.phase(), ProxyPhase::ReturningWorker);
-    assert!(draining.sends.worker_activations.is_empty());
+    assert!(draining.sends.worker_startups.is_empty());
     assert_eq!(draining.sends.worker_shutdowns.len(), 1);
     assert!(draining.sends.owner_outcomes.is_empty());
     let mut shutdowns = draining.sends.worker_shutdowns.into_requests();
@@ -2216,7 +2218,7 @@ fn initialization_effect_rejection_drains_in(
             assert_eq!(attempt.creation(), worker);
             let ProxyDrain::InitializationRejected {
                 failure,
-                activation,
+                startup,
                 shutdown: Some(shutdown),
                 stopped,
             } = drain
@@ -2224,7 +2226,7 @@ fn initialization_effect_rejection_drains_in(
                 panic!("the drain lost the initialization rejection");
             };
             assert_eq!(failure, expected_failure);
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(shutdown.id(), ShutdownId(worker.get()));
             assert_eq!(stopped.child, worker);
         }
@@ -2295,7 +2297,7 @@ fn initialization_stop_never_emits_activation() {
         .expect("initialization stop is a total proxy transition");
 
     assert_eq!(proxy.phase(), ProxyPhase::EmptyAfter);
-    assert!(completed.sends.worker_activations.is_empty());
+    assert!(completed.sends.worker_startups.is_empty());
     assert!(completed.sends.worker_shutdowns.is_empty());
     match completed
         .sends
@@ -2348,7 +2350,7 @@ fn worker_stop_before_initialization_rejection_returns_the_plan_without_shutdown
     assert_eq!(attempt, worker);
     let ProxyDrain::InitializationRejected {
         failure,
-        activation,
+        startup,
         shutdown,
         stopped,
     } = drain
@@ -2356,7 +2358,7 @@ fn worker_stop_before_initialization_rejection_returns_the_plan_without_shutdown
         panic!("the proxy lost the initialization rejection");
     };
     assert_eq!(failure, WorkerInitializationFailure::EffectsRejected);
-    assert_eq!(activation, Hydrate(24));
+    assert_eq!(startup, Hydrate(24));
     assert!(shutdown.is_none());
     assert_eq!(stopped, worker_stopped);
 }
@@ -2396,14 +2398,14 @@ fn initialization_return_keeps_both_worker_stop_observations() {
     };
     assert_eq!(attempt, worker);
     let ProxyDrain::InitializationStopped {
-        activation,
+        startup,
         observed,
         returned,
     } = drain
     else {
         panic!("the proxy lost one worker stop observation");
     };
-    assert_eq!(activation, Hydrate(25));
+    assert_eq!(startup, Hydrate(25));
     assert_eq!(observed, Some(proxy_observation));
     assert_eq!(returned, host_observation);
 }
@@ -2439,11 +2441,11 @@ fn earlier_worker_stop_prevents_activation_after_initialization_succeeds() {
         .expect("the matching stop waits for initialization");
     assert!(waiting.sends.owner_outcomes.is_empty());
     let completed = proxy
-        .on(request.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(request.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("initialization after worker stop is a total transition");
 
     assert_eq!(proxy.phase(), ProxyPhase::EmptyAfter);
-    assert!(completed.sends.worker_activations.is_empty());
+    assert!(completed.sends.worker_startups.is_empty());
     match completed
         .sends
         .owner_outcomes
@@ -2461,14 +2463,14 @@ fn earlier_worker_stop_prevents_activation_after_initialization_succeeds() {
             assert_eq!(attempt.creation(), worker);
             let ProxyDrain::InitializationCompleted {
                 permit,
-                activation,
+                startup,
                 stopped,
             } = drain
             else {
                 panic!("the drain lost the unused permit and plan");
             };
             assert_eq!(permit.worker().creation(), worker);
-            assert_eq!(activation, Hydrate(11));
+            assert_eq!(startup, Hydrate(11));
             assert_eq!(stopped.child, worker);
         }
         _ => panic!("initialization after stop produced the wrong owner result"),
@@ -2481,10 +2483,10 @@ fn initialization_result_sent_to_another_proxy_is_returned_unchanged() {
     let (_source, foreign) = awaiting_initialization(Worker(34), Hydrate(13), Endpoint(83));
     let foreign_worker = foreign.worker();
     let rejected = target
-        .on(foreign.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(foreign.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("foreign initialization is a total diagnostic transition");
     assert_eq!(target.phase(), ProxyPhase::Initializing);
-    assert!(rejected.sends.worker_activations.is_empty());
+    assert!(rejected.sends.worker_startups.is_empty());
     assert!(rejected.sends.owner_outcomes.is_empty());
     match rejected
         .sends
@@ -2500,11 +2502,11 @@ fn initialization_result_sent_to_another_proxy_is_returned_unchanged() {
         } => {
             assert_eq!(phase, ProxyPhase::Initializing);
             match initialization {
-                WorkerInitializationReport::ReadyForActivation {
-                    worker, activation, ..
+                WorkerInitializationReport::ReadyForStartup {
+                    worker, startup, ..
                 } => {
                     assert_eq!(worker, foreign_worker);
-                    assert_eq!(activation, Hydrate(13));
+                    assert_eq!(startup, Hydrate(13));
                 }
                 _ => panic!("foreign initialization changed its result"),
             }
@@ -2513,10 +2515,10 @@ fn initialization_result_sent_to_another_proxy_is_returned_unchanged() {
     }
 
     let accepted = target
-        .on(expected.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(expected.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("the target retains its exact initialization");
     assert!(accepted.sends.diagnostics.is_empty());
-    assert_eq!(accepted.sends.worker_activations.len(), 1);
+    assert_eq!(accepted.sends.worker_startups.len(), 1);
 }
 
 #[test]
@@ -2527,14 +2529,14 @@ fn activation_from_another_proxy_is_returned_unchanged() {
 
     let rejected = target
         .on(foreign.started())
-        .expect("foreign activation is a total diagnostic transition");
-    assert_eq!(target.phase(), ProxyPhase::Activating);
+        .expect("foreign startup is a total diagnostic transition");
+    assert_eq!(target.phase(), ProxyPhase::Starting);
     assert!(rejected.sends.owner_outcomes.is_empty());
     assert_eq!(rejected.sends.diagnostics.len(), 1);
 
     let accepted = target
         .on(expected.started())
-        .expect("the target retains its exact activation");
+        .expect("the target retains its exact startup");
     assert!(accepted.sends.diagnostics.is_empty());
 }
 
@@ -2547,13 +2549,13 @@ fn equal_worker_values_and_endpoints_do_not_share_activation_authority() {
 
     let rejected = target
         .on(foreign.started())
-        .expect("foreign activation is a total diagnostic transition");
-    assert_eq!(target.phase(), ProxyPhase::Activating);
+        .expect("foreign startup is a total diagnostic transition");
+    assert_eq!(target.phase(), ProxyPhase::Starting);
     assert!(matches!(rejected.become_, Step::Continue));
     assert!(rejected.creates.is_empty());
     assert!(rejected.sends.worker_observations.is_empty());
     assert!(rejected.sends.worker_initializations.is_empty());
-    assert!(rejected.sends.worker_activations.is_empty());
+    assert!(rejected.sends.worker_startups.is_empty());
     assert!(rejected.sends.worker_shutdowns.is_empty());
     assert!(rejected.sends.worker_deliveries.is_empty());
     assert!(rejected.sends.owner_outcomes.is_empty());
@@ -2564,24 +2566,24 @@ fn equal_worker_values_and_endpoints_do_not_share_activation_authority() {
         .diagnostics
         .into_iter()
         .next()
-        .expect("the exact foreign activation is returned")
+        .expect("the exact foreign startup is returned")
         .into_inner()
     {
-        ProxyDiagnostic::UnexpectedWorkerActivation { phase, activation } => {
-            assert_eq!(phase, ProxyPhase::Activating);
-            assert_eq!(activation.worker(), foreign_worker);
-            activation
+        ProxyDiagnostic::UnexpectedWorkerStartup { phase, startup } => {
+            assert_eq!(phase, ProxyPhase::Starting);
+            assert_eq!(startup.worker(), foreign_worker);
+            startup
         }
-        _ => panic!("foreign activation changed diagnostic category"),
+        _ => panic!("foreign startup changed diagnostic category"),
     };
     let accepted_by_source = source
         .on(returned)
-        .expect("the original owner accepts the returned activation");
+        .expect("the original owner accepts the returned startup");
     assert!(accepted_by_source.sends.diagnostics.is_empty());
 
     let accepted_by_target = target
         .on(expected.started())
-        .expect("the target retains its own exact activation");
+        .expect("the target retains its own exact startup");
     assert!(accepted_by_target.sends.diagnostics.is_empty());
 }
 
@@ -2621,7 +2623,7 @@ fn host_rejection_keeps_worker_and_initialization_actions_together() {
                 InitialWorkerOutcome::Resolved {
                     result:
                         WorkerStartResult::CreationRejected {
-                            activation,
+                            startup,
                             rejection: WorkerCreationRejection::HostRejected { recovery, reason },
                             stopped: None,
                         },
@@ -2629,7 +2631,7 @@ fn host_rejection_keeps_worker_and_initialization_actions_together() {
         } => {
             let (worker, initialization) = recovery.into_retirement();
             assert_eq!(worker, Worker(5));
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(reason, CreationRejection::EnvironmentFailed);
             assert!(initialization.creates.is_empty());
         }
@@ -2685,12 +2687,12 @@ fn stop_before_creation_rejection_returns_one_complete_contradiction() {
                     result:
                         WorkerStartResult::CreationRejected {
                             rejection: WorkerCreationRejection::NamespaceExhausted { worker },
-                            activation,
+                            startup,
                             stopped: Some(stopped),
                         },
                 },
         } => {
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(stopped.child, worker_id);
             assert_eq!(stopped.outcome, Ok(Exit::Normal));
             assert_eq!(worker, Worker(13));
@@ -2743,16 +2745,16 @@ fn stop_before_committed_creation_remains_owned_during_initialization() {
         WorkerInitializationReport::Stopped {
             worker,
             initialization,
-            activation,
+            startup,
             stopped: returned,
         } => {
             assert_eq!(worker, expected_worker);
             assert_eq!(initialization, expected_initialization);
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
             assert_eq!(returned.child, worker_id);
             assert_eq!(returned.outcome, Ok(Exit::Normal));
         }
-        _ => panic!("stopped initialization returned activation authority"),
+        _ => panic!("stopped initialization returned startup authority"),
     }
 }
 
@@ -2857,47 +2859,42 @@ fn foreign_and_duplicate_worker_stops_are_diagnostics_without_state_change() {
     }
 }
 
-/// The original activation input whose allocation must survive Started conversion.
+/// The original startup input whose allocation must survive Started conversion.
 #[derive(Debug, Eq, PartialEq)]
 struct AdmissionHydration(Arc<Vec<u8>>);
 
-impl ActivationPlan for AdmissionHydration {
+impl StartupPlan for AdmissionHydration {
     type Ready = Arc<Vec<u8>>;
     type Rejection = Never;
 
-    fn activate(self) -> impl Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
+    fn start(self) -> impl Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move { Ok(self.0) }
     }
 }
 
 /// Ordinary field-loan comparison; admission is cold until the producer is polled.
 fn admit_proxy_activation<'a>(
-    input: &'a mut Option<BeginActivation<Worker, AdmissionHydration>>,
+    input: &'a mut Option<StartWorker<Worker, AdmissionHydration>>,
     received: &'a mut Option<
-        ItemSettlement<
-            BeginActivation<Worker, AdmissionHydration>,
-            (),
-            ActivationStartRejection,
-            Never,
-        >,
+        ItemSettlement<StartWorker<Worker, AdmissionHydration>, (), StartupRejection, Never>,
     >,
     retained: &'a mut ProxyEffects<
         (),
         (),
-        Vec<BeginActivation<Worker, AdmissionHydration>>,
+        Vec<StartWorker<Worker, AdmissionHydration>>,
         (),
         (),
         (),
         (),
     >,
-    inject_started: impl FnOnce(WorkerActivation<Worker, AdmissionHydration>) + Send + 'a,
+    inject_started: impl FnOnce(WorkerStartup<Worker, AdmissionHydration>) + Send + 'a,
 ) -> impl Future<Output = ()> + Send + 'a {
     async move {
         let request = input
             .take()
             .expect("the current exact request is available");
         let started = request.started();
-        retained.worker_activations.push(request);
+        retained.worker_startups.push(request);
         inject_started(started);
         *received = Some(ItemSettlement::Accepted(()));
     }
@@ -2909,10 +2906,10 @@ async fn started_conversion_keeps_original_pending_activation_in_named_rows() {
     let allocation = Arc::downgrade(&original);
     let (_proxy, initialization) =
         awaiting_initialization(Worker(41), AdmissionHydration(original), Endpoint(59));
-    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForActivation) {
-        WorkerInitializationReport::ReadyForActivation {
-            activation, permit, ..
-        } => BeginActivation::new(activation, permit),
+    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForStartup) {
+        WorkerInitializationReport::ReadyForStartup {
+            startup, permit, ..
+        } => StartWorker::new(startup, permit),
         _ => panic!("the real initialization must issue the original permit"),
     };
     let worker = request.worker();
@@ -2922,7 +2919,7 @@ async fn started_conversion_keeps_original_pending_activation_in_named_rows() {
     let mut retained = ProxyEffects {
         worker_observations: (),
         worker_initializations: (),
-        worker_activations: Vec::new(),
+        worker_startups: Vec::new(),
         worker_shutdowns: (),
         worker_deliveries: (),
         owner_outcomes: (),
@@ -2931,10 +2928,8 @@ async fn started_conversion_keeps_original_pending_activation_in_named_rows() {
     let payload = Arc::new(vec![53, 61]);
     let original_payload = Arc::downgrade(&payload);
     let (input, received) =
-        <BeginActivation<Worker, AdmissionHydration> as ActionItem>::interpretation_input(
-            &mut custody,
-        )
-        .expect("the selected Core lends the original input and outside reply");
+        <StartWorker<Worker, AdmissionHydration> as ActionItem>::interpretation_input(&mut custody)
+            .expect("the selected Core lends the original input and outside reply");
     let mut work = Box::pin(admit_proxy_activation(
         input,
         received,
@@ -2959,15 +2954,15 @@ async fn started_conversion_keeps_original_pending_activation_in_named_rows() {
     assert_eq!(original_payload.strong_count(), 1);
     drop(fault);
     assert_eq!(original_payload.strong_count(), 0);
-    assert_eq!(retained.worker_activations.len(), 1);
+    assert_eq!(retained.worker_startups.len(), 1);
     let request = retained
-        .worker_activations
+        .worker_startups
         .pop()
         .expect("the original pending request survives");
     assert_eq!(request.initialization(), initialization);
     assert_eq!(request.target(), target);
     assert_eq!(allocation.strong_count(), 1);
-    let ready = request.activate().await;
+    let ready = request.start().await;
     let original = match ready.into_ready() {
         Ok(original) => original,
         Err(returned) => {
@@ -2989,10 +2984,10 @@ async fn named_activation_retention_preserves_normal_admission_and_ready_reply()
     let allocation = Arc::downgrade(&original);
     let (_proxy, initialization) =
         awaiting_initialization(Worker(63), AdmissionHydration(original), Endpoint(73));
-    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForActivation) {
-        WorkerInitializationReport::ReadyForActivation {
-            activation, permit, ..
-        } => BeginActivation::new(activation, permit),
+    let request = match initialization.resolve(WorkerInitializationOutcome::ReadyForStartup) {
+        WorkerInitializationReport::ReadyForStartup {
+            startup, permit, ..
+        } => StartWorker::new(startup, permit),
         _ => panic!("the real initialization must issue the original permit"),
     };
     let worker = request.worker();
@@ -3002,17 +2997,15 @@ async fn named_activation_retention_preserves_normal_admission_and_ready_reply()
     let mut retained = ProxyEffects {
         worker_observations: (),
         worker_initializations: (),
-        worker_activations: Vec::new(),
+        worker_startups: Vec::new(),
         worker_shutdowns: (),
         worker_deliveries: (),
         owner_outcomes: (),
         diagnostics: (),
     };
     let (input, received) =
-        <BeginActivation<Worker, AdmissionHydration> as ActionItem>::interpretation_input(
-            &mut custody,
-        )
-        .expect("the selected Core lends the original input and outside reply");
+        <StartWorker<Worker, AdmissionHydration> as ActionItem>::interpretation_input(&mut custody)
+            .expect("the selected Core lends the original input and outside reply");
     admit_proxy_activation(input, received, &mut retained, move |started| {
         assert_eq!(started.worker(), worker);
         match started.into_ready() {
@@ -3041,15 +3034,15 @@ async fn named_activation_retention_preserves_normal_admission_and_ready_reply()
             panic!("unexpected {fault:?}");
         }
     }
-    assert_eq!(retained.worker_activations.len(), 1);
+    assert_eq!(retained.worker_startups.len(), 1);
     let request = retained
-        .worker_activations
+        .worker_startups
         .pop()
         .expect("admission retains the actual Plan");
     assert_eq!(request.initialization(), initialization);
     assert_eq!(request.target(), target);
     assert_eq!(allocation.strong_count(), 1);
-    let ready = request.activate().await;
+    let ready = request.start().await;
     match ready.into_ready() {
         Ok(ready) => {
             assert_eq!(Arc::as_ptr(&ready), allocation.as_ptr());

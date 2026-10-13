@@ -31,35 +31,32 @@ route, structural parent path, or assignment identity.
 
 ## Canonical public path
 
-The Behavior Actors component has one external spelling for this family:
-`behavior_actors::atomic::Name`. Atomic names are not repeated at the component
-crate root. This module path communicates ownership; it is not structural actor
-routing.
+The owning component exposes `supervisor::roster` and `supervisor::directory`,
+`pool::queue` and `pool::router`, `proxy`, and `worker`. Their source directories
+follow the same ownership tree. Each parent exposes its public contracts and
+keeps construction, state and settlement details private. The obsolete `atomic`
+namespace has no compatibility alias.
 
-Bombay must not glob-re-export `behavior_actors::atomic`. Its ordinary facade
-selects only these categories from the implemented families:
+Roster and queue construction use `new(factory, roles, Config { … })`. Required
+policy choices have named fields; the running actors retain their original flat
+storage. Construction refusal returns the original configuration together with
+the complete worker-preparation rejection. The roster builder additionally
+supports its existing optional typed lifecycle route before `build`.
 
-- construction and behavior: `StableProxy`, `fixed`, `FixedSupervisor`,
-  `dynamic`, `DynamicSupervisor`, `fifo`, `FifoPool`, `keyed`, and `KeyedPool`;
-- worker definition and activation: `ActivationPlan`, `ImmediateActivation`,
-  `WorkerSubmission`, `ActivationPolicy`, `EntryCapacity`, `BacklogCapacity`,
-  `BindingCapacity`, and `ZeroCapacity`;
-- required policy: `ActorDrainPolicy`, `DiagnosticDisposition`, `Recovery`,
-  `Strategy`, `RestartLimit`, `RestartRelease`, `FailureReaction`,
-  `UnexpectedExit`, `PoolRecovery`, `PoolFailureReaction`, and `Interruption`;
-- application protocols: `FixedCommand`, `DynamicCommand`, their reply values,
-  query/status values, cancellation authority and outcomes, lifecycle values,
-  diagnostics, FIFO/keyed customer outcomes, binding commands and replies, and
-  typed policy errors; and
-- validated fixed topology: `OrderedRoles`, `DuplicateRole`, and the complete
-  construction rejection.
+Shared worker choices live under `worker`, diagnostic policy under `diagnostic`,
+and graph drain policy under `lifecycle`. `StartupPlan`, `StartupLimit`,
+`ImmediateStartup`, and `WorkerSubmission::with_startup` describe work performed
+once creation and pure initialization succeed. Submission does not prove readiness.
 
-Bombay's interpreter implementation imports doc-hidden request products,
-effect products, internal events, worker preparation, activation requests,
-proxy control, and settlements directly from the component module when their
-associated types require it. Bombay does not re-export those names. Therefore
-ordinary application autocomplete and rustdoc contain domain construction,
-policies, commands, capabilities, and outcomes rather than runtime plumbing.
+The same owners expose explicit interpreter contracts for advanced consumers.
+Ordinary applications use domain constructors and commands; they do not issue
+startup grants, forge receipts or implement assignment settlement. The parent
+modules retain all existing restrictions on those authority constructors.
+
+The complete downstream naming proof uses an isolated copy of Bombay. Its
+committed registry consumer still selects the published earlier namespace until
+this component change is reviewed, released and adopted. Source-patched native
+proof is not a registry-delivery claim.
 
 ## Status and acceptance gate
 
@@ -147,7 +144,7 @@ one user-facing meaning:
 an owner has decided that a worker may progress toward `Ready`. A supervisor
 reserves conservatively when it emits the opaque proxy install because it sees
 no later progress facts; a direct pool reserves when it emits
-`BeginActivation` after initialization settlement. The difference is a
+`StartWorker` after initialization settlement. The difference is a
 documented template boundary, not two counting laws. The resulting journey is:
 
 ```text
@@ -159,12 +156,12 @@ build definition
   -> interpret and settle initialization Actions
   -> direct pool records activation authorization
   -> activation consumes the installation permit and plan
-  -> exact Ready or ActivationRejected fact
+  -> exact Ready or StartupRejected fact
   -> only Ready publishes or accepts work
 ```
 
 The ordinary worker author supplies a concrete activation value; they do not
-send `BeginActivation`, mint an attempt, or route `ActivationResolved`.
+send `StartWorker`, mint an attempt, or route `ActivationResolved`.
 Immediate activation uses a route/plan-free builder choice; it must not require
 an annotation for an otherwise unused plan type.
 Initialization failure, rejected initialization effects, and stopping during
@@ -198,14 +195,16 @@ shutdown control. No public method sets a nonce, incarnation, or ready flag.
 The selected semantic order is:
 
 ```text
-fixed(
+roster::new(
     factory,
     ordered non-empty roles,
-    activation policy,
-    recovery policy,
-    topology-failure reaction,
-    ActorDrainPolicy,
-    diagnostic disposition,
+    roster::Config {
+        activation: activation policy,
+        recovery: recovery policy,
+        failure: topology-failure reaction,
+        shutdown: ActorDrainPolicy,
+        diagnostics: diagnostic disposition,
+    },
 )
   -> optional lifecycle publication
   -> build and prepare every initial worker
@@ -256,7 +255,7 @@ is `Recovery::permanent(source, RecoveryPolicy { strategy, limit, delay })`,
 worker source that Bombay will invoke outside Behavior. Temporary recovery
 carries neither a source nor ignored strategy, budget, or release values. The
 activation policy owns only its positive authorization maximum; callers use
-`ActivationPolicy::new(usize)` and receive `ZeroCapacity` instead of constructing
+`StartupLimit::new(usize)` and receive `ZeroCapacity` instead of constructing
 `NonZeroUsize`. The plan belongs to each worker submission. Passing all required values to
 `fixed` avoids a user-visible chain of structural builder stages; omitting any
 value is an ordinary missing-argument compile error.
@@ -298,7 +297,7 @@ walks `.inner`, `.own`, `WithParent`, a slot number, or wrapper depth.
 The canonical constructor is one `dynamic(entries, activation, unexpected_exit,
 actor_drain, lifecycle, diagnostics)` call. Applications construct `entries`
 with `EntryCapacity::new(usize)` and `activation` with
-`ActivationPolicy::new(usize)`. Both return `ZeroCapacity`, but their values
+`StartupLimit::new(usize)`. Both return `ZeroCapacity`, but their values
 cannot be exchanged. Every executable semantic policy appears once; there is no
 staged builder, factory, callback, default, marker, or public proxy type.
 `ActorDrainPolicy` is mandatory because global shutdown is executable.
@@ -367,26 +366,30 @@ distinct outcome.
 The selected construction spelling is one direct call:
 
 ```text
-fifo(
+queue::new(
     initial_factory,
     ordered unique roles,
-    ActivationPolicy,
-    PoolRecovery,
-    BacklogCapacity,
-    Interruption,
-    ActorDrainPolicy,
-    DiagnosticDisposition,
+    queue::Config {
+        activation: StartupLimit,
+        recovery: PoolRecovery,
+        backlog: BacklogCapacity,
+        interruption: Interruption,
+        shutdown: ActorDrainPolicy,
+        diagnostics: DiagnosticDisposition,
+    },
 )
 ```
 
-Every argument has a distinct domain type, so exchanging backlog and interruption is a compile
-error. `BacklogCapacity::new(0)` is valid because zero means no waiting work. A named policy
-product owns no new invariant; a fluent form adds missing-state machinery. Neither is retained.
+Each configuration field has its existing domain type; exchanging backlog and
+interruption fails to compile. `BacklogCapacity::new(0)` remains valid because
+zero means no waiting work. The named product owns the simultaneous construction
+choices and returns intact on preparation refusal; it adds no runtime state or
+builder phase.
 
 The call prepares the complete roster before a pool exists. Success returns a
 `FifoPool` whose type does not contain the callable. Failure returns
 `FifoConstructionRejected`: its `workers` field is the shared
-`InitialWorkerRejection`, beside only FIFO policy.
+`InitialWorkerRejection`, beside the complete original `queue::Config`.
 Automatic `PoolRecovery` owns its source, limit, release, and `RetireRole | StopPool` reaction.
 Temporary recovery owns only the reaction and needs no source placeholder. No transition invokes
 the factory, and users never name preparation or interpreter machinery.
@@ -423,7 +426,7 @@ fn transition(&mut self, assignment: Assignment<Job>) -> WorkerActed<Self> {
 }
 ```
 
-The `behavior_actors::atomic::pool_worker` attribute is syntax derivation only.
+The `behavior_actors::pool::pool_worker` attribute is syntax derivation only.
 It reads the authored `Assignment<Job>` input and declared result type, rewrites
 the intentionally unresolved `WorkerActed<Self>` spelling, and emits the sole
 ordinary `Protocol`, `Behavior`, and `BehaviorBase` implementations. There is
@@ -459,13 +462,11 @@ from `Job` instead of the declared result fails at the authored
 `assignment.complete(result)` expression with the exact `SearchJob` versus
 `SearchResult` mismatch.
 
-The complete canonical FIFO journey occupies 38 meaningful lines including
-imports, domain types, worker, worker declaration, construction, and
-initialization. The worker implementation occupies six meaningful lines and
-the direct `fifo(...)` call ten. It needs no final aggregate annotation, helper
-alias, turbofish, structural actor concept, interpreter request, or completion
-route. The direct eight-domain-value constructor remains the single selected
-construction spelling.
+The canonical FIFO constructor takes a factory, ordered roles and
+`queue::Config`. All six policy choices have named fields; no aggregate type
+annotation, alias, turbofish, interpreter request or completion route is needed.
+The former eight positional inputs are replaced, with complete original settings
+returned through `FifoConstructionRejected.config` on preparation refusal.
 
 ## Keyed-pool journey
 
@@ -476,7 +477,7 @@ keyed(
     initial_factory,
     ordered unique roles,
     key-to-role selector,
-    ActivationPolicy,
+    StartupLimit,
     PoolRecovery,
     per-role BacklogCapacity,
     BindingCapacity,
@@ -491,7 +492,7 @@ The callable factory exists only during construction; the successful
 `InitialWorkerRejection`, beside the selector and keyed policy. The selector is
 the one concrete `Fn(&Key) -> Role` value used by
 future admission; it is not a boxed callback, runtime registry, or distribution
-mode. `ActivationPolicy`, `BacklogCapacity`, and `BindingCapacity` are distinct
+mode. `StartupLimit`, `BacklogCapacity`, and `BindingCapacity` are distinct
 types, so their numeric storage cannot make them interchangeable.
 
 Keyed admission has one selected model:

@@ -1,7 +1,5 @@
-use runtime::behavior::{
-    Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient,
-};
-use runtime::atomic::{Assignment, pool_worker};
+use runtime::behavior::{Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient};
+use runtime::pool::{Assignment, pool_worker};
 
 struct First;
 struct Second;

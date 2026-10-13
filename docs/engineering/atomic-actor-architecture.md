@@ -55,13 +55,13 @@ that value beside only its own policies. The private preparation operation runs
 before a behavior exists; it cannot run application code during a transition.
 
 The StableProxy source location does not make intrinsic worker values
-proxy-owned. `ActivationPlan`, `WorkerSubmission`, opaque worker/
+proxy-owned. `StartupPlan`, `WorkerSubmission`, opaque worker/
 initialization/activation correlations, initialization and activation requests
 and results, exact established-worker custody, and pre-commit worker rejection
 are aggregate-neutral data. FIFO and KeyedPool now share only their proven
-direct-worker relationship beneath the private `atomic::pool::worker`
-hierarchy, while retaining the canonical `atomic::*`
-application/interpreter spelling.
+direct-worker relationship beneath the private `templates::pool::worker` hierarchy. Public module owners are
+`supervisor::{roster, directory}`, `pool::{queue, router}`, `proxy` and `worker`;
+the private catalogue no longer forwards a flattened public family namespace.
 `PendingWorker`, `WorkerStartResult`, and `ProxyDrain` remain StableProxy
 concerns in their present form; a pool must not translate or ignore their proxy
 outcomes.
@@ -130,7 +130,7 @@ be used by sibling concerns and what reaches applications.
 The fixed supervisor follows the same rule without decorative directories:
 
 ```text
-fixed_supervisor/
+fixed/
     mod.rs
     member.rs
     role.rs
@@ -158,7 +158,7 @@ module whose only job is to make the tree deeper.
 FIFO uses the same ownership rule with fewer concerns:
 
 ```text
-fifo_pool/
+fifo/
     mod.rs
     member.rs
     job.rs

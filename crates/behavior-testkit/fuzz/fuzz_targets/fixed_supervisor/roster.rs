@@ -2,10 +2,14 @@
 
 use core::convert::Infallible;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction, FixedDiagnostic,
-    FixedSupervisor, ImmediateActivation, InitialWorkerOutcome, OrderedRoles, ProxyOutcome,
-    Recovery, StableProxy, WorkerAttempt, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, StableProxy, WorkerStartResult};
+use behavior_actors::supervisor::roster;
+use behavior_actors::supervisor::roster::{FailureReaction, FixedDiagnostic, FixedSupervisor, Recovery};
+use behavior_actors::worker::{WorkerSource};
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, StartupLimit, WorkerAttempt, WorkerSubmission,
 };
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
@@ -26,25 +30,25 @@ pub(crate) enum Role {
 
 pub(crate) struct ReadyMember {
     pub(crate) role: Role,
-    pub(crate) proxy: Active<StableProxy<Worker, ImmediateActivation>>,
+    pub(crate) proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     pub(crate) proxy_id: CreationId,
     pub(crate) worker: WorkerAttempt,
 }
 
 pub(crate) struct ReadyRoster<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     pub(crate) supervisor: Active<
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Source,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Source>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Source>,
                 >,
             >,
             Infallible,
@@ -53,7 +57,7 @@ where
     pub(crate) members: Vec<ReadyMember>,
 }
 
-fn initial_worker(role: &Role) -> WorkerSubmission<Worker, ImmediateActivation> {
+fn initial_worker(role: &Role) -> WorkerSubmission<Worker, ImmediateStartup> {
     let worker = match role {
         Role::Search => Worker::new(1),
         Role::Index => Worker::new(2),
@@ -63,8 +67,8 @@ fn initial_worker(role: &Role) -> WorkerSubmission<Worker, ImmediateActivation> 
 }
 
 fn committed_proxies(
-    creations: Creations<CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateActivation>>>,
-) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateActivation>> {
+    creations: Creations<CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateStartup>>>,
+) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateStartup>> {
     CreationsSettled::new(CreationSettlement::Settled(
         creations
             .into_iter()
@@ -89,17 +93,21 @@ fn committed_proxies(
 
 pub(crate) fn ready_three_role_roster<Source>(recovery: Recovery<Source>) -> ReadyRoster<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(Role::Search, [Role::Index, Role::Spellcheck])
             .expect("three distinct roles form one fixed roster"),
-        ActivationPolicy::new(3).expect("three workers may activate together"),
-        recovery,
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::deliver_to(EstablishedRecipient::issued(WorkerEndpoint)),
+        roster::Config {
+            startup: StartupLimit::new(3).expect("three workers may activate together"),
+            recovery: recovery,
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::deliver_to(EstablishedRecipient::issued(
+                WorkerEndpoint,
+            )),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("each declared role has an initial worker"))
@@ -131,7 +139,7 @@ where
         };
         let (proxy_id, control, receipt) = admit_proxy_operation(
             operation,
-            EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+            EstablishedActor::<StableProxy<Worker, ImmediateStartup>>::issued(
                 crate::stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
             ),
         );
