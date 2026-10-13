@@ -2,7 +2,7 @@
 
 Date: 2026-09-29. Status: Behavior-owned contracts implemented on the
 repository-quality release branch; cross-repository P5 acceptance pending.
-The [implementation ledger](interpreter-contract-implementation-ledger.md)
+The [implementation ledger (historical)](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/interpreter-contract-implementation-ledger.md)
 separates local proof from the future Bombay/Address runtime witnesses. This
 revision supersedes the 2026-09-28
 creation-and-delivery proposal in this file.
