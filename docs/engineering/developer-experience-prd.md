@@ -702,7 +702,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX03 | Sealed startup closes native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: all owner consumers, complete cancellation/freshness and final gates |
 | DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
 | DX05 | All run/paired/HTTP/Entity entry points select descendants from Root/Members metadata; six pre-edit inference witnesses and original-input/receiving journeys pass both profiles/MSRV. Supervisor/FIFO constructors infer actor types | Open: final full consumer/repository gates; all38 original cancellation/non-Send/custom-host journeys pass both compilers/profiles/features |
-| DX06 | Actual Communication0.1.5 Config requests a minimum: the ring rounds to a power of two with floor2. Root, ordinary births, Entity and external clients still select private constants | Open: validated owner-scoped settings, exact effective-capacity evidence and saturation/lifecycle custody; do not assume Config::new(1) means one queue slot |
+| DX06 | Actual Communication0.1.5 Config requests a minimum: the ring rounds to a power of two with floor2. Root, ordinary births and Entity still select private constants; external clients now accept validated MailboxCapacity through Application/ApplicationScope, preserving the existing bounded default | Open: root/birth/Entity mailbox scope and complete resource accounting/final gates. Four client-capacity laws and24 existing consumer tests pass current/MSRV debug/release; three inversions fail and six restored controls pass. The same two-reply endpoint journey reduces peak tracked heap35442→2738 bytes at capacity1024→2, with equal25 allocations and56 end bytes in all four builds; this is no whole-application or cross-framework claim |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
 | DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration is committed; combined24 gates pass ataf87ef4 with528 frozen hashes; final programme reconciliation remains open |
@@ -1986,3 +1986,85 @@ source tests need no test getters. Cross-check: creation/lifecycle/initializatio
 laws, execution-ownership and DX04/22. Disposition: pass for this bounded example;
 callback/associated-type ceremony, broader programme costs and final gates remain
 open. Relocating the explicit family policy does not claim to remove it.
+
+Client mailbox capacity — DX06, pre-edit
+
+Law: deliberate bounded-resource policy plus derived affine admission custody.
+Communication0.1.5 rounds a minimum up to a power of two with floor2. Validate
+positive input and checked rounding before allocating any endpoint; store only
+the effective capacity. Reuse Config::new, the existing external mailbox,
+TrySendError, admission closure and accepted-prefix receiving. No actor algebra,
+queue algorithm, aging policy, runtime phase or scheduling change.
+
+Desired caller: Application::new(root).client_capacity(MailboxCapacity::new(3)?)
+and ApplicationScope::new().client_capacity(capacity).external::<Replies>().
+Scope settings configure future endpoints; existing endpoints retain their own
+allocation. An exported ActorInterface inherits the application's client limit;
+external(), client() and client_to() use that same limit. One-way senders retain
+their current uninhabited reply lane. Constructor rejection returns the original
+minimum; saturation/closure returns the exact original message, and closing
+admission preserves the accepted prefix and originating address.
+
+Smallest complete witness: an early endpoint requests3, admits exactly4 move-only
+payloads, rejects the fifth by pointer identity, closes and drains all accepted
+messages. Consume that scope into a real current-thread application; a later
+endpoint must inherit4, saturate and still permit root shutdown and joined
+retirement. A separate direct application witness verifies exported-interface
+and bound-client propagation, fresh origins and rejected-message retry. Invalid0
+and overflow return the original minimum. Run the focused native regression RED
+before production. Then current/MSRV debug/release, independent saturation/default
+inversions and existing scope/client/denial consumers.
+
+Expected owners: application/mailbox.rs (validated MailboxCapacity and its error),
+mod.rs, scope.rs, interface.rs, execution.rs/http.rs scope construction, crate
+exports, focused tests and documentation. Reuse the existing optional scope as
+configuration custody through untouched/prepared/staging failure; add no config
+wrapper, generic parameter, trait, lifecycle state or capability. Default remains
+bounded1024. Expected production growth below160 lines and two public value/error
+types. Root/birth/Entity limits, complete resource accounting and final DX06 gates
+remain required; this focused stage does not close DX06. Expanded cumulative
+programme authorization remains the recorded2026-10-09 approval.
+
+Client capacity retained checkpoint: the pre-edit native consumer fails E0432
+(MailboxCapacity absent) and E0599 (both owner setters absent). Its protocol import
+was corrected from Behavior's address to the actual native MailAddr; no production
+bound or capability was added in response. All four focused laws now pass on
+Rust1.99/1.96 debug/release, beside the existing actor-interface/client/scope corpus
+(24 tests per build total) and five active rustdoc tests (three prior schematic
+snippets remain ignored). Six existing authority/receiving denials and the client
+protocol denials remain; new rustdoc denials prevent forged capacity and raw
+integer selection. Three independent inversions (ignored limit, wrong rounding
+floor, accepted zero) fail in debug/release, and all six restored controls pass
+with exact original source hashes. Two actual timer/shutdown wrapper orders use
+the selected small limit in their existing native consumer. Workspace all-target/
+all-feature strict Clippy and formatting pass; both configured wrapper orders
+pass the final current/MSRV debug/release matrix before commit. No dependency or Rust version changed.
+
+Checkpoint: existing application work/control phases and subordinate alternatives
+are unchanged; endpoint admission/closure and notification/retirement remain the
+same owners. ApplicationScope retains the selected scalar through missing-host,
+untouched, prepared and staging custody; ApplicationHandle and ActorInterface
+need their immutable copies to construct future reply endpoints. No new authority,
+state graph, historical label, correlated flags, runtime lookup or structural
+caller path. The new validated scalar owns positivity/checked effective rounding;
+its error owns the original invalid minimum. Six affected application modules:
+physical lines3938→4060, lexical matches52→52/arms102→102, enums5→5, declared
+types16→18, public methods52→56; modules5→6. Two public value/error types and two
+owner setters replace the private external1024 constant. Existing private owner
+fixtures supply the unchanged bounded default after the focused native proof;
+there is no new public mandatory argument or placeholder policy. Cross-check:
+DX06/20, Communication0.1.5 channel construction and native admission/retirement
+laws. Disposition: pass for client settings; root/birth/Entity resource scope and
+complete resource accounting remain open.
+
+Actual allocation probe (not an example helper): equal two-message external
+endpoint construction, admission, closure, prefix draining and disposal executes
+on both compilers/profiles. Capacity1024→2 changes peak tracked heap35442→2738
+bytes and total35570→2866, with equal25 allocation blocks and56 end bytes.
+Scope and empty exported interface each measure16 bytes; the validated scalar
+adds one usize of stored configuration to each existing owner. Results agree in
+all four builds. No per-actor, throughput, RSS, leak-free or cross-framework claim.
+Evidence artifacts: CLIENT-CAPACITY-RED/GREEN/CLIPPY.log,
+CLIENT-CAPACITY-VERIFIED.json (eleven frozen source hashes),
+CLIENT-INVERSES-VERIFIED.json, CLIENT-WRAPPERS-VERIFIED.json and
+CLIENT-HEAP-VERIFIED.json in the retained results directory.
