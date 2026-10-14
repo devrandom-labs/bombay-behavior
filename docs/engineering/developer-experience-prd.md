@@ -709,7 +709,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
-| DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Open: distinguish wrapper-owned timers from domain names, then prove automatic identity plus full reorder/cancel/stale/rejection/exhaustion corpus; no API migration retained |
+| DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Disjoint queue-key representation passes both compilers/profiles and a collision inverse. Open: carry that distinction through typed requests and the actual wrapper/interpreter without narrowing named ports; complete reorder/cancel/stale/rejection/exhaustion corpus and automatic API remain unproved |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
 | DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
@@ -1101,3 +1101,34 @@ SendLayer composition lifts through Inside; named requests remain an open
 InterpretItem port. A future automatic-name proof must preserve that existing
 named port, not impose a new private path requirement on every request. Broader
 full gates and automatic owner semantics remain unproved.
+
+Disjoint timer-key test (before lowering): an exhaustive private key sum keeps
+Named(TimerId) separate from Owned(ingress position). Named replacement/cancel
+selects only that name; an owned timer can replace/cancel only its own slot.
+Generation tokens remain the primitive queue's exact authority. Test the two
+owned slots alongside a repeated domain name using the unchanged registry
+TimerQueue, including stale and foreign cancellation, equal deadlines and
+original emitted values. This is a data-representation probe only: it must not
+claim a new wrapper/API or impose a private path bound on existing named
+requests. Expected one research-local crate, zero retained production changes.
+The primitive generic key is reused; no scheduler, registry or counter is added.
+
+Disjoint-key result: the unchanged published TimerQueue0.2.0 and actual
+TimerId0.26.0 accept Named(TimerId) and Owned(usize) as a closed key sum.
+Two tests pass on1.99/1.96 in debug/release, with strict lint and formatting;
+the optimized collision inverse fails both cancellation and live-count checks,
+and exact source restoration passes. The two keys retain distinct authority;
+equal named keys still replace, equal deadlines retain the surviving insertion
+order, stale/consumed tokens are inert, and a foreign queue cannot cancel either
+namespace. Production/API/control states/branches/modules delta is zero. The
+research-local test source is94 lines with two private sums (2 key alternatives,
+4 emitted values); each surviving value is either the queue key required for
+replacement/cancel or the non-cloned notice required for exact delivery. No
+arrival-history state, semantic flag, repeated cause, nested transition authority
+or caller structural syntax is retained. Cross-check the generation-branded
+primitive queue, named schedule/elapsed contracts, timer leases and the native
+session witnesses. Disposition: pass for the key equation only; no lowered
+automatic request, wrapper identity, public API or programme completion follows.
+Evidence: timers/disjoint/RESULTS.json, PROVEN.rs and SOURCE.json under the
+existing temporary evidence root. Repository tests remain the native session
+witnesses; this external probe is not a portable end-to-end acceptance fixture.
