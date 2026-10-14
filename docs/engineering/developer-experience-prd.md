@@ -1095,4 +1095,9 @@ profiles. Its private trait, bound and tuple-key representation are all removed.
 Cross-check time/domain.rs, OneShot/Periodic, generation-safe TimerQueue, typed
 event/effect composition, runtime timing and complete Driver retirement.
 Disposition: baseline pass; blanket lane-key candidate reopen, recorded in
-DEAD_ENDS. Broader full gates and automatic owner semantics remain unproved.
+DEAD_ENDS. The restored all-feature optimized native journey also passes both
+cases in27.294 seconds. Ordinary interpretation starts at Here and standard
+SendLayer composition lifts through Inside; named requests remain an open
+InterpretItem port. A future automatic-name proof must preserve that existing
+named port, not impose a new private path requirement on every request. Broader
+full gates and automatic owner semantics remain unproved.
