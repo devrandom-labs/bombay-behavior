@@ -705,7 +705,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX06 | Actual Communication0.1.5 Config requests a minimum: the ring rounds to a power of two with floor2. Root, ordinary births, Entity and external clients still select private constants | Open: validated owner-scoped settings, exact effective-capacity evidence and saturation/lifecycle custody; do not assume Config::new(1) means one queue slot |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
-| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix and actual package consumers; final repository gates remain pending |
+| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration and final reconciliation remain pending |
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
@@ -1218,6 +1218,51 @@ The package/archive matrix takes37.734 seconds. This is local package verificati
 not registry publication. The completed task-owned Cargo cache is removed
 only after all processes exit; source, toolchains, archives and evidence survive.
 Disk availability is5.3GiB before the new full native check; no previous disk or
-signing failure is waived. All21 repository gates forfcb85ca are running against
-485 captured tracked-file hashes. Final nextest and requirement reconciliation
-remain required; no selected requirement or persistent goal is marked complete.
+signing failure is waived. All21 native aarch64-darwin repository gates for
+fcb85ca passed in2504.413seconds, with all485 captured tracked-file hashes
+unchanged. Other platforms were not run. Final nextest, main integration and
+requirement reconciliation remain required; no selected requirement or
+persistent goal is marked complete.
+
+#### Typed interpreter ownership — DX15 (pre-edit probe)
+
+Derived extension law: application-supplied requests must name their concrete
+interpreter owner statically, while standard requests retain the native owner.
+The proposed ownership equation is request::Interpreter = the supplied service;
+it changes neither ActionItem's receiving loan nor complete settlement/result
+custody. Desired application syntax is Application::new(actor).with_interpreter(
+service), with standard timers/delivery still available and unsupported leaves
+denied. Existing native ActionItem/InterpretItem paths are inspected; there is
+currently no application interpreter extension method.
+
+Before lowering, test whether a local open request trait with an associated
+interpreter can distinguish a blanket external route from the concrete standard
+ScheduleAfter route under Rust coherence. Both routes directly forward the
+existing receiving-loan method, without new request wrappers, path markers,
+fallback, lookup or async erasure. This compiler-only ownership probe is not
+a native journey, a proposed production surface or proof of task retirement.
+Budget: an external port crate and a separate consumer crate; zero repository production changes, bounds,
+states, fields or public types retained. Reuse actual0.26 ActionItem,
+InterpretItem and ScheduleAfter. If coherence rejects it, record that falsifier
+and reopen rather than repair it with caller tags or arbitrary bounds.
+
+The independent consumer proves two genuine operations, OpenFile and
+ReadEnvironment, using the same concrete Services owner beside an actual
+ScheduleAfter/TimerQueue. Both tests pass on pinned1.99/1.96 in debug/release
+(eight executions): acquired File/String/timer receipt survive dropping the
+interpreter, cold cancellation preserves the original PathBuf allocation, and
+OS rejection returns the same owned request. Each compiler separately rejects
+a consumer claiming the standard ScheduleAfter owner (E0117) and supplying the
+wrong external owner (E0271). Associated-owner coherence succeeds without tags
+or new routing bounds. These are external port tests only: native Application
+extension, wrapper orders, asynchronous task custody and retirement remain
+unproved; DX15 remains open. Sources and exact commands/results are preserved
+under /private/tmp/bombay-retirement-schema-kgazqjhv/extension.
+
+Main integration selectedfb533b5 after the user requested current main in the
+isolated Bombay branch. Main#359 squashed prior DevX throughc3b74ab; reconcile
+that shared source before retaining later changes from both branches. Main's
+independent work/native/notification retirement product takes precedence over
+the older two-part consumer assumptions. No new semantics or public types are
+selected by this merge. The pre-merge21-gate result above cannot stand in for
+verification of the combined revision.
