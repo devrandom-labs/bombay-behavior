@@ -1266,3 +1266,25 @@ independent work/native/notification retirement product takes precedence over
 the older two-part consumer assumptions. No new semantics or public types are
 selected by this merge. The pre-merge21-gate result above cannot stand in for
 verification of the combined revision.
+
+Combined Bombay source is committedbdaf904 (parentsfcb85ca andfb533b5),
+with a clean isolated feature tree. Git confirmsfb533b5 is an ancestor. Resolving
+the squashed overlap fromc3b74ab preserves main's independent retirement
+receivers and all later DevX laws. The focused all-feature consumers pass39
+cases plus their current protocol/factory compile denials; one existing
+subprocess case remains ignored. Strict workspace/all-target/all-feature Clippy
+and pinned formatting pass. Compared with selected main, retained DevX
+production is+203/-8/net195 across4 files, with no merge-invented state, bound
+or capability. Counter main shrinks86 to51 lines through upstream separation
+of verification from ordinary execution; this is ceremony evidence, not a
+memory or throughput claim.
+
+The user requires upstream integrations to improve caller experience as well
+as preserve features. Bombay AGENTS now states this rule. Independent
+work/native/notification receiving is retained, but its exposed three-part
+bookkeeping and stale cleanup inspection wording must be reconciled with the
+ordinary Application path. DX01/05/17/19 remain open for that complete result
+journey; no transparent tuple wrapper, discarded notification failure or
+example-only helper is accepted. Fresh combined native Nix checks and optimized
+workspace nextest are running against528 frozen tracked-file hashes. Pre-merge
+passes do not satisfy these combined gates.
