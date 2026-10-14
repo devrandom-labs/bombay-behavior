@@ -699,10 +699,10 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | --- | --- | --- |
 | DX01 | One actual Application owns root/scope/members/families; App removed. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; complete receiving and HTTP consumer migrations now pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
-| DX03 | Sealed startup closes the tested native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: cold members that create inferred descendants exposed E0275 from generated projection self-equality. A separate native counter/custody witness fails on unchanged9c7e37a and passes after reusing the ordinary selected-edge rule in cold bounds; full denials/composition/profile proof remains pending. All owner consumers, complete cancellation/freshness and final gates remain required |
+| DX03 | Sealed startup closes the tested native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: final integration and all owner consumers, complete cancellation/freshness and full gates. Cold-member inferred descendants now pass108 native/composition test executions on current/MSRV debug/release after reusing the ordinary selected-edge rule. All24 current-compiler denials and renamed-dependency checks pass. MSRV rejects all24; eight snapshot differences reproduce byte-for-byte on unchanged baseline, so the MSRV snapshot harness remains a recorded failure |
 | DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
 | DX05 | All run/paired/HTTP/Entity entry points select descendants from Root/Members metadata; six pre-edit inference witnesses and original-input/receiving journeys pass both profiles/MSRV. Supervisor/FIFO constructors infer actor types | Open: final full consumer/repository gates; all38 original cancellation/non-Send/custom-host journeys pass both compilers/profiles/features |
-| DX06 | Communication0.1.5 rounds positive minima to a power of two with floor2. Clients accept validated MailboxCapacity through Application/ApplicationScope. Separate mailbox_capacity candidate propagates one actor limit through root, birth and Entity owners, deleting two private constants across three allocation sites; no new public type | Open: final actor-capacity profile/denial/composition proof, inferred cold-descendant acceptance, complete resource accounting and final gates. Four client-capacity laws within24 total consumer tests pass current/MSRV debug/release; three inversions fail and six restored controls pass. The same two-reply endpoint journey reduces peak tracked heap35442→2738 bytes at capacity1024→2, with equal25 allocations and56 end bytes in all four builds; this is no whole-application or cross-framework claim |
+| DX06 | Communication0.1.5 rounds positive minima to a power of two with floor2. Clients accept validated MailboxCapacity through Application/ApplicationScope. Committed f54f644 mailbox_capacity propagates one actor limit through root, birth and Entity owners, deleting two private constants across three allocation sites; no new public type | Open: integrated inferred cold-descendant capacity acceptance, complete resource accounting and final gates. Actor-capacity stage passes72 test executions across current/MSRV debug/release, strict lint, rustdoc and eight intended defect failures with restored controls. Four client-capacity laws within24 total consumer tests pass current/MSRV debug/release; three inversions fail and six restored controls pass. The same two-reply endpoint journey reduces peak tracked heap35442→2738 bytes at capacity1024→2, with equal25 allocations and56 end bytes in all four builds; this is no whole-application or cross-framework claim |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
 | DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration is committed; combined24 gates pass ataf87ef4 with528 frozen hashes; final programme reconciliation remains open |
@@ -2168,32 +2168,46 @@ extension Cargo cache had no active builds, removed its disposable4.3GiB while
 preserving all evidence, and restarted the identical full command/head with
 5.0GiB available. No resource failure is accepted as a passing gate.
 
-Actor capacity checkpoint in progress: private fields retain the immutable
-validated limit exactly where a future actor mailbox is constructed (Scope,
-capability inputs/owner, PendingChild, Entity runtime). No new phase, control
-sum, event, effect, trait, bound, generic, public type or lifecycle authority.
-Root/birth/native Entity/public family tests cover full original rejection,
-accepted prefix, retry and complete retirement; missing-host retry and both
-existing timer/shutdown orders now select the actor limit too. First frozen
-550-file matrix passes four actor consumers plus one native Entity case on
-Rust1.99/1.96 debug/release. Final corpus has five actor consumers plus one
-native Entity case; its expanded frozen run remains live. Strict workspace
-all-target/all-feature lint/fmt pass. Four independent ignored-limit defects
-(root, born child, native Entity, family propagation) each fail for the intended
-saturation law in debug/release; four restored controls pass, and all four
-mutated source hashes are restored. Artifacts: ACTOR-CAPACITY-VERIFIED.json,
-ACTOR-INVERSES-VERIFIED.json and ACTOR-CAPACITY-LINT.json. No full-gate claim.
+Actor capacity retained as f54f644 on codex/devx-mailboxes. Production+94/-16/net78;
+public types0, existing owner setters+2. Tests+804/-0/net804. Immutable validated
+configuration is retained only at future mailbox constructors: Scope, capability
+inputs/owner, PendingChild and Entity runtime. Application work phases remain
+Unstarted/StagingRejected/Prepared/NotInvoked/Completed; work presence remains
+Supplied/Absent. All native creation and Entity sums and transition authority
+remain unchanged. Owner-file matches148→148, alternatives300→300, enums22→22,
+structs69→69 and modules24→24. No semantic flags, arrival history, duplicate
+causes, extra generic/bound or structural caller syntax. Cross-check DX06/20,
+Communication admission and native retirement contracts. Disposition: pass for
+actor-limit propagation; cold canonical integration and complete resources open.
 
-Cold inference falsifier is independent of mailbox configuration: unchanged
-9c7e37a fails a real cold Branch creating Worker with E0275 in projected
-BirthNodeAt child self-equality. Existing ordinary actor_bounds already omit
-that redundant equality for the exact selected edge; cold custody/native bounds
-did not. Separate codex/devx-topology candidate applies that established rule
-while retaining explicit targets, other-parent consistency, role/position
-constraints and ExecutedRoot equality. Production+19/-2/net17, public types0;
-no runtime/control-state change. Native child creation, same-action read/reply
-and complete joined original Box custody pass debug. Required profile,
-denial, composition, inverse and final-source checks remain pending.
+Frozen550-file final matrix: five actor consumers, one native Entity case,
+eight client/wrapper cases and four client-capacity cases pass on Rust1.99/1.96
+debug/release,72 executions. Strict workspace all-target/all-feature lint/fmt
+pass. Rustdoc: six active tests pass, three existing ignored; raw actor/client
+integers and forged validated capacity remain denied. Four ignored-limit defects
+(root, born child, native Entity, family propagation) each fail the intended
+saturation law in debug/release; four restored controls pass, source hashes
+restored. Evidence: ACTOR-CAPACITY-VERIFIED.json, ACTOR-INVERSES-VERIFIED.json,
+ACTOR-CAPACITY-LINT.json, ACTOR-CAPACITY-CHECKPOINT.json and rustdoc log.
+
+Cold inference law DX03 is independent of mailbox configuration: unchanged
+9c7e37a rejects real cold Branch→Worker with E0275 from projected child
+self-equality. Ordinary actor_bounds already omit this equality for the exact
+selected edge; cold custody/native bounds did not. codex/devx-topology applies
+that established rule while retaining explicit targets, other-parent consistency,
+role/position constraints and ExecutedRoot equality. Production+19/-2/net17,
+public types0, no runtime/control-state change. Actual fresh creation, same-action
+read/reply and joined original Box custody plus26 existing recursive, wrapper,
+supervisor, pool and custody journeys pass current/MSRV debug/release (108
+executions,549 frozen files). All24 current-compiler topology denials pass.
+Each of the two original self-equality defects independently fails E0275 in
+debug/release; restored controls pass. Two one-character diagnostic snippet
+updates are proven identical on unchanged baseline, with complete diagnostic
+bytes equal to the candidate. Renamed dependency tests pass. MSRV rejects all24 invalid programs, but eight
+stored diagnostics differ from1.99; the unchanged baseline produces exactly
+the same full diagnostics, so the MSRV snapshot harness remains a recorded
+failure. Final integration remains pending; no full-gate claim. Artifacts: COLD-MATRIX-VERIFIED,
+COLD-TOPOLOGY-INVERSES, COLD-TOPOLOGY-DIAGNOSTIC-BASELINE JSON and denial logs.
 
 Latest full Nix retry on frozen9c7e37a failed at963.953 seconds from actual
 no-space errors while trybuild compiled dependencies in owner coverage. Ten
