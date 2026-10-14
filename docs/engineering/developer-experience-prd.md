@@ -2068,3 +2068,49 @@ Evidence artifacts: CLIENT-CAPACITY-RED/GREEN/CLIPPY.log,
 CLIENT-CAPACITY-VERIFIED.json (eleven frozen source hashes),
 CLIENT-INVERSES-VERIFIED.json, CLIENT-WRAPPERS-VERIFIED.json and
 CLIENT-HEAP-VERIFIED.json in the retained results directory.
+
+Full gate consumer correction (pre-edit): the frozen548-file c2c2abb Nix run fails
+with four E0308 errors in the isolated transport counter's two old tuple borrows/
+consumptions, plus E0765 from a malformed earlier mechanical migration line in
+protected_counter/retirement.rs. The native gate did not pass; no disk/signing
+waiver applies. Reuse the proven ApplicationOutcome::into_parts product and
+WorkOutcome variants. Each existing fixture retains work, native result, both
+notifications and the empty family product, plus independent transport-session
+closure. Correct only those consumers and malformed syntax; preserve every
+original custody/assertion/held-child oracle. Expected files: the two source
+fixtures and owning/coordination evidence. No production library, abstraction,
+policy, bound, protocol, transport feature or dependency change. Expected fixture
+net delta below15 lines, public types0. RED is the exact captured native gate
+failure. Prove the isolated protected-counter debug/release/fmt/lint gate and
+rerun all24 native Nix gates on frozen final source. The additional mailbox
+worktree remains clean at c2c2abb while this existing consumer blocker is fixed.
+
+The isolated target exposed ten further E0308 errors once the parser defect was
+removed: five native receiving acquisitions still passed ApplicationOutcome to
+already-migrated complete four-part patterns. Add into_parts at those actual
+acquisitions, not a new conversion/helper or changed oracle. The required isolated
+formatter also normalizes old tuple formatting in mod.rs/transport.rs; these are
+fixture-only changes. All original assertion counts remain540/149/53/87 across
+the four affected fixture sources. No production surface or semantic change.
+
+Isolated consumer checkpoint retained: protected_counter passes53 native cases
+in debug and release; strict isolated Clippy and formatting pass. The two tests
+responsible for the prior55 count were relocated from example Counter source;
+both remain in the owning five-test counter target, which passes again. The four
+fixture files retain all829 assertions (540/149/53/87), with identical normalized
+bodies except two transport borrow patterns that now include the actual empty
+family product. Evidence: CLIENT-PROTECTED-{DEBUG,RELEASE,CLIPPY,FMT}.log,
+CLIENT-PROTECTED-ORACLES.json and CLIENT-COUNTER-ORACLES.log.
+
+Drift/provenance: library production+0/-0/net0, fixture+124/-47/net77 (including
+formatter expansion); public API+0/-0 types; four fixture modules remain four.
+All aggregate/control states, subordinate alternatives, transition authority,
+actor folds, policy choices, typed effect lanes and allocations remain unchanged.
+Only existing result consumption and malformed syntax change. No bounds,
+placeholder, semantic boolean, arrival-history label, structural user interface
+or new abstraction. Original Work/native/notification/session-close custody
+remains independently owned. Cross-check: DX04/25/27 and execution-ownership,
+plus the existing protected-counter held-child/fault/native oracles. Disposition:
+pass for the migration correction; all24 native Nix gates must still rerun on
+frozen final source. The c2c2abb full run remains failed at281.057 seconds with
+548 unchanged source hashes; cancelled checks are not passing evidence.
