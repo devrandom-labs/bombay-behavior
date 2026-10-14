@@ -40,9 +40,7 @@ Address0.3.0, Communication0.1.5, Timers0.2.0, Tokio1.53.1 and Axum0.8.9,
 with no repository patches. Published source98983b4 matches all207 downloaded
 owner Rust files. The isolated runtime now returns complete duplicate-correlation
 rejections through that published contract. Pre-merge current/MSRV proofs and all21 native gates pass at their recorded
-revisions. The merged workspace passes717 optimized all-feature tests; its24
-native gates remain in progress after repairing the isolated transport lock.
-Remaining programme work stays open. Earlier
+revisions. The merged baseline passes all24 native gates ataf87ef4. Joined-result/HTTP commitsf0020c2/0011620 pass720 optimized all-feature tests, one existing skip. The later Entity retirement seam36af335 passes its focused current/MSRV witnesses and affected owner/consumer corpora; its final full gates remain open. Remaining programme work stays open. Earlier
 0.25 and private-patch results retain their revision limits.
 
 The following table and observations preserve the initial review baseline,
@@ -720,7 +718,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
 | DX20 | Application and exported interfaces establish clients/senders for exact recipients and stable Entity references. Root is the default; one shared ExternalActor can select multiple typed targets. Reply inference, original-target allocation rejection/retry, exact command custody, fresh origins, prefix draining and wrapper orders pass; eight denials preserve capabilities | Open: complete correlated/cancelled/slow-customer/late-reply corpus, capacity and final gates; pre-root scope retains exact endpoints through missing-host/prepared/staging/HTTP retry |
 | DX21 | Method-local inferred shutdown ingress; runners require only capabilities they execute. Both root wrapper orders, request replay, natural domain/HTTP completion and complete retirement pass7 focused tests per profile; absent/ambiguous lanes remain denied; old-source inverse denies only E0277 | Open: generated canonical access, child-derived phases/drain corpus and final repository gates |
-| DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: remaining Entity/HTTP acceptance and full gates; admission-only clone/unused reply protocol/target wrapper removed; HTTP router receives the ApplicationHandle directly; five source-backed runtime tests and the real example binary pass both compilers/profiles, preserving original order allocation; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
+| DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: callback/associated-type/example distillation and final full gates. Awaitable retire_entity36af335 preserves exact-slot completion, forced mode, cancellation, fresh reactivation and independent native/callback/task failure in24 compiler/profile executions; the owner23 and consumers2+11 pass debug/release. Admission-only clone/unused reply protocol/target wrapper removed; HTTP router receives the ApplicationHandle directly; five source-backed runtime tests and the real example binary pass both compilers/profiles, preserving original order allocation; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
@@ -1797,3 +1795,146 @@ formatting and three active doctests pass; three schematic doctests stay ignored
 The Bombay worktree is clean. These are local feature commits, not publication
 or final programme acceptance. Entity, final package/full native gates and all
 other open checklist dispositions remain required.
+
+Entity entry baseline (pre-edit): preserve the original complete account
+journey as a runtime test before changing production example syntax. Its
+observable law is existing project policy: admit40, fence/passivate the exact
+incarnation, await its actual retirement, admit2 through the same stable
+reference, then shut down root before family and retain both original account
+states40/2 plus independent root/family/notification outcomes. The example's
+test counters, semaphore and exhaustive custody oracle must live with that
+test. This stage adds only the focused baseline, with no production shape or
+policy change. Actual EntityDefinition still requires four consuming lifecycle
+callbacks, and passivate_entity returns the immediate Passivation decision;
+it is not a retirement future. Inspected actual admission, begin_drain,
+retire_owned, native lease join, callback ordering and family result paths.
+Do not disguise an immediate passivation request as completed cleanup or add
+a no-op definition to shorten the example. The subsequent design must reuse
+these owners or isolate a concrete missing consumer contract first.
+
+Entity retirement completion candidate (pre-edit): current passivate_entity
+returns only an immediate decision and forces the real caller to build a
+callback/semaphore completion path. Desired ordinary syntax is
+`application.retire_entity(AccountsRole, &id).await`; retain passivate_entity
+for an explicit request-only operation. This is derived API composition over
+existing Entity fencing/retirement policy, not a new actor-model operation.
+The return value is the existing RetirementMode, proving that the captured
+incarnation task ended and its slot was released, including a truthful forced
+mode. It does not claim the native result or callbacks were error-free: their
+complete original failures stay in the existing family outcome. No actor is
+deleted from its stable domain namespace; later admission still creates fresh.
+
+Use one optional generation-bound completion publication per existing Slot,
+shared by independent observers. The existing Slot state remains the sole
+lifecycle authority. Register under its existing synchronization, capture the
+actual ActivationId, and publish only after retire_owned records the original
+failure, commits Terminated and releases the slot. Dropping a caller wait neither cancels the directory-owned task nor consumes
+another observer. Never wait for unrelated family tasks or infer completion
+from termination, a counter or the user callback. Reuse existing Observe pair,
+Publisher and Observation for the shared RetirementMode fact, exactly as root
+and installed-child retirement do. Incomplete publication remains pending;
+cancellation of the execution host cannot manufacture a completion. The
+independent application/family result retains original task failures. The
+paired execution/receiving path remains available for cancellation and recovery.
+No extra dependency, trait, phase sum, port or public error is required.
+Request refusal uses existing Passivation; EntityRetirementFailure still owns
+native cleanup causes. A proposed closed-channel guard was rejected before
+production because its closure is not proof the actor lease joined, and it
+adds a second cancellation vocabulary instead of reusing current observation.
+Test that missing completion stays pending while original family failure remains
+available after cancelling the caller wait and shutting down separately.
+
+Focused RED precedes production: the original native account journey awaits
+the new operation without its semaphore. Follow with two independent observers,
+cancelled waiting, an unrelated live account, immediate request-only retirement,
+fresh reactivation, forced mode and callback failure retained independently in
+the complete family result. Reject early publication by delaying the actual
+retirement callback and checking that completion remains pending. Actor phases
+remain Inactive/Activating/Active/Draining/Retiring; one current optional
+publication owns an actual outstanding observation, not arrival history.
+Expected owners: application interface, Entity family/runtime/directory and
+curated exports; one optional publication product and no new public type.
+No NativeEntityHost, EntityDefinition, LocalEntityRuntime, actor effect or
+generic bound changes. Expected production growth below200 lines. Measure
+slot/future memory and complete deltas; the existing expanded scope applies.
+
+Retirement refusal sum correction (pre-edit): the candidate's Result error
+used Passivation, which also contains successful Begun/AlreadyPassivating
+decisions. Those are not possible refusal states for the awaited operation;
+independent observers join an existing retirement. Require callers to handle
+exactly NotActive, Superseded and ShuttingDown exhaustively. First add an
+exhaustive native rejection match against the current candidate: it must fail
+E0004 for the two extra positive decisions. Replace only this operation's
+carrier with EntityRetirementError, a narrow three-case Error sum; leave the
+existing request-only Passivation contract unchanged. This type owns an
+independent early rejection contract, while EntityRetirementFailure retains
+later native/callback failure. No new transition, state, bound or dependency.
+This reopens the earlier no-new-public-type estimate: expected +1 Error type,
+still covered by the recorded expanded programme scope.
+
+Aggregate checkpoint correction before retaining the candidate: actual
+directory code states a mapped Slot never acquires a second incarnation;
+removal authority is its captured Arc identity. Copying ActivationId into the
+observation product repeats the Slot's current fact, and the mismatch branch
+has no lawful producer. Delete that duplicate identifier and its Superseded
+alternative from this new operation. The existing locked state supplies the
+exact ID for BeginDrain, and retire_owned captures the same original Slot
+through join/removal/publication. The optional product owns only publication
+authority and the shared observation. EntityRetirementError therefore has
+exactly NotActive/ShuttingDown; the request-only Passivation still owns its
+existing broader decision vocabulary. Measure this smaller representation and
+prove fresh reactivation uses a distinct observation, not the previous fact.
+
+Entity retirement candidate retained at the owner seam: the original native
+journey fails E0599 before production and passes without its semaphore wait.
+The exhaustive rejection witness fails E0004 before narrowing the carrier.
+Five account tests plus one native-port interruption test pass Rust1.99/1.96
+debug/release (24 test executions): callback barrier, independent/cancelled
+observers, unrelated live entity, fresh reactivation, forced fence reason,
+original callback panic and missing publication. Six existing/static denials
+plus the ordinary error consumer pass all four configurations; message-only
+interfaces cannot retire entities and a success cannot be a retirement error.
+Three production defects fail in debug/release: premature completion, forged
+graceful mode and erased callback failure. Six restored controls pass; source
+restoration is checked by SHA. Strict all-target/all-feature owner lint and
+formatting pass. Three active doctests pass, three existing schematic ignores.
+
+Aggregate checkpoint: Entity control states5→5 (Inactive/Activating/Active/
+Draining/Retiring), Slot readiness2→2 and dispatch2→2; family task/shutdown
+state sums and actor transition authority are unchanged. The new Error sum
+has two actual refusal alternatives; RetirementMode and all existing native/
+family result alternatives are unchanged. The one optional product owns the
+unique publication and shared observation only while a real completion is
+awaited; its Slot identity already supplies the incarnation binding. No copied
+ID, arrival history, repeated cause, semantic flag, false cardinality or nested
+transition authority remains. Original actor and callback failures coexist
+with a completed mode in their existing owners; incomplete publication cannot
+invent either slot release or successful family shutdown. The unchanged pure
+lifecycle/fencing, captured-slot removal, actor-subtree assessment and typed
+family-retention laws are cross-checked. Production owner slice3687→3858 lines,
+match arms79→83, modules9→9; public spelling adds one method and one Error type
+with two variants. Complete delta at the measured point: production+199/-28/
+net171, tests+1110/-0 (including the original example oracle moved into runtime).
+This is added capability, not a claim of production reduction.
+
+Memory: source-backed Observe comparison with identical registry identities
+and Triomphe features passes both compilers/profiles. The optional publication
+field occupies16 bytes; creating an observation pair allocates one72-byte
+block, released after its owners leave scope. This measures the field/pair,
+not complete process heap or end-to-end throughput. Actor creation, task lease,
+generic bounds, effect lanes, initialization and dependency identities are
+unchanged. Disposition: pass the bounded retirement seam; the example's
+callback/associated-type surface and final package/full native gates remain
+open, and broad caller migration has not begun.
+
+Retained-seam follow-through: the affected Entity owner corpus passes23 tests
+and its two existing downstream suites pass2+11 tests in debug/release, including
+independent lifecycle traces, native wrapper/host retirement, exact endpoints,
+passivation replay and forced fencing. The newly retained native interruption
+case uses the real native port, original non-cloned panic allocation and
+directory-owned task join; no alternate lifecycle engine is tested. Existing
+full workspace720/24-Nix results retain their earlier revision limits. Only
+the completed owned1.8GiB integration target was freed after confirming no
+live command referenced it; source, evidence and other agents' caches remain.
+
+Entity retirement owner seam is committed in Bombay36af335; the ordinary example has not yet migrated. No remaining requirement is closed by that commit.
