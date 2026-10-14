@@ -709,7 +709,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
-| DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
+| DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Open: distinguish wrapper-owned timers from domain names, then prove automatic identity plus full reorder/cancel/stale/rejection/exhaustion corpus; no API migration retained |
 | DX14 | Stash/Machine restrictions retained | Open: bounds audit and bounded retention witnesses |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
 | DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
@@ -1035,3 +1035,64 @@ current compiler runs all six exact fixture snapshots per profile. Only the two
 unpublished extracted owner packages are patched; all144 other registry records
 remain unchanged. No registry publication is claimed. DX09 retains its remaining
 decoration audit.
+
+#### Timer ownership — DX13 (pre-edit)
+
+The desired ordinary chain supplies delay and reaction without coordinating
+TimerId values. Independently declared wrapper occurrences must retain separate
+reactions, while an explicit domain timer ID must retain its documented
+replacement/cancellation meaning. This is derived composition and deliberate
+Bombay timing policy, not an actor-model allocation law.
+
+Inspect the registry OneShot/Periodic/TimerLease, path-indexed ingress and
+LocalTimers: the interpreter currently keys one TimerQueue by TimerId alone.
+The primitive queue accepts arbitrary concrete keys and replaces equal keys.
+No type-name dispatch, global counter, function-address identity, reflection,
+unused marker or caller structural path may manufacture occurrence identity.
+
+Before production, add a real session journey with two zero-delay one-shots
+(reminder and warning) plus a zero-delay periodic expiry. Actual external
+recipients collect the complete accepted notice prefix after joined termination;
+all original root retirement fields remain checked. Explicit distinct IDs must
+deliver all three notices. Sharing an ID tests the falsifier of a hidden fixed
+ID: it must reveal replacement, not be called a broken primitive contract.
+A separate compile probe tests the desired no-ID syntax before any facade edit.
+Only a complete scoped-key proof can justify owner changes and migration.
+
+Budget: one focused test file and these records; zero production lines/types.
+Existing actor facade, ActorExt, ApplicationScope, complete retirement oracle,
+external close/drain, typed schedules/elapsed events and TimerQueue are reused.
+Actor controls, timer leases, admission sums, queue algorithms and transition
+authorities stay unchanged. Before checkpoint: no new production states,
+branches, fields, modules or public spellings. Post counts, full custody,
+reorder/stale/exhaustion/cancellation witnesses and disposition remain required.
+
+Scoped-key candidate (before edit): reify only existing Here/Inside timer
+ingress positions into a private actor-local depth, and key the unchanged
+TimerQueue by (depth, TimerId). Reuse existing event injection and every
+request/result/lease type. This derived key law has real outer/inner
+substitutions and requires no equality/hash bound on user messages. The real
+session tests precede the candidate: distinct IDs must keep all notices; equal
+explicit IDs must still replace. Applying a lane namespace to every schedule
+is rejected if it changes that explicit-ID equation. No facade migration or
+default-ID constructor is retained. Expected temporary change: timers.rs only,
+roughly20 production lines, one private proof trait, no public types, controls
+or transition branches. Exact source restoration and a native semantic
+falsifier are required before this experiment is recorded.
+
+Timer checkpoint result: the real baseline passes both tests on1.99/1.96,
+debug/release; strict all-feature focused lint and pinned formatting pass.
+Production+0/-0/net0; tests+158/-0/net158; public types+0/-0. New test declarations
+own one current session recipient and three emitted domain notices; they store
+no arrival history or semantic flags. The existing root/custody oracle checks
+all retirement fields and current source provenance. Domain actor controls,
+TimerLease/admission alternatives, transition branches and public spellings
+stay unchanged. No-ID compile RED is E0061/E0282, not an inferred API success.
+The scoped candidate temporarily changes production+18/-2/net16, adds one
+private routing proof and no control state/module/public type; explicit-ID
+replacement fails Reminder/Warning/Expired versus Warning/Expired in both
+profiles. Its private trait, bound and tuple-key representation are all removed.
+Cross-check time/domain.rs, OneShot/Periodic, generation-safe TimerQueue, typed
+event/effect composition, runtime timing and complete Driver retirement.
+Disposition: baseline pass; blanket lane-key candidate reopen, recorded in
+DEAD_ENDS. Broader full gates and automatic owner semantics remain unproved.

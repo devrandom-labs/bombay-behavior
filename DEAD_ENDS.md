@@ -1,5 +1,21 @@
 # Reopened design experiments
 
+## Namespace every timer by its event lane
+
+Disposition: `reopen`. TimerQueue already accepts an ordinary concrete tuple
+key. A private native candidate reified Here/Inside ingress into a depth and
+keyed the existing queue by (depth, TimerId), without inspecting event payloads
+or adding message equality/hash bounds. The real session journey still delivered
+all distinct-ID notices and joined complete retirement. Its independent
+explicit-ID replacement witness failed: Reminder survived when only Warning
+and Expired were lawful. Scoping every request silently changes deliberate
+named-timer replacement. The temporary interpreter delta was+18/-2/net16,
+one private proof trait and no control-state/public-type change; the exact
+interpreter was restored. No caller migration or scoped-key representation is
+retained. Automatic wrapper timers and explicit domain names need distinct
+ownership meaning before another candidate can be lowered. The owning DevX PRD
+and timer_composition.rs retain the complete native witness.
+
 ## Entity definition as its own logical-host proof
 
 Date: 2026-10-12. Disposition: `reopen` for automatic family-host synthesis.
