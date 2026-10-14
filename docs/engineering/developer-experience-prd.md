@@ -39,8 +39,10 @@ Current Bombay selected registry contract: Behavior/Actors0.26.0, macros0.14.2,
 Address0.3.0, Communication0.1.5, Timers0.2.0, Tokio1.53.1 and Axum0.8.9,
 with no repository patches. Published source98983b4 matches all207 downloaded
 owner Rust files. The isolated runtime now returns complete duplicate-correlation
-rejections through that published contract. Focused current/MSRV and both profile
-proofs and all21 fresh native gates pass; remaining programme work stays open. Earlier
+rejections through that published contract. Pre-merge current/MSRV proofs and all21 native gates pass at their recorded
+revisions. The merged workspace passes717 optimized all-feature tests; its24
+native gates remain in progress after repairing the isolated transport lock.
+Remaining programme work stays open. Earlier
 0.25 and private-patch results retain their revision limits.
 
 The following table and observations preserve the initial review baseline,
@@ -700,12 +702,12 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One actual Application owns root/scope/members/families; App removed. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; complete receiving and HTTP consumer migrations now pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
 | DX03 | Sealed startup closes native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: all owner consumers, complete cancellation/freshness and final gates |
-| DX04 | Lossless work/cleanup, borrowed state/custody/completion and total owned inclusion preserve24 outcomes. Actual generated custody retains original panic heap, rejected child, nested reports and later accepted sibling | Open: proportional recovery and remaining complete failure/cancellation consumer gates |
+| DX04 | Lossless work/cleanup, borrowed state/custody/completion and owned inclusion preserve24 actor outcomes. Joined-result external consumers pass six native journeys on both compilers/profiles, retaining ready work through destroyed-host errors and all Entity results; layouts remain872/648/768 bytes | Open: library-owned joined result and proportional recovery. Family selection RED exposes remaining structural receiving syntax; native API/HTTP and final gates remain required |
 | DX05 | All run/paired/HTTP/Entity entry points select descendants from Root/Members metadata; six pre-edit inference witnesses and original-input/receiving journeys pass both profiles/MSRV. Supervisor/FIFO constructors infer actor types | Open: final full consumer/repository gates; all38 original cancellation/non-Send/custom-host journeys pass both compilers/profiles/features |
 | DX06 | Actual Communication0.1.5 Config requests a minimum: the ring rounds to a power of two with floor2. Root, ordinary births, Entity and external clients still select private constants | Open: validated owner-scoped settings, exact effective-capacity evidence and saturation/lifecycle custody; do not assume Config::new(1) means one queue slot |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
-| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration and final reconciliation remain pending |
+| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration is committed; combined24 gates and final reconciliation remain pending |
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
@@ -1288,3 +1290,108 @@ journey; no transparent tuple wrapper, discarded notification failure or
 example-only helper is accepted. Fresh combined native Nix checks and optimized
 workspace nextest are running against528 frozen tracked-file hashes. Pre-merge
 passes do not satisfy these combined gates.
+
+#### Joined application result — DX04/17 (pre-edit comparison)
+
+Interface policy: ordinary application results expose their acquired work,
+native root retirement, notification receipts and Entity shutdowns by semantic
+names. Derived custody law: these facts coexist independently; selection of
+completed work must return the complete original application result on any
+other phase. Borrowed inspection consumes none. Native receiving order remains
+work publication, cleanup join, original root, notifications, then actual Entity
+shutdowns. Reuse ApplicationOutcome's six work alternatives, the existing
+independent receiving futures and ActorNotificationReceipts; add no lifecycle
+engine, protocol erasure, allocation or clone.
+
+Desired ordinary syntax is let outcome = Application::new(actor).run_with(...),
+then outcome.work_output(), outcome.retirement() and outcome.notifications().
+Retain deliberate owned peeling of every original value and paired execution.
+Inspect the smallest complete native consumer before selecting a representation;
+compare extending the existing sum against a named coexisting product. A product
+is acceptable only if it owns the whole acquired result and hides positional
+knowledge; a renamed tuple with no caller decision or complete rejection law
+fails. Root-only, heterogeneous topology, Entity and HTTP must share the selected
+ownership equation. Current run results are triples; Entity adds a fourth value.
+
+Budget for this comparison: external compile/native consumer only, zero
+repository production changes while combined gates remain frozen. Write the
+missing-projection RED first. Baseline phases are6; fields and runtime effects
+are unchanged; no new state or capability is accepted from compiler fallout.
+Native failure, non-Send local work, cancellation and notification/retirement
+independence must be proven before production lowering or catalogue migration.
+
+The two native consumers pass using explicit tuple peeling, while their
+position-free syntax fails E0599 for work_output/retirement/notifications and
+whole-result completed selection. This isolates a Bombay result-owner gap,
+without changing Behavior. The candidate comparison uses two plain products:
+the whole acquired Outcome and owned Retirement accompanying selected work.
+The existing six work alternatives remain unchanged; no new transition sum,
+capability, trait, allocation or bound is selected. Product fields preserve
+the original tuple's destruction order: work, root, notifications, families;
+owned completed work moves cleanup into Retirement without cloning. On
+selection refusal, every original component returns in the whole Outcome.
+Both proposed public products remain external probes until native entrypoints,
+Entity/HTTP and independent failure witnesses validate the complete design.
+
+The merged optimized workspace passes717 all-feature tests (one existing skip)
+in860.467seconds including compilation. Full native Nix fails after1001.945
+seconds against unchanged528 hashes: the imported protected-counter isolated
+lock vendors0.25 owners despite the runtime's0.26 requirement. Main adds
+three native gates, so the combined scope is24, not the pre-merge21. Repair
+only that lock's already selected owner versions/checksums, preserving its
+independent native transport witnesses; zero production/state/API delta. The
+actual failed vendor resolution is the pre-edit regression. No failure is
+waived and cancelled gates are not counted as passes.
+
+The native probe now covers six real journeys, including actor overflow and
+destroying the selected host after caller-local work is Ready. The latter
+retains the same Rc allocation plus independent cleanup, native receiving and
+notification receiving errors. All six pass before any production edit.
+Dependency identities/checksums for all62 registry packages match the merged
+workspace; an initially floated Tokio patch is replaced by its exact graph.
+The generic audit finds every native cleanup producer returns unit: remove
+the proposed Retirement Cleanup parameter before retaining it. Root and family
+payloads have multiple real substitutions; native cleanup does not. This
+narrowing follows source ownership, not a compiler request.
+
+Entity inspection exposes the remaining design gap: the candidate's families()
+returns the original positional receiving product. Ordinary code must instead
+select its exact declared role with outcome.family(CountersRole), retaining
+the genuine receiving error and full shutdown/metrics/disposal values. This
+is a derived role-projection law; reuse the existing sealed EntityFamilyAt
+head/tail selection pattern and actual family protocol. Write its missing-method
+RED before choosing any new trait, marker, product or bound. No generic
+classifier or whole-Environment replacement is authorized by this gap.
+
+Joined-result comparison verification: six native cases pass pinned1.99/1.96
+debug/release (24 executions), strict current lint and formatting. Two independent
+inverses fail in both profiles: classifying native receiving failure as unfinished
+work erases Ready selection; manufacturing successful notifications loses the
+cold cancellation's original receipt errors. Exact restoration passes four
+focused reruns. Raw results, source hashes and62 dependency identities live in
+results/VERIFIED.json, INVERSES.json and DEPENDENCIES.json below the existing
+external evidence directory. Sizes of completed counter/startup refusal/Entity
+results stay872/648/768 bytes, respectively; no heap or throughput gain claimed.
+
+Aggregate checkpoint: application work alternatives6→6, producer custody5→5,
+actor/runtime control sums unchanged; new transition authorities0. Candidate
+subordinate sums0→0, data products0→2, selection branches0→2, source
+modules0→1, production-like lines0→141, public type/method spellings0→14
+plus two private constructors. Repository production/API delta is0. Each
+surviving field owns actual work phase/output, cleanup error, root custody,
+notification result or family receiving values needed by caller recovery.
+Arrival history, duplicate cause, cardinality assumptions, semantic booleans,
+new bounds and nested actor engines: none. Structural family inspection still
+survives; outcome.family(CountersRole) fails E0599 in its actual native consumer.
+Cross-checks: runtime authoritative-fact conservation, Driver ownership and
+execution preservation contracts, atomic architecture protocol reuse and
+fixed-supervisor query/retirement law. Disposition: reopen the complete API;
+retain no candidate production representation. The custody equation is proven,
+but family role projection and the HTTP journey must close before lowering.
+
+The imported protected-counter gate passes ataf87ef4 after its isolated lock
+selects the same0.26/0.14.2 owners:55 tests each in debug/release, formatting and
+strict lint,291.608seconds. Fresh combined24 native gates are still running
+against528 frozen hashes. PR98 remains the only open owner PR, CLEAN at186266e
+with every exact-head check successful; its previously requested merge/release
+approval has no reply. No release or requirement completion is inferred.

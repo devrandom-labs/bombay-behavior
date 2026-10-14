@@ -682,3 +682,15 @@ E0428 and cannot name both ownership products truthfully. Keep creation waiting
 and established-worker startup distinct; use WaitingForCreation for the former.
 Terminal startup custody may contain success or rejection and must not be named
 StartupRejected merely because an unrelated error variant shares its old label.
+
+## Joined result with only positional Entity inspection
+
+Two named result products preserve complete work/native/notification/family
+custody across six actual native journeys, including destroyed-host errors,
+on both compilers/profiles. Their plain data equation is usable evidence; it
+does not complete the ordinary API. A families() getter still returns the
+existing receiving list and requires positional head/tail knowledge. The actual
+Entity consumer's outcome.family(CountersRole) fails E0599. Reopen the complete
+API until exact role projection and HTTP pass; no candidate repository
+production is retained. Reuse existing sealed family selection and typed
+shutdown products without caller paths, fake receipts or arbitrary bounds.
