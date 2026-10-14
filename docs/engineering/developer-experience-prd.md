@@ -705,7 +705,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX06 | Locked Communication configuration inspected | Open: owner-scoped capacities and resource evidence |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
-| DX09 | ActorExt now exposes the exact registry FinalizeOnShutdown through finalize_on_shutdown. Missing-method RED precedes the change; final sends, both timer orders, real expiry and native panic custody pass current/MSRV debug/release | Open: remaining real decoration audit and canonical catalogue migration; this bounded addition passes package consumers and all21 native gates |
+| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix and actual package consumers; final repository gates remain pending |
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
@@ -1132,3 +1132,92 @@ automatic request, wrapper identity, public API or programme completion follows.
 Evidence: timers/disjoint/RESULTS.json, PROVEN.rs and SOURCE.json under the
 existing temporary evidence root. Repository tests remain the native session
 witnesses; this external probe is not a portable end-to-end acceptance fixture.
+
+#### Exact termination decoration — DX09 (pre-edit)
+
+Derived composition law: a same-actor observation of one established recipient
+uses the existing EstablishedTerminationMonitor, preserving its exact affine
+ObserveEstablished request, grant/cancellation authority, original terminal
+report, inner initialization effects, reaction Actions and independent joined
+retirement. Endpoint termination and observation ordering are existing Bombay
+policy, not actor-model allocation guarantees. Inspect the published0.26 target
+states and native InterpretEstablishedObservation before lowering.
+
+Desired caller syntax is actor.observe_termination(request, reaction), before
+or after stop_on_shutdown; the exact existing owner is returned. Observation
+IDs remain explicit domain correlation, not fabricated defaults. Use an actual
+pre-root external endpoint and forward the entire Stopped relationship/outcome/
+timestamp as an owned typed notice; ordinary callers need no event path, wrapper
+type annotation or runtime lookup. First execute both native journeys through
+the owning constructor, then prove the missing facade method fails before any
+production edit. Add a shutdown-while-observing witness before broader migration.
+
+Expected production: actor_ext.rs only, about20 net lines, zero new public
+types, fields, control states, errors, modules or dependencies. Existing Protocol
+equality and EndpointAddress bounds belong only to this operation because it
+selects a real established endpoint of either unrelated message protocol.
+Reuse the current target's complete state sum, typed observation interpreter,
+ApplicationScope, exact established delivery and complete retirement oracle;
+no competing monitor, request, receipt or cancellation representation is added.
+Before drift checkpoint: ActorExt7 methods; owning target alternatives remain
+the published exhaustive EstablishedTermination sum; one transition authority.
+Post counts, complete failure custody and disposition remain required.
+
+Exact-observation failure witness (before test lowering): close the genuine
+report recipient, stop the actual watched endpoint and await root termination.
+The reaction's rejected delivery must remain in complete joined retirement,
+including its original recipient, relationship, peer outcome and timestamp.
+Delivery rejection is independent of the observed peer's normal outcome and
+the reaction's stop verdict. Reuse existing Completed, ActorCustody,
+ActionSettlement, generated named WatcherSettlements and exact closed-delivery
+rejection; add no production representation or bound. Inspect these owner
+signatures before writing the exhaustive custody assertion.
+
+The native refusal witness corrects an expectation rather than production: the
+first debug/optimized assertion predicted EnvironmentFailed, but the actual
+Driver returns Normal. Its classification rejects initialization refusal; a
+completed transition's ordinary send refusal remains an owned settlement beside
+the explicit stop. The corrected witness requires Completed/Stopped plus the
+whole rejected delivery. No new error classification or actor policy is added.
+The disproved expectation and optimized trace remain in observation evidence.
+
+Exact-observation checkpoint: production+23/-3/net20; tests+346/-0/net346;
+public types+0/-0, methods7→8, production modules1→1 and stored fields+0/-0.
+The existing target has10 control alternatives before/after, five report
+alternatives and18 accept_report match arms before/after; its573 pre-test
+source/rustdoc lines remain unchanged. Facade transition branches stay0→0: the
+method delegates construction to that owner. The new fixture stores only the
+current real report recipient; generated named sends/settlements are the existing
+authoring expansion, not a second interpreter or transition authority. The
+existing target retains exactly its current request, correlation, grant or
+rejected cancellation according to its unchanged phase; the delivery rejection
+owns the whole report. No arrival-history field, repeated cause, cardinality
+guess, semantic flag, caller path, no-op policy or erasure is added. Cross-check
+established observation, TerminationMonitor and exact-delivery contracts, native
+observation interpretation and Driver transition/initialization classification.
+Disposition: pass for this facade; the broader decoration criterion stays open.
+
+The final source at tests/observation.rs passes four native cases across1.99/1.96,
+debug/release and default/all features (32 executions). All17 existing native
+interpreter regressions pass both compilers/profiles (68 executions), including
+original request rejection, stale/cancel races and wrapper orders. Strict
+workspace/all-target/all-feature lint and formatting pass; the final focused
+matrix takes276.749 seconds, including compilation. Initial zero-match filter
+runs are not regression evidence; the corrected module selection executes17.
+No memory reduction or throughput claim applies: the exact existing concrete
+wrapper and its fields are returned. The source guide links the one-word
+observation.rs consumer. Archive and final repository gates remain pending.
+
+Actual archive verification atfcb85ca: Engine/macros/runtime archives preserve
+all61 production Rust files, the complete guide and observation.rs byte-for-byte.
+Only the extracted unpublished Engine and Bombay macros are patched; all144
+registry package identities/checksums match the earlier verified archive graph.
+Native cases pass4/4/4/4 and guide doctests pass3 per configuration on both
+compilers/profiles, with the three existing schematic snippets still ignored.
+The package/archive matrix takes37.734 seconds. This is local package verification,
+not registry publication. The completed task-owned Cargo cache is removed
+only after all processes exit; source, toolchains, archives and evidence survive.
+Disk availability is5.3GiB before the new full native check; no previous disk or
+signing failure is waived. All21 repository gates forfcb85ca are running against
+485 captured tracked-file hashes. Final nextest and requirement reconciliation
+remain required; no selected requirement or persistent goal is marked complete.
