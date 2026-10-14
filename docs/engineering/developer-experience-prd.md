@@ -702,12 +702,12 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One actual Application owns root/scope/members/families; App removed. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; complete receiving and HTTP consumer migrations now pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
 | DX03 | Sealed startup closes native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: all owner consumers, complete cancellation/freshness and final gates |
-| DX04 | Lossless work/cleanup, borrowed state/custody/completion and owned inclusion preserve24 actor outcomes. Joined-result external consumers pass six native journeys on both compilers/profiles, retaining ready work through destroyed-host errors and all Entity results; layouts remain872/648/768 bytes | Open: library-owned joined result and proportional recovery. Family selection RED exposes remaining structural receiving syntax; native API/HTTP and final gates remain required |
+| DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
 | DX05 | All run/paired/HTTP/Entity entry points select descendants from Root/Members metadata; six pre-edit inference witnesses and original-input/receiving journeys pass both profiles/MSRV. Supervisor/FIFO constructors infer actor types | Open: final full consumer/repository gates; all38 original cancellation/non-Send/custom-host journeys pass both compilers/profiles/features |
 | DX06 | Actual Communication0.1.5 Config requests a minimum: the ring rounds to a power of two with floor2. Root, ordinary births, Entity and external clients still select private constants | Open: validated owner-scoped settings, exact effective-capacity evidence and saturation/lifecycle custody; do not assume Config::new(1) means one queue slot |
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
-| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration is committed; combined24 gates and final reconciliation remain pending |
+| DX09 | ActorExt exposes the exact registry FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method REDs precede both methods. Finalization covers effect/order/expiry/panic custody; exact observation covers both shutdown orders, pending shutdown and complete refused-report custody on both compilers/profiles/features | Open: remaining decoration audit and catalogue. Finalization passes package consumers/all21 gates at80348a6; the observation addition atfcb85ca passes its focused matrix, actual package consumers and all21 native Nix gates; main integration is committed; combined24 gates pass ataf87ef4 with528 frozen hashes; final programme reconciliation remains open |
 | DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
@@ -720,11 +720,11 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
 | DX20 | Application and exported interfaces establish clients/senders for exact recipients and stable Entity references. Root is the default; one shared ExternalActor can select multiple typed targets. Reply inference, original-target allocation rejection/retry, exact command custody, fresh origins, prefix draining and wrapper orders pass; eight denials preserve capabilities | Open: complete correlated/cancelled/slow-customer/late-reply corpus, capacity and final gates; pre-root scope retains exact endpoints through missing-host/prepared/staging/HTTP retry |
 | DX21 | Method-local inferred shutdown ingress; runners require only capabilities they execute. Both root wrapper orders, request replay, natural domain/HTTP completion and complete retirement pass7 focused tests per profile; absent/ambiguous lanes remain denied; old-source inverse denies only E0277 | Open: generated canonical access, child-derived phases/drain corpus and final repository gates |
-| DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: remaining Entity/HTTP acceptance and full gates; admission-only clone/unused reply protocol/target wrapper removed; real closed admission preserves original order allocation, five example tests pass both compilers/profiles; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
+| DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: remaining Entity/HTTP acceptance and full gates; admission-only clone/unused reply protocol/target wrapper removed; HTTP router receives the ApplicationHandle directly; five source-backed runtime tests and the real example binary pass both compilers/profiles, preserving original order allocation; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
 | DX23 | Downstream crosswalk remains in appendix | Deferred: networking, durability, identity and deployment belong to later PRDs |
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
-| DX26 | Actual counter main98 lines, FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks |
+| DX26 | Canonical counter main51→36 lines; source569→45 after five law tests move to runtime. Pool source191→90 with its full source-backed oracle retained in fifo_pool_runtime. Current-thread entries join automatically and retain reports. Supervisor source332→99 plus61 domain lines, documents383→34 plus95 domain lines, timer188→56 and HTTP main128→32; their original native oracles remain in runtime tests. Earlier FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks |
 | DX27 | Published Core/Actors0.26.0 and macros0.14.2 at98983b4: owner ten native gates,964 tests, archive preflight, exact CI and normal release pass. Bombay selects those registry versions without patches; actual207 owner sources match. Correlation native journey passes both compilers/profiles and its optimized defect inverse fails. Prior0.25/scope/WorkerFactory full gates retain their revision limits | Adoption passes all21 native gates in2306.566 seconds,646 optimized tests and current/MSRV debug/release archive journeys; policy headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 current/MSRV archive journeys. Open: policy publication, documentation pruning in its delivery branch and remaining final programme consumers |
 | DX28 | Initial pruning preserved; one canonical guide is included through Cargo readme metadata. Complete leaf Application/joined cleanup executes in workspace and extracted runtime/engine/macros on all eight configurations;59 local links resolve | Open: compact reconciliation, rendered external links and final documentation gates. Scope guide executes in all eight workspace/archive configurations; stale normative version prose delegates to the current selection record |
 
@@ -1391,7 +1391,409 @@ but family role projection and the HTTP journey must close before lowering.
 
 The imported protected-counter gate passes ataf87ef4 after its isolated lock
 selects the same0.26/0.14.2 owners:55 tests each in debug/release, formatting and
-strict lint,291.608seconds. Fresh combined24 native gates are still running
-against528 frozen hashes. PR98 remains the only open owner PR, CLEAN at186266e
+strict lint,291.608seconds. Fresh combined24 native gates pass ataf87ef4 in2786.262seconds,
+with all528 frozen hashes unchanged. PR98 remains the only open owner PR, CLEAN at186266e
 with every exact-head check successful; its previously requested merge/release
 approval has no reply. No release or requirement completion is inferred.
+
+Family role projection comparison (pre-edit): replace the existing coexisting
+shutdown/metrics/disposal tuple with one owned FamilyRetirement<Id> product;
+all three original values belong to that exact family and remain independently
+inspectable. There is no new phase, callback or runtime authority. Borrowed
+family(role) returns Result<&FamilyRetirement<Id>, &RecvError>; a closed
+receiving channel never implies an empty or successfully retired family.
+Use the existing Here/Inside inference and sealed head/tail selection law, with
+a private FamilyAt<Role, Position, Id> port for two real positions. Id follows
+the exact EntityShutdown identifier type. Existing native consumers use u64;
+a separate String-keyed value witness must prove the meaningful substitution. Do not export a selector trait or require caller paths/type arguments.
+The native producer will own named construction; temporary tuple packing in
+the external witness is comparison evidence only. Public candidate products
+become3, private selectors1, transitions/states/allocations unchanged. No
+repository production edit precedes inferred head/tail, receiving refusal and
+missing/duplicate-role denials.
+
+Joined result native lowering (pre-edit): the named family projection passes
+both real positions in two live same-protocol/same-ID families, retaining
+distinct replies and each original actor. Native HTTP bind refusal returns
+its original application/router/address for real retry; natural timer expiry
+joins serving independently. Ten comparison cases pass both compilers/profiles
+(40 executions); five denials pass on each compiler: missing/duplicate family,
+lifecycle authority, moved custody and private-field access. The String-keyed
+probe is a separate passive-data projection law, not a fabricated native birth.
+Measured result sizes remain872/648/768/944 bytes. Protocol/actor state graphs
+and receiving/destruction order stay unchanged; the raw families getter is
+deleted. Independent receiving/disposal errors remain separately owned.
+
+Now write the same native consumer without research tuple adapters before
+production. Expected production owners: application/outcome.rs (whole acquired
+ApplicationOutcome and owned ApplicationRetirement), application/work.rs
+(existing six alternatives renamed WorkOutcome), existing execution/http
+producers, entity/retirement.rs (FamilyRetirement and private role selector),
+entity/family.rs (named publication), and curated module/crate exports. Expected
+net production growth250–400 lines, three net public products, no new public
+trait, marker, generic default, actor state, dependency or allocation. Preserve
+existing bounds and port/callback contracts. The existing expanded cumulative
+budget authorization applies; no mechanical catalogue migration precedes the
+native owner witness and checkpoint. Current baselineall24 native gates pass
+ataf87ef4 with528 hashes unchanged; no result API is yet claimed implemented.
+
+Native joined-result evidence: tests/outcome.rs was written before production
+and failed E0432/E0599 against the old public result. Its nine complete native
+journeys now pass on Rust1.99 and1.96, debug and release (36 executions). The
+actual native API passes ten compile denials across both compilers: absent or
+duplicate family role, result lifecycle authority, moved ownership and private
+custody construction. Strict focused Clippy passes; after documentation/lint
+changes, current-debug repeats all nine successfully. Other final-source matrix
+repeats and the complete catalogue/gates remain pending. The two-value completed
+handoff remains a tuple; its retirement value already owns a named contract.
+The owning work sum and private producer state retain six and five alternatives;
+no actor transition authority, allocation, dependency or interpreter effect was
+added. Ordinary result inspection no longer exposes family product positions.
+Current lowering is uncommitted; do not infer catalogue compatibility, publication
+or requirement completion from these focused results.
+
+Joined-result lowering checkpoint before caller migration: production
++698/-483/net215; focused tests +909/-0; three net public
+products and seventeen new public operations (the old phase sum is renamed,
+not duplicated); affected production owner modules6→9. Source match arms
+113→115, solely the complete owned selection; actor control states and
+transition authorities unchanged. Work control alternatives6→6 and producer
+custody alternatives5→5. Whole report owns acquired work/root/notifications/
+families; selected retirement owns cleanup/root/notifications/families; family
+report owns shutdown/metrics/the original native disposal payload. Each fact
+is still needed for independent caller recovery; no arrival-history state,
+duplicated cause, false cardinality, semantic flag or nested actor engine.
+Private role selection has two real positions and distinct u64/String passive
+products; ordinary syntax infers the position. Cross-checks remain Driver
+execution conservation, native receiving/destruction order, initialization and
+fixed-supervisor retirement laws. Disposition: pass this ownership/API batch,
+with focused native/denial evidence above; complete catalogue and repository
+gates are not implied.
+
+Mechanical caller migration (pre-edit): rename authored work-phase matches to
+WorkOutcome; native exhaustive tests peel the complete four-part report through
+into_parts, while ordinary examples select completed value plus named retirement
+and borrow its getters. Named family reports replace shutdown/metrics/disposal
+patterns without losing any originals. This stage introduces no type, bound,
+policy, callback, route or dependency. Existing expanded-budget authorization
+applies to the full caller corpus. Remove example-only verification code into
+existing owning test targets; do not hide result ceremony in example helpers.
+
+Counter verification relocation transfers its existing futures-util0.3.34 dev
+dependency from the example to the owning runtime tests. This dependency already
+exists in the locked graph and supplies the same immediate-poll and catch-unwind
+operations exercised by those tests; no runtime dependency or new crate is added.
+
+Caller migration checkpoint: the current all-target/all-feature workspace check
+passes. The first runtime batch stops at the topology denial snapshots: two
+missing-lane E0277 diagnostics retain their law with changed owner-signature
+formatting; swapped/duplicate-role and erased-cold-origin fixtures also acquire
+an incidental old-tuple E0308. Before snapshot refresh, migrate only those
+three fixtures' successful result peeling to the four-part report. Their
+forbidden role/protocol/origin operations remain unchanged. Review the resulting
+E0277/E0271/E0308 denials independently; do not accept the incidental tuple
+mismatch as proof or count this failed batch as a passing runtime suite.
+
+Joined-result migration verification: all-target/all-feature workspace check
+and strict Clippy pass; seven native suites pass101 tests with one existing
+ignored test. The canonical guide passes3 active doctests (3 schematic ignores).
+Topology denial source changes touch only successful post-call peeling in three
+fixtures; their E0271/E0308 witnesses remain identical. Only two E0277 snapshot
+lines change their compiler truncation by one character. No incidental tuple
+mismatch is accepted as a denial. Native inversions detect root-based work
+selection, fabricated rejected notifications and hidden disposal failure in
+both profiles; six restored controls pass and both owner source hashes match.
+
+Whole-tree checkpoint including untracked source: production
++794/-1193/net-399; tests
++2511/-720/net1791; three net public products.
+The apparent source deletion includes moving example verification into the
+runtime test owner; counter main actually grows51→62 formatted lines. No
+caller-line, heap or throughput reduction is claimed. Mechanical migration
+adds no control state, transition authority, public product, bound, effect or
+dependency identity beyond the previously proven result owners. Original
+receiving errors, native panic payloads, metrics, actor values and notification
+results remain required and retained. Arrival history, duplicate causes,
+semantic flags and structural ordinary family selection remain absent.
+Disposition: pass the measured native ownership/caller batch; ordinary examples
+beyond counter still need oracle removal and canonical named-result consumption.
+Final-source MSRV/archive/full24 native gates and coherent commits remain open.
+
+Pool example distillation (pre-edit): retain the existing complete business,
+role and retirement oracle as an owning fifo_pool_runtime test, reusing its
+actual SearchWorker source and inferred pool topology. The ordinary example
+will execute typed submission/reply/shutdown through Application and retain
+one joined result. Cleanup is performed by execution/receiving; report
+inspection does not perform it. Tokio's existing current-thread main macro
+owns the caller host. This is caller/documentation policy, with no behavior
+state, effect, public type, dependency identity, interpreter bound or runtime
+policy change. Expected files: pool main/Cargo, existing runtime test and
+coordination; net example code decreases, complete oracles move intact. The
+expanded cumulative budget remains authorized. A moved actual-source oracle
+passes before the ordinary entry is changed.
+
+Direct retirement observation (pre-edit): the real pool caller fails E0599 at
+application.retirement(). The user-selected single Application entry should
+delegate the existing root lifecycle report, as request_shutdown/termination
+already do. This is a derived interface composition over the unchanged native
+report producer, not a new actor-model law or cleanup operation. Desired syntax
+borrows application.retirement() while work remains active; cancelling one wait
+cannot cancel another, and a waker fault retains the committed report plus the
+original independent notification failure. Reuse ApplicationLifecycle::retirement
+and its exact observation value. No new data owner, state, event/effect, generic
+bound, trait, public type, dependency or lifecycle authority; add one method
+with the same future capture pattern as termination. Change the existing two
+focused native report regressions first and record their RED before production.
+Aggregate before/after states, report alternatives and actor branches stay equal;
+each report's two current assessments remain independently meaningful. The
+expanded budget applies; broad callers remain unchanged until this witness passes.
+
+Counter entry distillation (pre-edit): run_with already awaits its cleanup
+producer and independent receipts after caller work. The actor receives the
+explicit shutdown request; the caller need not also await termination before
+returning its business value. Remove that redundant wait and imperative cleanup/
+notification success checks from the basic entry. Retain the complete result
+and show optional failure-bearing report inspection; no cleanup or original
+error is performed, reconstructed or hidden by the example. The five relocated
+counter laws and nine native complete-result cases remain its independent
+verification. Existing current-thread Tokio main owns the host, with its macro
+feature declared directly. No new type, bound, dependency identity or runtime
+policy; actor state and action order remain unchanged.
+
+Direct retirement delegate checkpoint: focused RED is four E0599 sites in
+two native laws before production. Both laws pass Rust1.99/1.96 in debug/release
+(8 executions), with the measured owner source hash unchanged. Production adds
+10 lines and1 inherent operation; public types/traits/bounds/states/branches
+remain unchanged. There is no second report producer: lifecycle owns the
+shared fact and the application delegates it. Cancellation, pre-work-completion
+publication, original actor/space custody and observer-panic notification
+retention remain exercised. No arrival history, repeated cause, cardinality
+assumption or nested authority. Cross-checks are native report conservation
+and execution/receiving work barriers. Disposition: pass the delegate; full
+repository and package gates remain required. Ordinary pool/counter entries
+are now candidates using named results and automatic joining; their complete
+source-backed runtime/executable matrices run next.
+
+Counter/pool retained checkpoint: public direct-report witness passes8 native
+executions across Rust1.99/1.96 debug/release. The ordinary counter and pool
+execute eight binaries in those same configurations; expected business values
+are1 and3. The three owning suites pass17 tests per configuration (68 total):
+original processing/rejection/cancellation custody and the full moved pool
+retirement oracle remain. Strict workspace all-target/all-feature Clippy and
+three active guide doctests pass again; three schematic doctests stay ignored.
+Counter main51→36 and source569→45; pool source191→90. Both have
+zero assertions and explicit drops. The runtime owns cleanup; their report
+printing is optional inspection, not a cleanup step. The pool retains its
+actual source worker and all former retirement assertions in the runtime test.
+
+This caller batch adds0 public types, traits, bounds or actor states and one
+previously proven report delegate; no dependency identity changes. Tokio's
+existing macro feature is explicitly declared by both examples. No boolean
+state, duplicate cause, nested transition authority, new alias or structural
+retirement pattern is introduced to ordinary code. Report fields still own
+all independent errors; no lossless-selection law changes. Disposition: pass
+these two source-backed examples. Supervisor, heterogeneous children, HTTP,
+Entity and other templates still need equivalent distillation, and final
+package/full Nix verification plus commits remain required.
+
+Supervision example distillation (pre-edit): move the existing complete
+replacement/tree-retirement oracle and pure initialization/correlation law
+to one owning runtime supervision test. Verify the original witness before
+changing the entry. Then share the actual worker command, actor and startup
+plan through supervision/worker.rs, preserving their bodies; pub(super) exposes
+only WorkerRole, WorkerCommand, Worker, its submitted startup product and the
+existing worker_submission constructor required by the real parent factory.
+Rename the private ActivationNotice to Startup in that owning module, matching
+the user-selected vocabulary; the selected0.26 ActivationPlan trait stays
+unchanged. No new domain type or wrapper is created. Parent topology stays
+explicit once; the ordinary async current-thread main queries capabilities,
+stops the first worker, awaits replacement, requests shutdown and retains one
+ApplicationOutcome. Existing RootReport and optional retirement inspection
+replace assertions and recursive enums in application code. No public crate
+symbol, actor state, event/effect, generic bound, dependency identity, policy
+or interpreter change. One worker owner module is added; original test oracles
+move rather than disappear. Reuse existing published constructors and WorkerFactory;
+the named policy release remains pending its specific approval.
+
+Heterogeneous document example checkpoint (pre-edit): copy its existing runtime
+and pure initialization/correlation oracles into an owning documents test
+first, with no changed expectations. Verify the actual nonce and retirement
+contract before distillation; source outranks legacy constants. Share domain
+actors with the eventual application rather than retaining copied actor bodies.
+The ordinary entry must construct both children, use phased shutdown and keep
+the complete inferred tree without consuming recursive enums in main. This
+is caller/module ownership policy, with no new core/runtime type, bound, effect
+or allocation policy. Any discovered failing original oracle must be resolved
+from executable allocation/creation evidence before moving the application.
+
+The unchanged document oracle passes both runtime retirement and pure
+initialization tests. Keep creation correlation IDs and creator-local child
+nonces distinct; the observed expectations require no correction. Put the
+three domain actors, their two concrete message protocols and one topology in
+a private documents module. Its parent-owned contracts use pub(super) for
+DocumentSystem, Indexer, Journal and their commands; actor state fields stay
+private. These are the real authored child protocols and retained actor states
+of the declared graph, available to deliberate deeper inspection. The parent
+main names only DocumentSystem, its child roles and the one topology. Runtime
+oracles include that exact source in their own document concern, keeping private
+state inspection inside its owning scope. No test-only accessor or extra
+constructor is added. Actor bodies, effect products and initialization ordering
+stay byte-equivalent apart from ownership visibility. No new semantic type,
+state, public crate spelling, bound or dependency. One coherent domain module
+is added; initializer and all retired-tree assertions remain in runtime tests.
+
+Supervisor/document distillation checkpoint: original native/pure oracles pass
+before entry changes. The shared-source versions then pass Rust1.99/1.96
+debug/release:16 oracle executions and8 real binaries, including replacement
+and phased heterogeneous shutdown. Strict workspace all-target/all-feature
+Clippy passes. All94 original assertion bodies remain identical and
+in order in runtime tests; worker state is not duplicated and document private
+state is inspected in its owning scope. Main has no assertion ledger, explicit
+drops or recursive retirement enum matches.
+
+Supervisor source332→99 for its entry plus61 in worker.rs; document source
+383→34 plus95 in documents.rs. Those domain modules relocate actors/commands/
+startup/topology rather than removing behavior. Existing Startup replaces the
+private activation name; selected0.26 trait names stay authoritative. The
+topology uses its already-supported pub(super) declaration for the real parent
+consumer, with no broader module exposure. Public crate types/traits/bounds,
+actor state sums, effect/transition branches and dependency identities remain
+unchanged. Actor/current domain values remain the same; no arrival history,
+semantic flags, duplicated causes or nested actor engine. Cross-checks remain
+initialization ordering, fresh worker provenance, native report conservation
+and complete custody. Disposition: pass these two source-backed entries;
+HTTP/Entity/remaining templates, final package/full native gates and commits
+still remain required.
+
+Machine/timer example distillation (pre-edit): retain its two original native
+journeys and complete retirement oracle as runtime processor tests against
+the actual processor source. Prove them before changing the entry. The ordinary
+current-thread entry runs a genuine receive-timeout policy after deferred work
+is replayed, then an explicit shutdown case through the same Application path.
+Use the existing joined report and lossless result selection; remove example
+assertions, test deadlines, explicit drops and exhaustive terminal matches.
+No policy values, Machine transition, cloning contract, timer identity, event/
+effect, actor state, bound, public type or dependency identity changes. The
+published Machine Clone constraint remains an open owner requirement, not a
+claimed fix. Existing Tokio macro feature is declared directly; all original
+assertions stay with their real native sources. Rename the old local boundary
+variable to sender without changing its protocol or origin.
+
+Machine/timer entry retained: both original runtime journeys passed before
+editing the example. All 21 assertion expressions remain identical and ordered
+in runtime processor tests against the actual domain source. The entry shrank
+from 188 HEAD lines to 56; it contains no assertion, explicit drop, test deadline
+or terminal enum match. Both native tests and the real binary pass on current
+Rust 1.99 and MSRV 1.96 in debug/release: eight test executions and four binary
+runs. Strict workspace/all-target/all-feature Clippy passes. Deferred work
+still replays before the receive timeout stops the actor; the second application
+requests shutdown and awaits its existing root report. Cleanup is already
+joined when each outcome is returned; printing its result is optional inspection.
+
+Aggregate checkpoint: Processor states Closed/Open, message alternatives
+Work/Open, Machine transition branches and timeout/shutdown decisions are
+unchanged; production domain modules, public spellings, bounds and registry
+dependency identities are unchanged. Only the existing Tokio macro feature
+is made explicit in the example manifest. The surviving report owns the
+committed root report; retirement owns independent cleanup, native custody
+and notification results. No arrival history, repeated cause, semantic flag,
+false cardinality or subordinate transition authority was added. Cross-checks:
+deferred-message replay, explicit timer identity, shutdown composition and
+complete native retirement custody. Disposition: pass this entry; Machine
+Clone/retention constraints, HTTP/Entity entries and final full gates remain
+open.
+
+HTTP application entry (pre-edit): the current example requires callers to
+split one ApplicationHandle into an ActorInterface and ApplicationLifecycle,
+then combines them again in LiveOrderCommands. A generic OrderCommands port
+has one production implementation; ApiState only wraps that port. This is a
+derived capability-composition change, not a new actor-model or HTTP policy.
+Desired caller: `run_axum(address, http::router)`, where router receives the
+actual application handle. Each request still allocates its own sender from
+that application's allocator and admits the same typed OrderMessage; a closed
+actor returns the complete original PlaceOrder, including its String allocation.
+HTTP success echoes the submitted order; HTTP rejection returns the submitted
+order with SERVICE_UNAVAILABLE. Shutdown uses the same root's existing lane.
+
+Before replacing production syntax, move all four HTTP tests and the one pure
+order-book test into the owning runtime test target, preserving their original
+assertions, native root oracle and source-backed domain. Run that baseline.
+Then write a failing caller regression that passes ApplicationHandle directly
+to router and exercises actual HTTP admission, closed-root rejection, shutdown
+and joined retirement; retain the original allocation witness. Reuse existing
+ApplicationHandle sender/request_shutdown, ActorExt, Axum State, Communication
+exact rejection, and run_axum serving/cleanup paths. Delete the example's
+OrderCommands, LiveOrderCommands and ApiState; add no runtime type, trait,
+bound, wrapper or dependency identity. Test mocks must be replaced by actual
+actor/router journeys, preserving their independent success/rejection claims.
+
+Expected files: example main/http/order_book/Cargo, runtime tests/orders.rs and
+dev-dependency edges plus the lockfile and guide/coordination records. Expected
+production delta negative, public crate types +0/-0; example-only trait and two
+structs removed. Selected contracts remain registry Core/Actors0.26.0,
+macros0.14.2, Communication0.1.5, Address0.3.0, Timers0.2.0, Tokio1.53.1 and
+Axum0.8.9; no patches. Inspected the actual ApplicationHandle sender allocation,
+shutdown delegation, typed endpoint rejection and HTTP serving path, plus the
+selected StopOnShutdown and Communication contracts. Existing expanded change
+budget applies; final full gates and catalogue migration remain separate.
+
+HTTP application entry retained: all five original source-backed tests passed
+after relocation and before replacing the API. Desired direct router syntax
+then failed E0061; the original-allocation caller failed E0425 before its direct
+application admission function existed. The actual application handle now
+supplies Axum State. No runtime/library API changes: the example uses existing
+sender allocation and shutdown delegation. Both former mock tests now execute
+the actual router/root: the success case checks the retained order-book map,
+and closed-root rejection checks the full returned HTTP order plus refused
+shutdown. The original closed-admission String-allocation witness, live TCP
+journey, pure transition and full native retirement oracle remain.
+
+Five tests pass current/MSRV debug/release (20 executions). The actual example
+binary also passes all four configurations with POST order and DELETE shutdown
+returning202, followed by joined cleanup Ok. Strict workspace/all-target/
+all-feature Clippy passes. Three native defect inversions—missing admission,
+copied rejection and false shutdown acceptance—fail their intended assertions
+in debug/release; six restored controls pass with exact source-hash restoration.
+The binary harness initially rejected a completed listener's TIME_WAIT port;
+no live listener remained. Its availability probe now uses socket reuse,
+matching normal listener restart, and all four real runs pass. No test failure
+or other process was waived or killed.
+
+Aggregate checkpoint: OrderBook retains one BTreeMap and one Place command;
+the action and admission/rejection equations, shutdown event, typed interpreter
+and cleanup ordering are unchanged. Production example structs2→0 and traits
+1→0; its three source files total584→110 lines, with tests relocated rather
+than erased. The sole private alias names the actual order application used by
+router and requests; it carries no new state, capability or generic parameter.
+No semantic flag, arrival history, duplicate cause, cardinality assumption,
+nested transition authority or structural caller syntax remains. Cross-checks:
+exact communication rejection, explicit shutdown policy, pure actor state,
+HTTP response policy and original joined custody. All165 full-workspace registry
+identities/checksums are unchanged. Complete tracked/untracked Rust delta at
+this checkpoint: production +1185/-2743/net-1558; tests +3840/-720/net3120;
+public crate types +3/-0 for the previously proven joined-result batch, +0/-0
+for this HTTP change. These figures include relocated example oracles and are
+not a claim of equivalent code elimination. Disposition: pass this HTTP entry;
+Entity, final full/package gates, documentation reconciliation and commits
+remain open.
+
+HTTP state cost: source-backed comparison compiles the original
+LiveOrderCommands fields and the current OrderApplication against identical
+selected registry dependencies. On Rust1.99/1.96 debug/release their stored
+values measure104→64 bytes, removing40 bytes of repeated capability storage.
+This is the size of the concrete order-router state, not total application
+heap, transport buffers, request throughput or a general ApplicationHandle
+layout guarantee. No runtime allocation/latency improvement is claimed.
+
+Joined-result delivery checkpoint: Bombay feature commits f0020c2 (joined
+results, direct root-report observation and source-backed application entries)
+and0011620 (direct HTTP application state) preserve the staged semantic changes
+separately. The full optimized workspace suite passes720 tests, one existing
+skip, in840.301seconds including compilation and65.448seconds test runtime.
+All539 captured tracked/untracked files remained unchanged during verification;
+the final committed Rust/manifests match that capture. Only coordination prose
+was reconciled afterward. Strict workspace/all-target/all-feature lint,
+formatting and three active doctests pass; three schematic doctests stay ignored.
+The Bombay worktree is clean. These are local feature commits, not publication
+or final programme acceptance. Entity, final package/full native gates and all
+other open checklist dispositions remain required.
