@@ -2133,3 +2133,37 @@ DX04/25/27 and existing optional HTTP/outcome custody contracts. Disposition:
 pass for test feature isolation; all24 final-source gates remain required.
 Artifacts: CLIENT-FULL-NIX-c8f871c.log/json, OUTCOME-FEATURE-VERIFIED.json
 and OUTCOME-FEATURE-ORACLES.json in the retained results directory.
+
+Actor mailbox scope, pre-edit DX06: deliberate Bombay configuration policy.
+Application::new(root).mailbox_capacity(MailboxCapacity::new(minimum)?)
+and ApplicationScope::new().mailbox_capacity(validated) select one immutable
+actor limit for root, fresh births/later generations, cold members and Entity
+roots/descendants; existing client_capacity remains independent. Reuse current
+Communication0.1.5 Config, ApplicationScope custody, native startup/creation,
+ApplicationCapabilityInputs and Entity family installation. Delete the three
+private actor-size constants after all paths are proven. Expected production
+delta below180 lines, public types0, two existing owner setters; no builder,
+wrapper, trait, generic, capability or bound. Control-state sums and subordinate
+alternatives must remain unchanged; immutable configuration is retained only
+where future mailbox construction requires it.
+
+Separate codex/devx-mailboxes worktree now contains two focused root regressions:
+minimum3 admits four original move-only documents; fifth Full returns identical
+Box, retry follows the accepted prefix, actual count reply proves all five were
+processed, and joined retirement preserves their exact allocations/order. Early
+scope selection separately saturates two slots and proves shutdown remains
+admissible. Use existing ExternalActor::try_send and exact root recipient;
+ApplicationClient currently has no nonblocking method, and this stage adds none.
+Pinned native RED yields only two E0599 errors for the missing setters.
+Production remains unchanged. Root-only evidence does not close the stage: fresh
+birth/Entity failure and retirement witnesses, wrapper orders, provenance and
+aggregate measurements are still required before retaining an implementation.
+Cross-check: DX06/20 and Communication admission plus native retirement contracts.
+Disposition: design in progress. Expanded authorization remains2026-10-09.
+
+Full verification resource evidence: frozen9c7e37a Nix run failed after113.984
+seconds on an actual LLVM no-space error in isolated protected_counter;548 hashes
+unchanged. Preserve CLIENT-FULL-NIX-9c7e37a-disk.log/json. Confirmed the owned
+extension Cargo cache had no active builds, removed its disposable4.3GiB while
+preserving all evidence, and restarted the identical full command/head with
+5.0GiB available. No resource failure is accepted as a passing gate.
