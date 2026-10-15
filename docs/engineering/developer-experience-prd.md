@@ -711,7 +711,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Disjoint queue-key representation passes both compilers/profiles and a collision inverse. Open: carry that distinction through typed requests and the actual wrapper/interpreter without narrowing named ports; complete reorder/cancel/stale/rejection/exhaustion corpus and automatic API remain unproved |
 | DX14 | Stash/Machine restrictions retained. Candidate403a4f1, review-ready PR99, is based on published0.26 source98983b4 and moves the existing sealed infallibility proof to construction; prior bare-constructor denial unexpectedly compiled. Both supported error forms,44 focused owner tests per profile,965 workspace tests, all ten Nix gates and four-workspace/archive preflight pass. Fresh exact-head CI38687693144 passes every job. Actual paired source and extracted-archive Bombay consumers pass invalid-error/valid-Machine compile checks plus four original stash runtime cases per current/MSRV profile | Open: merge/publication authorization, registry diagnostic adoption, bounds audit and bounded retention/overflow witnesses; old0.23 prototype receives no selected-owner credit |
-| DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
+| DX15 | Existing ActionItem/InterpretItem retained. Two real IO lanes and standard timers compose in the standalone owner probe; per-actor factories preserve separate non-Clone/non-Sync instances and zero-sized absence. Existing request-loan tests pass on current/MSRV debug/release, with intended destructive-consumption inversions | Open: native Application extension, both wrapper orders, root/child/cold/Entity ownership, host refusal, panic/cancellation and complete retirement; standalone proofs do not close this row |
 | DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
@@ -1233,7 +1233,8 @@ interpreter owner statically, while standard requests retain the native owner.
 The proposed ownership equation is request::Interpreter = the supplied service;
 it changes neither ActionItem's receiving loan nor complete settlement/result
 custody. Desired application syntax is Application::new(actor).with_interpreter(
-service), with standard timers/delivery still available and unsupported leaves
+|| Services), supplying a constructor for each actor's owned instance, with
+standard timers/delivery still available and unsupported leaves
 denied. Existing native ActionItem/InterpretItem paths are inspected; there is
 currently no application interpreter extension method.
 
@@ -1260,6 +1261,37 @@ or new routing bounds. These are external port tests only: native Application
 extension, wrapper orders, asynchronous task custody and retirement remain
 unproved; DX15 remains open. Sources and exact commands/results are preserved
 under /private/tmp/bombay-retirement-schema-kgazqjhv/extension.
+
+The graph-ownership probe subsequently verifies separate non-Clone/non-Sync
+instances from shared construction authority on both compilers/profiles, with
+ordinary absence preserving the native120-byte probe layout. Arc<()> instead
+measured128 bytes and is rejected. Fn + Sync permits interior state in the
+constructor; it promises neither immutable captures nor isolated backing
+resources. Only its returned service instance is actor-owned. The associated
+request-owner trait must live beside the native dispatch implementation for
+coherence. None of this proves native Application execution or heap cost.
+
+Actual selected0.26 request loans now have three source-backed tests: suspended
+File acquisition preserves accepted prefix, original permission-bearing request
+and untouched suffix; resumption/completed replay preserve both advanced File
+offsets; environment lookup and closed permission retain actual values and
+complete original rejections. All three pass on1.99/1.96 debug/release, and strict
+focused Clippy passes. Consuming the request before its await fails the intended
+pending-custody assertion in both profiles; restored controls pass. Exact
+commands, identities and source hashes are SERVICES-CUSTODY-MATRIX.json and
+SERVICES-CUSTODY-INVERSION.json under the existing evidence root. The suggested
+async-fn rewrite fails because it captures unrelated Event/Path lifetimes; keep
+the existing receiving-loan signature rather than adding those bounds.
+
+The native Application witness is deliberately failing before implementation:
+separate receipts record missing with_interpreter (E0599) and missing associated
+request-owner port (E0405). It specifies successful initialization, rejected
+active timer-stop and independent native cancellation, including complete
+retirement products. These native bodies remain unproved until the runtime
+extension runs them. Both reviews accept only the executable request-loan
+scope; native root/child/cold/Entity construction, source/retirement, host refusal,
+constructor/destructor panic and wrapper orders remain open. No Behavior
+production change is justified by these Bombay-local gaps.
 
 Main integration selectedfb533b5 after the user requested current main in the
 isolated Bombay branch. Main#359 squashed prior DevX throughc3b74ab; reconcile
