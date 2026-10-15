@@ -712,7 +712,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Disjoint queue-key representation passes both compilers/profiles and a collision inverse. Open: carry that distinction through typed requests and the actual wrapper/interpreter without narrowing named ports; complete reorder/cancel/stale/rejection/exhaustion corpus and automatic API remain unproved |
 | DX14 | Stash/Machine restrictions retained. Candidate403a4f1, review-ready PR99, is based on published0.26 source98983b4 and moves the existing sealed infallibility proof to construction; prior bare-constructor denial unexpectedly compiled. Both supported error forms,44 focused owner tests per profile,965 workspace tests, all ten Nix gates and four-workspace/archive preflight pass. Fresh exact-head CI38687693144 passes every job. Actual paired source and extracted-archive Bombay consumers pass invalid-error/valid-Machine compile checks plus four original stash runtime cases per current/MSRV profile | Open: merge/publication authorization, registry diagnostic adoption, bounds audit and bounded retention/overflow witnesses; old0.23 prototype receives no selected-owner credit |
 | DX15 | Existing ActionItem/InterpretItem retained. Two real IO lanes and standard timers compose in the standalone owner probe; per-actor factories preserve separate non-Clone/non-Sync instances and zero-sized absence. Existing request-loan tests pass on current/MSRV debug/release, with intended destructive-consumption inversions | Open: native Application extension, both wrapper orders, root/child/cold/Entity ownership, host refusal, panic/cancellation and complete retirement; standalone proofs do not close this row |
-| DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
+| DX16 | Startup/provenance, raw/projected retirement and complete rejection retained. OwnedItem at 1104b95 supplies the existing whole-request loan from settlement metadata; seven real IO custody tests pass debug/release, including retained file offsets, repeated source offers and acquired-reply panic. A broken retention delegation is killed in both profiles. All ten native Nix gates/964 workspace tests and26 external interpreter tests pass; actual archives pass24 runtime tests per profile and seven original privacy denials | Open: two-template/wrapper composition, catalogue migration, native application integration and remaining downstream/cost evidence. Draft [PR100](https://github.com/devrandom-labs/bombay-behavior/pull/100), commit1104b95, is not published; different custody equations remain explicit |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
 | DX19 | Stage411ca4f extends immutable replay to37 fixtures (35 denials/two positives), six compile harnesses and30 outer tests. Exact current/MSRV compiler identities, all585 source hashes and every earlier expectation are preserved. Three full-driver failures and nine transcript controls reject incomplete coverage, source changes, wrong modes, duplicates and a damaged named expectation. Both reviews pass; the earlier parser falsifier remains recorded | Open: complete remaining diagnostic corpus, renamed/minimal consumers, owner diagnostic publication and final package gates |
@@ -953,6 +953,9 @@ The deliberately interrupted426.907-second stale-binding run is not a pass.
 | Ownerbc7718c archives + isolated actual3a80848 consumer source |24 commands execute28 complete fixed/prefix/both-wrapper/FIFO/directory/keyed journeys on1.99/1.96 debug/release in305.341 seconds, with original independent refusal and retirement oracles. | Five worker-owner/startup consumer files adapt the actual runtime; Entity stays byte-identical. Local patches do not prove registry delivery or full migrated Bombay gates. |
 | Bombay2e21756 | All24 native Nix gates pass in4860.772 seconds, with every tracked source hash unchanged and clean Git. Raw log names all24 successful checks; delivery branch advances to this revision. | Later artifact inventory finds13 cached outputs and11 absent outputs; build success is established by the completed command and exact gate log, not continued cache availability. This run predates sender storage, diagnostic tooling and protected JSON integration. |
 | Bombay6cb42ef | All26 joined-client/Node/JSON/sender tests pass on current/MSRV debug/release; nine client/shutdown denials and three Session fixtures pass. Final workspace strict Clippy, warning-denied rustdoc and fmt pass. | Frozen-source hashes match. Final integrated Nix/archive checks remain required; the2e21756 full-gate result is not transferred to this newer source. |
+| Bombay ea2b5b4 | All24 native aarch64-Darwin Nix gates pass in4337.683 seconds; exact585 source hashes and clean Git are conserved. Independent review confirms the complete expected gate set and selected registry owners. Delivery advances ff-only toea2b5b4. | Includes sender storage, stash construction, supported compiler diagnostics, JSON and corrected resource environments. New DX15/16 design work is excluded; no all-systems, archive or continued-cache claim. |
+
+| Owner 1104b95 | All ten native aarch64-Darwin Nix gates pass in177.111 seconds with817 unchanged tracked file hashes;964 workspace tests,26 external tests per debug/release profile,24 actual-archive runtime tests per profile and seven exact privacy denials pass. Seven IO plus eleven compatibility tests pass pinned1.99 debug/release; retention/corruption inversions are killed in both profiles. | Standard OwnedItem port only; no catalogue migration, registry publication or native custom-service integration claim. Initial doc-expectation and archive snapshot failures remain recorded. |
 
 Actual counter main98 lines, FIFO184; equal77-dependency paired counter journeys
 use74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end
@@ -1225,6 +1228,108 @@ fcb85ca passed in2504.413seconds, with all485 captured tracked-file hashes
 unchanged. Other platforms were not run. Final nextest, main integration and
 requirement reconciliation remain required; no selected requirement or
 persistent goal is marked complete.
+
+#### Whole-item receiving — DX16 (pre-edit)
+
+Derived interface law over the selected 0.26 receiving contract: when an action
+item is interpreted as one whole owned input plus its independent reply, request
+authors should state accepted/rejection/prerequisite types and retention policy
+once. Custody, input and reply shapes, prepare/input/finish then belong to that
+one standard loan. Advanced item contracts retain their explicit ActionItem
+implementation. No actor behavior, interpretation/source ordering, failure
+vocabulary, request representation or accepted-value policy changes.
+
+Smallest caller comparison: the actual OpenFile/ReadEnvironment consumer repeats
+those same aliases and forwarding methods twice. First prove that metadata-only
+ActionItem declarations fail on current source; then write the complete pending,
+late/replay and OS-rejection consumer using `impl OwnedItem for OpenFile` and
+`impl OwnedItem for ReadEnvironment`. OwnedItem declares only the existing three
+settlement payload types and retain_accepted policy. Its one ActionItem blanket
+implementation must delegate to prepare_item/finish_item, preserving the exact
+existing whole-value custody equation and conditional input borrowing. Do not
+introduce new generic slots, defaults, wrappers, dependencies, async consuming
+callbacks, status flags, source ports or erased values. Coherence must be proved
+against real owner packages and external implementations before retention.
+
+Ordinary-Rust comparison: existing helper functions already own preparation and
+finalization but do not supply nominal trait implementations; aliases and inherent
+methods cannot do so either. A request wrapper changes the exact rejection/input
+type without a new invariant. Default ActionItem methods with extra custody
+bounds would constrain advanced implementations even when overridden. Test the
+one explicit whole-item implementation port before considering any macro.
+Expected production files: effects/sending.rs, effects/mod.rs and lib.rs; roughly
+60 added lines and one public trait. First stage changes only two real consumer
+requests and their existing custody regressions. Keep all different custody
+equations explicit; broader migration follows only after complete comparison.
+Baseline sums remain InterpretationProgress(3), Interpretation(2),
+ItemSettlement(4), SettledItem(2); actor control states, transition branches,
+creation provenance and all interpreter owners remain unchanged. Subordinate
+values are the original pending request, outside reply and untouched siblings;
+no history labels, duplicated causes or second transition authority are needed.
+Disposition before the experiment: unproved; record the compiler falsifier and
+remove the production candidate if the exact port cannot compose.
+
+Focused port checkpoint (unpublished 1104b95 on `codex/devx-items`, based on
+98983b4): the metadata-only ActionItem attempt fails E0046 for the six repeated
+loan members; the intended OwnedItem consumer then fails E0432 before the new
+port exists (with consequential ActionItem errors). Seven actual IO tests now
+pass pinned 1.95 debug/release. They preserve pending originals, rejected path/name
+allocations, advanced File receipts, String allocation through repeated source
+offers, and an acquired reply through producer panic and repeated finalization.
+Changing only the blanket retention delegation to discard its receipt kills
+both source-offer tests in both profiles; restored controls pass. The owner
+workspace passes 964 tests. The final external source suite passes 26
+tests; the actual extracted archives pass 24 runtime tests per debug/release
+profile plus all seven original privacy denials checked by exact compiler JSON
+codes (not snapshot blessing). Strict focused Clippy passes. A corruption
+inversion is independently killed in both profiles and restored controls pass.
+The original mismatched diagnostic route still fails E0277 and its matching
+String-route control compiles; all 69 annotated rustdoc denials pass after the
+one-line annotation correction. On Bombay pinned 1.99, the seven IO plus eleven
+existing source-custody/order tests pass debug/release. Final native Nix passes
+all ten expected gates in 177.111 seconds, conserving all 817 tracked file hashes.
+No native Application custom-service acceptance is claimed.
+
+Full-gate falsifier: the first native Nix run exits 1 after 253.339 seconds.
+The diagnostic-route compile-fail body still rejects the mismatched u8/String
+protocol with E0277 (ActionItem not satisfied), and points at the existing
+DiagnosticRoute bound; its annotation expected E0271. Preserve the complete
+witness and verify the corresponding String route compiles before updating
+only that diagnostic annotation. No capability, bound or valid construction is
+to change. Archive runtime/denial verification is separate: the first complete
+archive harness fails two trybuild text snapshots because extracted package
+paths are printed literally; E0624 remains the actual privacy failure. Do not
+bless the snapshots or count that failed command as passing.
+
+Independent review requires the corruption injector to match the actual lawful
+pending loan `(Some(input), None)` before writing its fault, so it cannot erase
+an already-acquired reply. The test now enforces that precondition. Canonical
+rustdoc links the standard OwnedItem path from ActionItem, includes the real
+file-request declaration, and the crate README explains migration and retaining
+receipt policy without implementing both ports. The preceding full native run
+passes all ten gates in 187.457 seconds with frozen hashes; final strengthened
+test/documentation gates pass independently on the final source.
+
+Current measured ledger, including newly tracked test files:
+production +105/-6/net+99 (including README/rustdoc); tests +647/-1/net+646;
+public API +1/-0 types.
+This adds an interpreter capability; it is not a net production deletion.
+The two real request declarations shrink their shared request module 195→135
+lines; the advanced ActionItem port remains available and unchanged.
+InterpretationProgress 3, Interpretation 2, ItemSettlement 4, SettledItem 2,
+SourceProgress 3 and SourceCustody 4 alternatives are unchanged. No actor control
+state or transition authority changes. The affected sending owner is 2536→2627
+lines, 57→58 match expressions and 33→34 public type spellings. The sole new match is the existing
+whole-item loan gate (two alternatives), not another interpreter or source traversal. Three core
+modules change plus the Core README and one Actors rustdoc annotation; no module,
+request wrapper, marker, generic slot or state sum is added. Every retained
+subordinate value still owns the exact pending request, acquired reply, or
+untouched ordered sibling; no arrival history or duplicated cause is added.
+Cross-check: selected receiving-loan source, adapter contract, atomic runtime
+settlement, retained-core inventory and atomic essence/solution preserve their
+existing ownership and initialization laws. Disposition: pass for the retained
+port batch 1104b95. Mechanical catalogue migration remains gated on the remaining
+two-template/wrapper and complete downstream witnesses; DX16 remains open.
 
 #### Typed interpreter ownership — DX15 (pre-edit probe)
 
