@@ -710,7 +710,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Disjoint queue-key representation passes both compilers/profiles and a collision inverse. Open: carry that distinction through typed requests and the actual wrapper/interpreter without narrowing named ports; complete reorder/cancel/stale/rejection/exhaustion corpus and automatic API remain unproved |
-| DX14 | Stash/Machine restrictions retained. Candidate on published0.26 source98983b4 moves the existing sealed infallibility proof to construction; prior bare-constructor denial unexpectedly compiled. Corrected denial, both supported error forms and44 owner tests per debug/release profile pass. Actual paired Bombay consumer passes invalid-error/valid-Machine compile checks plus four original stash runtime cases per current/MSRV profile | Open: final owner gates/delivery, registry diagnostic adoption, bounds audit and bounded retention/overflow witnesses; old0.23 prototype receives no selected-owner credit |
+| DX14 | Stash/Machine restrictions retained. Candidate on published0.26 source98983b4 moves the existing sealed infallibility proof to construction; prior bare-constructor denial unexpectedly compiled. Both supported error forms,44 focused owner tests per profile,965 workspace tests, all ten Nix gates and four-workspace/archive preflight pass. Actual paired Bombay consumer passes invalid-error/valid-Machine compile checks plus four original stash runtime cases per current/MSRV profile | Open: reviewed delivery/publication, registry diagnostic adoption, bounds audit and bounded retention/overflow witnesses; old0.23 prototype receives no selected-owner credit |
 | DX15 | Existing ActionItem/InterpretItem and standard interpreter inspected | Open: two real external lanes without whole Environment replacement |
 | DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
@@ -2295,3 +2295,18 @@ macros0.14.2; pinned owner Rust1.95), repeat bare-constructor RED before its
 production edit, and repeat the complete proof matrix. Bombay's original RED
 already uses locked registry0.26.0. The canonical checklist remains in this PRD;
 feature source and exact verification are recorded by their own revisions.
+
+Retained stash checkpoint: owner production+9/-1 (net8, including the existing
+trait diagnostic), rustdoc+1/-2, tests+57/-0; public types/traits/modules/states/branches and
+three StashRoute alternatives unchanged. Inner B, pure route and exact FIFO
+inputs remain the only retained values. No history, duplicate cause, semantic
+flag, nested authority, structural caller syntax or placeholder added. Both
+test reviews and the independent paired-consumer review pass. Selected0.26
+nextest runs965 tests without skips; all ten Nix gates pass in305.388 seconds
+with unchanged source hashes. Four-workspace/archive preflight passes and all137
+archived Rust files match. Bombay current debug/release passes10 tests and12
+fixtures, plus strict lint/rustdoc/fmt. MSRV registry execution finds one prior
+worker-factory golden mismatch (three "an"/"a" articles); new stash fixtures
+pass, and its failed command remains recorded. Review/delivery/publication and
+strict complete supported-compiler replay remain required. Bounded stash/Machine
+retention and overflow remain open.
