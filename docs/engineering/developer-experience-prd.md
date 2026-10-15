@@ -711,8 +711,8 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Native two-one-shot/periodic session proves all distinct-ID notices and complete joined retirement on current/MSRV debug/release. No-ID syntax fails E0061; blanket lane scoping fails explicit-ID replacement in both profiles and is removed | Disjoint queue-key representation passes both compilers/profiles and a collision inverse. Open: carry that distinction through typed requests and the actual wrapper/interpreter without narrowing named ports; complete reorder/cancel/stale/rejection/exhaustion corpus and automatic API remain unproved |
 | DX14 | Stash/Machine restrictions retained. Candidate403a4f1, review-ready PR99, is based on published0.26 source98983b4 and moves the existing sealed infallibility proof to construction; prior bare-constructor denial unexpectedly compiled. Both supported error forms,44 focused owner tests per profile,965 workspace tests, all ten Nix gates and four-workspace/archive preflight pass. Fresh exact-head CI38687693144 passes every job. Actual paired source and extracted-archive Bombay consumers pass invalid-error/valid-Machine compile checks plus four original stash runtime cases per current/MSRV profile | Open: merge/publication authorization, registry diagnostic adoption, bounds audit and bounded retention/overflow witnesses; old0.23 prototype receives no selected-owner credit |
-| DX15 | Existing ActionItem/InterpretItem retained. Two real IO lanes and standard timers compose in the standalone owner probe; per-actor factories preserve separate non-Clone/non-Sync instances and zero-sized absence. Existing request-loan tests pass on current/MSRV debug/release, with intended destructive-consumption inversions | Open: native Application extension, both wrapper orders, root/child/cold/Entity ownership, host refusal, panic/cancellation and complete retirement; standalone proofs do not close this row |
-| DX16 | Startup/provenance, raw/projected retirement and complete rejection retained. OwnedItem at 1104b95 supplies the existing whole-request loan from settlement metadata; seven real IO custody tests pass debug/release, including retained file offsets, repeated source offers and acquired-reply panic. A broken retention delegation is killed in both profiles. All ten native Nix gates/964 workspace tests and26 external interpreter tests pass; actual archives pass24 runtime tests per profile and seven original privacy denials | Open: two-template/wrapper composition, catalogue migration, native application integration and remaining downstream/cost evidence. Draft [PR100](https://github.com/devrandom-labs/bombay-behavior/pull/100), commit1104b95, is not published; different custody equations remain explicit |
+| DX15 | Existing ActionItem/InterpretItem retained. Two real IO lanes and standard timers compose in standalone probes; per-actor constructors preserve separate non-Clone/non-Sync instances and zero-sized absence. A real unit-interpreter file request falsifies the generalized absence guard; an explicit constructor port restores the authority distinction. Its16-command current/MSRV debug/release matrix and independent review pass. Existing request-loan tests preserve complete custody under destructive-consumption inversions | Open: native Application extension, both wrapper orders, root/child/cold/Entity ownership, host refusal, panic/cancellation and complete retirement; standalone proofs do not close this row. Bombay coordination commit efef71d records the falsifier and bounded replacement evidence |
+| DX16 | Startup/provenance, raw/projected retirement and complete rejection retained. OwnedItem supplies the existing whole-request loan from settlement metadata; seven real IO custody tests preserve file offsets, repeated source offers and acquired-reply panic. Follow-up9948bdd runs the same oracle in owner mutation coverage: five caught/four unviable, no survivors. All ten native Nix gates/971 workspace tests and26 external interpreter tests per profile pass; extracted Core adds7 owner tests/profile, while extracted consumers pass24 runtime tests/profile and seven original privacy denials | Open: fresh exact-head CI, two-template/wrapper composition, catalogue migration, native application integration and remaining downstream/cost evidence. Draft [PR100](https://github.com/devrandom-labs/bombay-behavior/pull/100), head9948bdd, is not published; different custody equations remain explicit |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
 | DX19 | Stage411ca4f extends immutable replay to37 fixtures (35 denials/two positives), six compile harnesses and30 outer tests. Exact current/MSRV compiler identities, all585 source hashes and every earlier expectation are preserved. Three full-driver failures and nine transcript controls reject incomplete coverage, source changes, wrong modes, duplicates and a damaged named expectation. Both reviews pass; the earlier parser falsifier remains recorded | Open: complete remaining diagnostic corpus, renamed/minimal consumers, owner diagnostic publication and final package gates |
@@ -954,6 +954,7 @@ The deliberately interrupted426.907-second stale-binding run is not a pass.
 | Bombay2e21756 | All24 native Nix gates pass in4860.772 seconds, with every tracked source hash unchanged and clean Git. Raw log names all24 successful checks; delivery branch advances to this revision. | Later artifact inventory finds13 cached outputs and11 absent outputs; build success is established by the completed command and exact gate log, not continued cache availability. This run predates sender storage, diagnostic tooling and protected JSON integration. |
 | Bombay6cb42ef | All26 joined-client/Node/JSON/sender tests pass on current/MSRV debug/release; nine client/shutdown denials and three Session fixtures pass. Final workspace strict Clippy, warning-denied rustdoc and fmt pass. | Frozen-source hashes match. Final integrated Nix/archive checks remain required; the2e21756 full-gate result is not transferred to this newer source. |
 | Bombay ea2b5b4 | All24 native aarch64-Darwin Nix gates pass in4337.683 seconds; exact585 source hashes and clean Git are conserved. Independent review confirms the complete expected gate set and selected registry owners. Delivery advances ff-only toea2b5b4. | Includes sender storage, stash construction, supported compiler diagnostics, JSON and corrected resource environments. New DX15/16 design work is excluded; no all-systems, archive or continued-cache claim. |
+| Bombay upstream8d809b3 | Fresh fetch on2026-10-15 identifies one unintegrated main commit, adding Application-owned actor clients and exact ownership refusal tests. | Inspected only; reconcile with ea2b5b4, review ordinary caller ceremony and preserve all new ownership/recovery oracles before claiming combined-source support. |
 
 | Owner 1104b95 | All ten native aarch64-Darwin Nix gates pass in177.111 seconds with817 unchanged tracked file hashes;964 workspace tests,26 external tests per debug/release profile,24 actual-archive runtime tests per profile and seven exact privacy denials pass. Seven IO plus eleven compatibility tests pass pinned1.99 debug/release; retention/corruption inversions are killed in both profiles. | Standard OwnedItem port only; no catalogue migration, registry publication or native custom-service integration claim. Initial doc-expectation and archive snapshot failures remain recorded. |
 
@@ -1330,6 +1331,62 @@ settlement, retained-core inventory and atomic essence/solution preserve their
 existing ownership and initialization laws. Disposition: pass for the retained
 port batch 1104b95. Mechanical catalogue migration remains gated on the remaining
 two-template/wrapper and complete downstream witnesses; DX16 remains open.
+
+Owner mutation-campaign gap, pre-edit: PR100 head1104b95 passes the Linux build,
+API audit and each mutation shard, but aggregate CI38700008964 rejects five
+surviving mutants across the new blanket methods and five unaccounted function
+rows. The external IO regressions are not in that campaign's owner/testkit
+selection. Run the same real IO regressions as an owner integration target too,
+without duplicating their oracle; bind fixture contents to each compiling
+package's actual manifest. Keep the external target to prove third-party use.
+No production semantic changes are proposed. First kill the exact surviving
+prepare/input/finish/retention mutations under the actual owner selection; then
+add only the measured new function floors and the genuinely unviable default
+method to the existing baseline. Do not lower any existing floor, exempt a
+survivor, or count an unviable compiler error as a kill. Expected additions: one
+owner test entrypoint, fixture-path correction and five baseline entries; API
+and executable production +0/-0. All prior candidate gate receipts retain their
+exact scope; fresh final gates and exact-head CI are required for this change.
+
+The corrected campaign runs the same seven IO tests from the packaged Core
+integration target; the external workspace includes that source rather than
+duplicating its oracle. The request fixture is moved unchanged, and expected
+file contents use the compiling package's actual manifest. The pinned targeted
+campaign tests all nine candidates: five caught, four unviable, zero survivors
+or timeouts in54.109 seconds. Only four new measured floors (1/2/1/1) and one
+known-zero-viable default are added; every existing baseline value is unchanged.
+Owner tests (7/profile), external tests (26/profile), extracted Core owner tests
+(7/profile), extracted consumer tests (24/profile), and seven original privacy
+denials pass. Both owner and external focused Clippy and workspace formatting
+pass. The extracted Core test explicitly selects the extracted macros package;
+its Cargo lock is regenerated for that paired archive graph. This proves source
+archive self-containment, not an unpublished registry selection.
+
+Preserved failures: two attempts selected a broken host cargo-mutants executable;
+the valid run invokes the pinned Nix executable directly. An overlapping control
+run shared the mutation build directory and observed a mutant artifact; after
+the campaign ended, package-local artifact cleanup restored all seven tests.
+Further mutation campaigns must use a separate target directory. The first
+extracted owner run also rejected the packaged companion checksum; the paired
+archive graph above is the explicit correction, not a passing original run.
+
+Aggregate checkpoint: production/control states, subordinate alternatives,
+transition branches, modules and public spellings are unchanged (all deltas0).
+The test relocation adds30 net lines; baseline metadata adds5 net lines. No
+arrival history, repeated cause, cardinality assumption, nested transition
+authority, semantic boolean or structural user syntax is added. The same
+receiving-loan and complete settlement laws remain authoritative. Disposition:
+pass for test selection and measured baseline correction. All ten native
+aarch64-Darwin Nix gates then pass in257.491 seconds, preserving all818 tracked
+hashes and passing971 workspace tests. The sandbox audit cannot inspect registry
+yank status; a separate fetched online `cargo audit --deny warnings` passes with
+65 dependencies and1329 loaded advisories. Follow-up9948bdd commits only the
+verified test relocation and measured baseline additions. Independent two-pass
+review confirms package self-containment, unchanged oracle, all four genuine
+unviable compiler denials, unchanged existing baseline entries and final hashes.
+Fresh exact-head CI38704350167 is running; completion remains required.
+`OWNED-ITEM-COVERAGE-*`, `OWNED-ITEM-DIRECT-MUTANTS.*` and
+`OWNED-ITEM-ORACLE-CONSERVATION.json` preserve the raw commands and scope.
 
 #### Typed interpreter ownership — DX15 (pre-edit probe)
 
