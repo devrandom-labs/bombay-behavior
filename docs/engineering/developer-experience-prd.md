@@ -709,7 +709,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated native Node candidate reuses that spine through joined run_with, preserving the raw lending execute_with port; four current-compiler debug/release ownership journeys and two lifetime denials pass. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; complete receiving and HTTP consumer migrations now pass their focused matrices |
+| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated native Node candidate reuses that spine through joined run_with, preserving the raw lending execute_with port; four current-compiler debug/release ownership journeys and two lifetime denials pass. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; existing Node business callbacks/configuration must hide transport SDK types under the latest user instruction. Complete receiving and HTTP consumer migrations pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
 | DX03 | Sealed startup closes the tested native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: latest-main reconciliation, all owner consumers, complete cancellation/freshness and full gates. Cold correction e6420ad and mailbox f54f644 are integrated at333dddb. Cold-member inferred descendants now pass108 native/composition test executions on current/MSRV debug/release after reusing the ordinary selected-edge rule. All24 current-compiler denials and renamed-dependency checks pass. Earlier raw MSRV snapshot failures remain recorded. Stage8503cf6 freezes nine compiler-specific differences (eight topology plus HTTP); unchanged fixtures now pass strict current/MSRV replay with all25 named denials, four harnesses and full source conservation. Three negative controls reject empty success, added source and the exact damaged HTTP expectation |
 | DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Imported Node/invocation carriers now use that same product; nine native receiving operations migrate without assertion changes, and actual native corpus passes64 tests per current profile with one prior subprocess-only ignore. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
@@ -2582,3 +2582,17 @@ migrations preserve every observed value/effect, but369 unchanged assertion call
 are not independent proof of those stronger laws. Keep full remote acceptance
 open and retain the exact NodeAbsent original-defect/restoration evidence for the
 narrow joined correction. No passing gate can erase these limits.
+
+Transport interface constraint, DX01/20/23: the latest user instruction makes
+Zenoh an internal Bombay implementation choice, with no transport/bus selection
+or SDK access in ordinary business code. Existing public Node callback/config
+exposure is therefore an open interface gap, not an accepted ordinary-user
+exception. A caller must be able to compose actors and use typed application
+clients without importing Session, Query or native SDK configuration. Internal
+runtime and transport verification may still use their owning SDK directly.
+Do not invent a second networking layer, expose an SDK escape hatch as the user
+path, or conceal a still-required SDK argument behind a cosmetic wrapper.
+Establish a real caller witness before changing this existing interface;
+implementing new remote delivery, authentication, identity or deployment features
+remains outside this selected local programme. The current source-frozen gates
+verify the current implementation only and cannot close this new interface gap.
