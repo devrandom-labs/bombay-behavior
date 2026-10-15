@@ -641,6 +641,18 @@ lifecycle and generation cases in optimized builds. A deliberately restored
 defect must break its regression for the intended reason. No mutation, transfer
 or required call may live only inside an assertion.
 
+Every new or changed test requires two explicit verifications. First map its
+inputs, complete observable outcomes and retained ownership to the stated law;
+check that its oracle is independent of the implementation. Second challenge
+that mapping with counterexamples: a wrong implementation that could still pass,
+missing phases or failures, circular assertions and vacuous success. Use an
+independent reviewer when available. Prove an applicable original defect or
+owning-source inversion fails for the intended invariant, then verify restoration.
+Repeat execution on the required compilers/profiles, but do not count repeated
+green runs, assertion totals or preserved syntax as either semantic review.
+Record practical untested limits explicitly; a surviving counterexample reopens
+the test and the acceptance claim it was meant to establish.
+
 ## Delivery sequence and stop conditions
 
 | Stage | Scope and prerequisites | Required exit and removed work |
