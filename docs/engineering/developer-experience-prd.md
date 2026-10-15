@@ -709,7 +709,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated Node candidate now uses the same actor-only joined callback as local Application; original Work, counter reply/state and exact settlement custody pass both compilers/profiles, with independent reviews and a settlement-loss inverse. The paired SDK port/configuration/query custody remain open. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; existing Node business callbacks/configuration must hide transport SDK types under the latest user instruction. Complete receiving and HTTP consumer migrations pass their focused matrices |
+| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated Node candidate now uses the same actor-only joined callback as local Application; original Work, counter reply/state and exact settlement custody pass both compilers/profiles, with independent reviews and a settlement-loss inverse. Paired candidate9ffba4f uses the same actor-only callback and passes retry/borrowed-wait/static-denial proofs; raw-SDK consumer migration, configuration and query custody remain open. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; existing Node business callbacks/configuration must hide transport SDK types under the latest user instruction. Complete receiving and HTTP consumer migrations pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
 | DX03 | Sealed startup closes the tested native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: latest-main reconciliation, all owner consumers, complete cancellation/freshness and full gates. Cold correction e6420ad and mailbox f54f644 are integrated at333dddb. Cold-member inferred descendants now pass108 native/composition test executions on current/MSRV debug/release after reusing the ordinary selected-edge rule. All24 current-compiler denials and renamed-dependency checks pass. Earlier raw MSRV snapshot failures remain recorded. Stage8503cf6 freezes nine compiler-specific differences (eight topology plus HTTP); unchanged fixtures now pass strict current/MSRV replay with all25 named denials, four harnesses and full source conservation. Three negative controls reject empty success, added source and the exact damaged HTTP expectation |
 | DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Imported Node/invocation carriers now use that same product; nine native receiving operations migrate without assertion changes, and actual native corpus passes64 tests per current profile with one prior subprocess-only ignore. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
@@ -2673,3 +2673,22 @@ be rerun on the corrected clean source.
 Both final independent evidence reviews accept the44-case source/log/compiler
 bindings. Bombay c6590d7 retains the bounded gate repairs; a fresh full24 native
 Nix check is running on that clean frozen commit. No overall pass is claimed.
+
+Paired actor-only work (DX01/20/23), isolated Bombay9ffba4f: the same existing
+Application callback now serves run_with and execute_with. Missing-host retry
+retains the original File/Box; paired wait cancellation retains actual Rc/&Cell
+and both original futures. Exact reply/state0/1 and the full retained Stop row
+remain independently checked. Three actual signature inversions fail for arity,
+Send and 'static and restored controls pass. Both source/evidence reviews pass.
+The5 runtime cases and initial2-denial harness pass8 compiler/profile/feature
+configurations with614 frozen hashes; the final existing node_borrowing harness
+adds a caller-borrow positive, preserves joined SDK denial, independently denies
+paired SDK input and close overlap, and passes its4 fixtures on both compilers
+in debug/release. Final optimized commands cover only that static harness;
+production/runtime body hashes still match the8-way proof. Artifact row recovery
+from a case-insensitive filename collision is explicitly reviewed, with no new
+pass credit. Focused lint and format pass. No public type/state/module is added;
+production+11/-9 includes comments, signature/body+4/-4/net0. SDK-dependent native
+consumers remain unmigrated: this is a focused feature commit, excluded from the
+clean c6590d7 full24 run and from whole-repository/SDK-hiding acceptance. No new
+session accessor, callback family or dummy export is permitted to unblock them.
