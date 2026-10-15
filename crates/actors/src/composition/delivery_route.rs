@@ -218,6 +218,11 @@ where
 impl<Logical: Eq, Established: Eq> Eq for ReplyDelivery<Logical, Established> {}
 
 /// Ordered customer-delivery lane preserving each route alternative.
+///
+/// Logical and established delivery settlements use each item's accepted-receipt
+/// retention law. Rejected, corrupt and untouched deliveries remain owned in
+/// their authored order for terminal custody; exhausting source admission must
+/// never discard those original inputs.
 pub struct ReplyDeliveries<Logical, Established> {
     deliveries: Vec<ReplyDelivery<Logical, Established>>,
 }
@@ -492,9 +497,42 @@ where
 
     fn prepare_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
         *progress = match progress.take() {
-            Some(SourceProgress::Original(original)) => Some(SourceProgress::Completed(
-                SourceCustody::Exhausted(original),
-            )),
+            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => {
+                // Use the same receipt-retention law as a plain delivery vector.
+                // Every other row keeps its original custody and authored order.
+                let retained = ReplyDeliveries::new(
+                    original
+                        .deliveries
+                        .into_iter()
+                        .filter_map(|row| match row {
+                            ReplyDelivery::Logical(SettledItem::Attempted(
+                                ItemSettlement::Accepted(accepted),
+                            )) => <Delivery<P> as ActionItem>::retain_accepted(accepted).map(
+                                |accepted| {
+                                    ReplyDelivery::Logical(SettledItem::Attempted(
+                                        ItemSettlement::Accepted(accepted),
+                                    ))
+                                },
+                            ),
+                            ReplyDelivery::Established(SettledItem::Attempted(
+                                ItemSettlement::Accepted(accepted),
+                            )) => <EstablishedDelivery<P> as ActionItem>::retain_accepted(accepted)
+                                .map(|accepted| {
+                                    ReplyDelivery::Established(SettledItem::Attempted(
+                                        ItemSettlement::Accepted(accepted),
+                                    ))
+                                }),
+                            retained => Some(retained),
+                        })
+                        .collect(),
+                );
+                let custody = if retained.deliveries.is_empty() {
+                    SourceCustody::Exhausted(retained)
+                } else {
+                    SourceCustody::Retained(retained)
+                };
+                Some(SourceProgress::Completed(custody))
+            }
             retained => retained,
         };
     }
@@ -507,12 +545,7 @@ where
     }
 
     fn finish_source(progress: &mut Option<SourceProgress<Self, Self::Custody>>) {
-        *progress = match progress.take() {
-            Some(SourceProgress::Original(original) | SourceProgress::Offering(original)) => Some(
-                SourceProgress::Completed(SourceCustody::Exhausted(original)),
-            ),
-            retained => retained,
-        };
+        <Self as SourceSettlementCustody<Host, RootEvent>>::prepare_source(progress);
     }
 }
 
