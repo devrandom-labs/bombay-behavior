@@ -2571,8 +2571,11 @@ compiler/profile/feature configurations. A separate completion audit conserves
 609 repository and493 extracted/consumer files plus the three archive hashes.
 These are15 native and3 pure-IO journeys, not18 native journeys; archive UI and
 broader remote acceptance are excluded. Both independent evidence reviews pass.
-All24 native Nix checks remain running on cleanfb295b6. No pre-merge or unfinished
-check proves final combined acceptance or the later actor-only Node callback.
+The full24 native Nix attempt on cleanfb295b6 fails after4510.859 seconds:
+20 gates pass and4 fail. Cold-role snapshot drift blocks test/coverage; a protected
+consumer still expects the old tuple; remote debug lint rejects one long test.
+No signing/disk waiver applies. No pre-merge or failed check proves final combined
+acceptance or the later actor-only Node callback.
 
 Adversarial test-review limits, DX01/20/25: the second independent review
 confirms the joined Node correction only for actual association, declaration and
@@ -2617,11 +2620,56 @@ inverse fails0-versus1 and its restored control passes. Both invariant and
 counterexample reviews accept this scope. The same actor-only callback preserves
 export association: both receipt-profile construction cases pass, removing its
 private association fails exactNodeAbsent, and restoration passes optimized.
-Those cases issue no Query and prove no provider semantics. Mechanical joined
-caller migration and the direct Session-argument denial are still being verified.
-Shared target directories reused a control executable, including after sequential
-commands; both failed attempts and the overlapping control receive no acceptance
-credit. Rebuild all workspace owners in dedicated checkout targets, then repeat
-with exact suite/fixture names and conserved source hashes.
-Paired SDK work, network configuration and query custody remain unfinished;
-source-frozenfb295b6 gates cannot prove this later interface change.
+Those cases issue no Query and prove no provider semantics. Committeda1da19d
+migrates joined callers; all40 Node/client tests and9client denials pass in each
+current/MSRV debug/release profile. Both independent evidence reviews validate
+exact names and609 frozen source hashes. The identical Session-argument fixture
+passes on originalfb295b6 and fails solely E0593 on the new API; dedicated-target
+three-case suites pass both compilers. Shared targets had reused a control binary,
+including after sequential commands; both failed attempts and the overlapping
+control receive no credit. Final replays rebuild all three owners in dedicated
+checkout/compiler targets and verify exact suite names and hashes.
+
+The actual threea1da19d archives contain75 byte-identical production files.
+Renamed external consumers pass the same4Node journeys on8compiler/profile/
+feature combinations;609 repository/491 extracted-consumer hashes and all3crate
+hashes remain conserved. Both independent reviews pass. Setup still names SDK
+configuration and a separate paired test retains the old SDK loan; no whole SDK,
+Query/provider or publication claim applies. The separate94f607a test-only change
+uses one equivalent Endpoint destructure without deleting any assertion; its
+focused unit passes current debug/MSRV release and complete all-target/all-feature
+strict debug lint passes20.387 seconds. The earlier40-test matrix excludes that
+later cfg(test) edit. Commit1a42e24 records internal transport as a standing AGENTS
+rule. Paired SDK work, configuration and query custody remain unfinished.
+
+Final gate repair preserves both protected receiving joins using existing complete
+into_parts; apparent reference errors disappear without changing a borrow or bound.
+The real recorded/scheduled requester journeys pass both compilers/profiles:
+current debug2.562/release196.190seconds; minimum debug59.979/release223.962seconds. Add those2cases to both existing Nix gate profiles because
+the former public_node_ filter compiled but did not execute them. Existing limits:
+its generic native oracle accepts an empty accepted-settlement vector and does
+not inspect the receiver's final Counter value; native reply1 and exact requester
+state[ReadReply(1)] are independent observations. Both source reviews pass the
+mechanical migration, not stronger unobserved guarantees.
+
+Cold coverage adds existing4negative/1positive fixtures:44cases/9suites/39outer
+tests through the existing immutable diagnostic tool. Current cold target passes7;
+minimum generation identifies3additional compiler-specific snapshots. Every
+fixture stays unchanged; distinct role/protocol/birth errors persist, with two
+duplicate cascades omitted by the minimum compiler. Both reviews validate all13
+canonical/minimum/source hash bindings and the unchanged earlier10records.
+Generation supplies no acceptance credit. Fresh immutable44case replays pass
+current117.091/minimum120.988seconds: all9suites/39outer tests,13snapshot
+bindings and caller/copied source hashes are conserved. The610captured files
+include one generated Python bytecode file, removed only after both terminal;
+all609 repository files remain. Two prior runs failed the transcript parser
+because pass-only trybuild omits `[should pass]`. A one-line format correction
+follows a failing real-transcript control; all20controls accept both valid formats
+and reject opposite modes, missing/duplicate/extra cases and incomplete suites.
+Strict workspace/protected lint and Rust/Nix formatting pass.
+The Engine prepared-ingress diagnostic mismatch is an intentional mutation KILL;
+its baseline passes and no Engine correction is justified. Full24 checks must
+be rerun on the corrected clean source.
+Both final independent evidence reviews accept the44-case source/log/compiler
+bindings. Bombay c6590d7 retains the bounded gate repairs; a fresh full24 native
+Nix check is running on that clean frozen commit. No overall pass is claimed.
