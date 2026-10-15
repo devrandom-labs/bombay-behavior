@@ -721,7 +721,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published Behavior/Actors0.24.0 preserves uniquely selected semantic send lanes through wrappers, complete Actions and static denials; Bombay selects its successor0.26.0. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy headbc7718c passes owner/package/archive proofs with unchanged actor layouts. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy headbc7718c passes owner/package/archive proofs with unchanged actor layouts. Isolated reply refinement removes three ordinary aliases and unused reply hosts; six native cases pass debug/release, with independent supervisor query choices. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
@@ -1155,6 +1155,45 @@ automatic request, wrapper identity, public API or programme completion follows.
 Evidence: timers/disjoint/RESULTS.json, PROVEN.rs and SOURCE.json under the
 existing temporary evidence root. Repository tests remain the native session
 witnesses; this external probe is not a portable end-to-end acceptance fixture.
+
+
+#### Automatic timer ownership — current experiment, DX13
+
+Pre-edit policy: OneShot/Periodic/Deadline/ReceiveTimeout own their event occurrence
+and generation; ordinary callers need no TimerId. Named ScheduleAt/ScheduleAfter
+retain shared-name replacement and custom InjectEvent ports. Desired caller:
+`actor.with_one_shot(delay, reaction).with_periodic(interval, reaction)`, through
+both shutdown orders. Reuse TimerLease, initialization/settlement products and the
+existing queue; compare separate owned requests against the same custody family
+indexed by the two concrete targets TimerId/Here. No ID0, fallback, extra lifecycle
+owner, caller marker or generic default is permitted. Receipts/rejections retain
+the actual target, generation and deadline. Measure queue-key and deleted-field
+bytes rather than assuming a memory gain.
+
+The real no-ID consumer against published0.26.0 fails six E0061 diagnostics and
+two inference consequences. Both oracle reviews accept only its actual three
+ordered notices, actor origin and normal retirement. Periodic stops at its first
+tick; there is no shutdown request, rearm/cancel/stale/rejection/exhaustion proof,
+and the original retirement oracle does not inspect inner settlement contents.
+The independent named-port regression uses one explicit ID through a genuine
+custom Reminder event; its two cases pass before production lowering.
+
+Initial bounded ledger: at most eight owner/two runtime production files, about
++200 lines, at most one target trait, no new actor states. The selected shared
+family was archived and removed after source inspection found four existing
+named calls whose port it made private. This visibility change had no law or
+regression provenance. No candidate compiler/test run is claimed; the target
+family itself is unproved. See DEAD_ENDS.md. Seven owner/two runtime production
+files are restored byte-exact; only pre-edit regressions and coordination remain.
+After checkpoint: production/API/state/branch/module delta0. Timer lease4,
+absolute schedule2 and admission2 alternatives remain; durations, named IDs,
+leases, reactions and accepted queue values keep their existing owners. There
+is no retained arrival history, repeated cause, cardinality change, extra
+transition authority, semantic boolean or structural caller syntax. Cross-check
+named scheduling, TimedEvent, lease generation and LocalTimers contracts.
+Disposition: reopen; do not retain the removed production candidate. Supervision
+and pool caller types now have user priority. Full candidate patch/source hashes
+and both pre-edit witnesses remain under the existing external evidence root.
 
 #### Exact termination decoration — DX09 (pre-edit)
 
@@ -2696,3 +2735,167 @@ production+11/-9 includes comments, signature/body+4/-4/net0. SDK-dependent nati
 consumers remain unmigrated: this is a focused feature commit, excluded from the
 clean c6590d7 full24 run and from whole-repository/SDK-hiding acceptance. No new
 session accessor, callback family or dummy export is permitted to unblock them.
+
+
+#### Supervision and pool reply capabilities — DX02/10/11/17/20/26
+
+Law and source of authority: exact established reply recipients already contain
+the destination authority. They require no logical namespace. Logical replies
+retain their static hosting obligation. This is derived capability composition,
+not a new actor-model guarantee. Current ReplyRoute deliberately accepts both
+capabilities, so its metadata truthfully requires both even when the actual value
+is exact. Do not delete that metadata, add a dummy host, widen capabilities or
+infer a type-level proof from a runtime enum variant.
+
+The pre-edit real6c5c18a example copies remove only reply aliases/host declarations
+and the explicit supervisor external-client protocol. FIFO fails three missing
+Hosts E0277 diagnostics; supervision fails six. Neither is an inference failure.
+Worker business bodies and startup/replacement/admission/completion/shutdown work
+remain unchanged. Printed main output alone supplies no full failure/custody
+oracle. Raw REDs: POLICY-POOL-NO-ALIASES-RED and
+POLICY-SUPERVISION-NO-ALIASES-RED under the existing external results directory.
+
+Selected syntax:
+
+```rust,ignore
+let pool = queue::new(factory, roles, config).build()?;
+let supervisor = roster::new(factory, roles, config).build()?;
+let mut client = application.client()?;
+client.send(FifoCommand::submit(submission, job, client.recipient())).await?;
+```
+
+Ordinary construction fixes exact reply endpoints. Advanced FIFO callers may
+select logical_replies before build; supervisors select logical_status and
+logical_capabilities independently, in either order. A shared all-query logical
+choice was falsified by a real Status-only caller needing an unused Capability
+host (three E0277 diagnostics). Its nine supervisor files were archived/restored
+before the independent model was written. See DEAD_ENDS.md; do not restore that
+choice or add the unused host.
+
+Pre-edit ownership/model: reuse existing DeliveryRoute for both actual route
+substitutions—EstablishedRecipient<P> and ReplyRoute<P>. The sealed ReplyRoutes
+family selects only that metadata, not a second interpreter. It is needed because
+Worker/its reply protocol are determined when the owning builder builds. ExactReplies
+and MixedReplies are static choices with no runtime state or caller marker value.
+FIFO stores the actual chosen customer with queued/assigned work and emits the
+same chosen route's sends. Only accept_submission/Behavior require its existing
+Clone operation (one admission copy while preserving the original); only Behavior
+requires the selected SendsFor obligation. Supervisor status/capability fields and
+send lanes use separate instances of the same family, giving four meaningful
+combinations. No family-wide Clone/Send bound or generic default is added.
+
+Builders and complete construction refusals preserve the same zero-sized protocol
+index plus the original factory, prepared prefix, rejected role/reason, unvisited
+suffix, Config and lifecycle route. New FIFO build defers its existing ordered
+preparation until that explicit operation; Config performs no work. This adds one
+ordinary build call. FixedRoster/member lifecycle storage is not parameterized;
+only the six existing complete-error method seams and InitialProxyDecision retain
+the two indexes needed by the complete rejected event/error/diagnostic. Existing
+lower-order preparation, creation, observation, recovery, delivery and retirement
+machinery is reused. CustomerDelivery and its distinct original-customer sidecar
+belong to keyed/router paths and remain unchanged. No interpreter is broadened.
+
+Smallest actual runtime: an exact git archive of Bombay6c5c18a, with only five
+already-proven owner module/startup name adapters in lib.rs, worker_preparation.rs
+and local/effects/{creation,delivery,mod}.rs. ReadyForStartup is included. All
+shared registry package versions match the original lock; only the three explicit
+Behavior path patches change their sources. This is a local native integration,
+not a stub, published-package proof, or repository-wide Bombay migration.
+
+Focused evidence on the corrected independent model (pinned Nix):
+
+- Owner six focused tests pass debug/release (3.594/16.277seconds); strict focused
+  Clippy and formatting pass. Two original queue tests preserve every preparation
+  refusal/Config assertion, adding only build and removing unused mut; four command
+  witnesses retain the existing broad/mixed contract. These are bounded proofs:
+  initialization does not separately check distinct nonces; stateless preparation
+  cannot detect an early Reserve call; command sinks do not inspect route payloads.
+- Six actual native tests pass current1.99 debug/release (14.838/83.177seconds):
+  FIFO queued admission, original rejected job allocation, search completion,
+  supervisor tree retirement and both worker Stash/StopOnShutdown orders. Both
+  independent test reviews distinguish laws from missing or vacuous observations.
+- The wrapper oracle observes real Release acknowledgement, then authoritative
+  Empty BEFORE external root shutdown, then retained Released worker, matching
+  actual emitting address and zero stashed inputs. The earlier Retired expectation
+  was a test-model error: temporary recovery lawfully leaves an Empty stable proxy.
+  Dropping the actual held Stop in Stash makes both cases fail specifically at
+  the bounded Empty observation (15.715seconds); byte-restored source passes all6.
+- The native normal-retirement oracle exhausts ActorCustody fields and independently
+  checks Work cleanup, both notifications, tree origins/cardinality and Stopped
+  completion. One accepted final row is required, but exact inner receipt/effect
+  payloads and pairwise fresh addresses are not fully inspected. No stronger
+  accepted-prefix or cancellation claim follows. Cloning the test's submitted job
+  makes the allocation oracle fail; restored input passes (4.398seconds). This is
+  an input negative control, not an owning-production clone mutation.
+- Status-only and capability-only callers host only their genuinely selected
+  protocol; both-query callers emit both actual query kinds. All four combinations
+  and both selector orders compile (3.620seconds). Missing selected Status or
+  Capability hosts each fail three E0277 diagnostics (0.856/0.845seconds). Correct
+  protocol control compiles; identical wrong-protocol input fails E0277, and its
+  rustdoc denial runs exactly one case. Logical runtime rejection custody remains
+  unproved; these host probes are compile witnesses only.
+- The real replacement example executes original startup, business Stop,
+  replacement startup and orderly retirement; cleanup/notifications succeed
+  (1.196seconds). It retains the existing ManagedWorker alias in worker.rs.
+- Actual native optimized pool/command inline layout is256/80 bytes for BOTH exact
+  and mixed choices. No memory reduction, heap/latency or compile-speed advantage
+  is claimed. Cached timings are receipts, not comparable compile-cost benchmarks.
+  In the copied mains, pool90→90 and supervisor99→96 lines include Config adoption;
+  reply aliases1/2→0/0 and reply host rows1/2→0/0. The worker alias remains open.
+
+Current full physical ledger: production+1302/-395/net907 across15 source files
+including replies.rs; focused owner tests+8/-3/net5 across2files; public types+4/-0
+(ReplyRoutes, ExactReplies, MixedReplies, FifoBuilder). This is net-positive
+capability code, not code reduction. The recorded2026-10-09 expanded budget applies.
+No new dependency, actor control state, result alternative or runtime branch is
+introduced. The type propagation has a real source/review cost.
+
+Aggregate checkpoint scope: the14 changed existing source modules plus replies.rs,
+excluding five cfg(test) items. FIFO controls remain Constructed/Operating/Draining/
+Stopped/ForcedRetirement (5→5); FixedRoster controls New/Operating/ShuttingDown/
+Terminating/Stopped (5→5). All29 existing enum declarations retain142 named
+alternatives. Transparent syntax counts are unchanged:271 match expressions,
+658 arms,28 if tokens,2 loop,1 while,0 question-mark operators; these are not
+semantic-transition counts. Compiled nonblank lines8353→9211; nonblank physical
+production including comments8667→9549. Other owned submodules remain byte-exact.
+Every existing variant keeps its original current owned product; only the actual
+reply destination's static type is selected, never reconstructed from a second
+cause. Queue, admitted assignment, current worker attempt, lifecycle/recovery
+capabilities and complete rejected event retain their original authority. Source
+reviews conserve135 supervisor/64FIFO non-constructor function bodies after only
+removing the recorded generic indexes/trailing formatting commas. No arrival
+history, repeated cause, false cardinality, nested actor engine, semantic boolean
+or structural caller path is added. Cross-check the normalized roster/recovery,
+FIFO ownership, worker preparation, creation/provenance and DeliveryRoute laws.
+
+Final two-pass source review renews conservation of all135 supervisor/64FIFO
+non-constructor bodies and all29 enum field products after only the recorded
+route substitutions, generic indexes and optional trailing commas. The changed
+variant payloads are FifoCommand::Submit, its event/unexpected-input carriers,
+FifoDispatch's retained job/customer refusals and PoolState::Operating; supervisor
+Status/Capability, their event/rejected-input/diagnostic carriers and the existing
+InitialProxyDecision::Rejected. Each retains its original affine product.
+Public spellings under this scope: structs18→21, enums17→17, traits0→1,
+functions43→47, fields20→20, modules0→1; restricted declarations stay unchanged.
+Re-export blocks16→16 add FifoBuilder once. Counting four new public types, four
+qualified methods, the replies module and Route associated spelling gives+10/-0;
+the private sealed trait is not an external implementation port. Disposition:
+pass for the static capability/aggregate checkpoint only.
+
+Final immutable replay conserves708 Rust/manifest files, with owner workspace
+context matching186266e: six named owner tests per1.95 debug/release profile,
+six native cases per1.99 profile, four genuine hosting combinations, three
+selected-host denials and right/wrong-protocol controls. Every expected test name,
+zero unexpected ignored/failing cases, expected E0277 counts and raw log hash are
+checked. Receipts REPLIES-FROZEN-* and policy-applications/{final-replies-sources,
+final-replies-results}.json bind the external evidence. The frozen replay timings
+are0.519/1.280seconds owner and4.653/20.841native; they include cache effects.
+These repeat executions establish final source binding, not additional laws.
+
+Status: focused capability proof; whole-programme acceptance remains Open.
+Logical failure custody, all original owner consumers, portable
+native fixtures, minimum-compiler matrix, complete exact settlements, comparable
+compile costs, package/archive proof and both full repository gates are still
+owed before delivery. Do not call this published or merge the prototype. Timer
+ownership and the separate worker-factory alias/associated-type question remain
+separate open work; no placeholder or arbitrary bound may hide them.

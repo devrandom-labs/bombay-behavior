@@ -694,3 +694,31 @@ Entity consumer's outcome.family(CountersRole) fails E0599. Reopen the complete
 API until exact role projection and HTTP pass; no candidate repository
 production is retained. Reuse existing sealed family selection and typed
 shutdown products without caller paths, fake receipts or arbitrary bounds.
+
+### Occurrence-owned timers with private named scheduling ports
+
+The first DX13 target-indexed lowering made LocalTimers scheduling methods
+private while adding a shared target/scope implementation. Existing named
+scheduling calls in effects/mod.rs and local/environment.rs consume that crate
+port. Source inspection finds four such calls: narrowing the port has no
+provenance in the timer ownership law. This is a source-level privacy falsifier,
+not an executed compiler or timing result. No production tests ran against the
+candidate, and no compiler diagnostic selected a repair. The seven owner files
+and two runtime production files are restored; only pre-edit consumer/port
+regressions remain. The complete candidate patch and hashes are preserved
+outside the repository. The shared TimerId/Here family itself remains unproved,
+not disproved; re-establish the unchanged named port before any renewed lowering.
+Disposition: reopen. Supervision/pool caller types now have user priority.
+
+### One logical-reply choice for all supervisor queries
+
+Ordinary exact replies compile and execute without reply aliases or hosts, but
+the initial all-query logical_replies choice still forces a logical-status-only
+application to host the unrelated CapabilityResult protocol. The actual caller
+already supplies its Status host; REPLIES-STATUS-ONLY-UNUSED-HOST-RED fails three
+E0277 diagnostics for the unused capability host. Supplying that host would be
+a no-op workaround. Reopen the supervisor choice: status and capability queries
+are independent operations. Preserve ordinary inferred exact construction and
+select logical routing separately per query. The initial supervisor patch and
+hashes are preserved externally; remove its production representation before
+renewed lowering. FIFO's one-customer route family is a separate responsibility.
