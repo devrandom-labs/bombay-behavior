@@ -160,6 +160,9 @@ impl ClassifySettlement for crate::Never {
 /// and prerequisite types for that item. Interpreter corruption is the one
 /// shared [`InterpreterFault`] sum.
 ///
+/// Use [`OwnedItem`] for the standard whole-item receiving loan. Implement this
+/// lower-level trait directly when custody or the interpreter input differs.
+///
 /// A runtime cannot substitute a different rejection type for the same item:
 ///
 /// ```compile_fail,E0308
@@ -231,6 +234,94 @@ pub trait ActionItem: Sized + Send {
     /// that value. This decision does not change settlement status.
     fn retain_accepted(_: Self::Accepted) -> Option<Self::Accepted> {
         None
+    }
+}
+
+/// An action item interpreted as one whole owned input and an outside reply.
+///
+/// The interpreter borrows `Option<Self>` and its independent reply destination.
+/// It consumes the input only when it can preserve either the accepted value or
+/// the complete rejected, blocked or corrupt item in that destination. Dropping
+/// an interpretation future before consumption leaves the original input owned
+/// by the caller. Preparation and finalization use [`prepare_item`] and
+/// [`finish_item`]; they do not invoke an interpreter or move sibling items.
+///
+/// Implement [`ActionItem`] directly when interpretation needs a different
+/// custody or input equation. Implement this trait when the standard whole-item
+/// loan is the complete contract; the `ActionItem` implementation is supplied.
+///
+/// ```
+/// struct OpenFile { path: std::path::PathBuf }
+/// impl behavior::OwnedItem for OpenFile {
+///     type Accepted = std::fs::File;
+///     type Rejection = std::io::Error;
+///     type Prerequisite = behavior::Never;
+///
+///     fn retain_accepted(file: std::fs::File) -> Option<std::fs::File> {
+///         Some(file)
+///     }
+/// }
+/// ```
+///
+/// The request can now be interpreted through [`InterpretItem`] without copying
+/// custody aliases or preparation/finalization. Its file remains owned during
+/// source settlement; ordinary receipts use the default discharge policy.
+pub trait OwnedItem: Sized + Send {
+    type Accepted: Send;
+    type Rejection: Send;
+    type Prerequisite: Send;
+
+    /// Retain an accepted receipt only while it carries terminal custody.
+    ///
+    /// Returning `Some` preserves the same owned value on subsequent source
+    /// offers. The default discharges the receipt, as in [`ActionItem`].
+    fn retain_accepted(_: Self::Accepted) -> Option<Self::Accepted> {
+        None
+    }
+}
+
+impl<Item: OwnedItem> ActionItem for Item {
+    type Accepted = <Self as OwnedItem>::Accepted;
+    type Rejection = <Self as OwnedItem>::Rejection;
+    type Prerequisite = <Self as OwnedItem>::Prerequisite;
+    type Custody = (Option<Self>, Option<Self::Reply>);
+    type Input<'a>
+        = &'a mut Option<Self>
+    where
+        Self: 'a;
+    type Reply = ItemSettlement<
+        Self,
+        <Self as OwnedItem>::Accepted,
+        <Self as OwnedItem>::Rejection,
+        <Self as OwnedItem>::Prerequisite,
+    >;
+
+    fn prepare_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        prepare_item::<Self>(progress);
+    }
+
+    fn interpretation_input<'a>(
+        custody: &'a mut Self::Custody,
+    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
+    where
+        Self: 'a,
+    {
+        match custody {
+            (input @ Some(_), received @ None) => Some((input, received)),
+            _ => None,
+        }
+    }
+
+    fn finish_interpretation(
+        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
+    ) {
+        finish_item::<Self>(progress);
+    }
+
+    fn retain_accepted(accepted: Self::Accepted) -> Option<Self::Accepted> {
+        <Self as OwnedItem>::retain_accepted(accepted)
     }
 }
 

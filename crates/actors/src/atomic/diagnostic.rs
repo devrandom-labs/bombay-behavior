@@ -108,7 +108,7 @@ where
 ///
 /// A route for another diagnostic protocol cannot become an action item:
 ///
-/// ```compile_fail,E0271
+/// ```compile_fail,E0277
 /// fn require_action<Item: behavior::ActionItem>(_: Item) {}
 /// let route = behavior::Recipient::<behavior::MessageProtocol<behavior::MailAddr, u8>>::global(behavior::MailAddr(1));
 /// require_action(behavior_actors::atomic::DiagnosticAction::deliver(route, String::from("failed")));

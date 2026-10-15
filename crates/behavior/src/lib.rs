@@ -54,7 +54,7 @@ pub use effects::{
     CreationSettlement, CreationSettlements, CreationsSettled, InterpretCreations, InterpretItem,
     InterpretSends, Interpretation, InterpretationProgress, InterpreterFault, InterpreterRequest,
     InterpreterRequests, ItemSettlement, LogicalDeliveryProtocols, NoReturnToEmitter, NoSends, Own,
-    ParentReportReason, ReportToParent, RetirementCreationSettlement, ReturnsToEmitter,
+    OwnedItem, ParentReportReason, ReportToParent, RetirementCreationSettlement, ReturnsToEmitter,
     SendEffects, SendInput, SendLayer, SendSettlements, SendsFor, SettledItem, SettlementStatus,
     SourceAction, SourceActions, SourceAdmission, SourceCustody, SourceProgress,
     SourceSettlementCustody, SourceSettlements, finish_item, prepare_item, settle_item,
