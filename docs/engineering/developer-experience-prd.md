@@ -709,7 +709,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated native Node candidate reuses that spine through joined run_with, preserving the raw lending execute_with port; four current-compiler debug/release ownership journeys and two lifetime denials pass. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; existing Node business callbacks/configuration must hide transport SDK types under the latest user instruction. Complete receiving and HTTP consumer migrations pass their focused matrices |
+| DX01 | One actual Application owns root/scope/members/families; App removed. Isolated Node candidate now uses the same actor-only joined callback as local Application; original Work, counter reply/state and exact settlement custody pass both compilers/profiles, with independent reviews and a settlement-loss inverse. The paired SDK port/configuration/query custody remain open. Public topology candidate executes recursive, supervisor, FIFO and born/cold journeys in both profiles; counter uses inferred runners | Open: remaining selected semantics and full repository gates; existing Node business callbacks/configuration must hide transport SDK types under the latest user instruction. Complete receiving and HTTP consumer migrations pass their focused matrices |
 | DX02 | One declared topology derives spaces/custody and finite/born/cold actor types. Equal-type cold hosting, nested/cold recursive creation, both wrapper orders and original refusal custody pass both profiles/MSRV; recursive classes use nominal role owners. Wrong roles/hosts/births and missing owners remain denied | Open: canonical catalogue, complete host corpus and final gates |
 | DX03 | Sealed startup closes the tested native recursive proof. Actual303 owner tests plus19 runtime topology/cold/timer cases pass both compilers/features/profiles;23 static denials preserve report ingress, authority, role consistency, birth closure, hosting and origins. One obsolete cold restriction becomes an executable positive test | Open: latest-main reconciliation, all owner consumers, complete cancellation/freshness and full gates. Cold correction e6420ad and mailbox f54f644 are integrated at333dddb. Cold-member inferred descendants now pass108 native/composition test executions on current/MSRV debug/release after reusing the ordinary selected-edge rule. All24 current-compiler denials and renamed-dependency checks pass. Earlier raw MSRV snapshot failures remain recorded. Stage8503cf6 freezes nine compiler-specific differences (eight topology plus HTTP); unchanged fixtures now pass strict current/MSRV replay with all25 named denials, four harnesses and full source conservation. Three negative controls reject empty success, added source and the exact damaged HTTP expectation |
 | DX04 | Library-owned ApplicationOutcome joins work/root/notifications/families. Imported Node/invocation carriers now use that same product; nine native receiving operations migrate without assertion changes, and actual native corpus passes64 tests per current profile with one prior subprocess-only ignore. Completed selection returns value plus ApplicationRetirement; other phases return the whole report. FamilyRetirement selects both real role positions. Nine native journeys pass both compilers/profiles, ten denials pass; the migrated seven-suite corpus passes101 tests. Original comparative layouts remain872/648/768/944 bytes | Open: final-source MSRV/archive/full gates, proportional recovery and complete family disposal/operational inspection; three native inversions fail in debug/release and all six restored controls pass |
@@ -731,7 +731,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX20 | Application and exported interfaces establish clients/senders for exact recipients and stable Entity references. An actual newly imported fairness consumer exposes missing nonwaiting bound-sender admission. The 17-line exact-recipient try_send delegation now passes Box Full/retry/closed-prefix/origin regression and an actual Entity-capability denial in current debug/release; wrong-origin inversions fail in both profiles and restored controls pass. Current workspace and native strict lint pass; final-source MSRV and full gates remain open. Root is the default; one shared ExternalActor can select multiple typed targets. Reply inference, original-target allocation rejection/retry, exact command custody, fresh origins, prefix draining and wrapper orders pass; eight denials preserve capabilities | Open: complete correlated/cancelled/slow-customer/late-reply corpus, capacity and final gates; pre-root scope retains exact endpoints through missing-host/prepared/staging/HTTP retry |
 | DX21 | Method-local inferred shutdown ingress; runners require only capabilities they execute. Both root wrapper orders, request replay, natural domain/HTTP completion and complete retirement pass7 focused tests per profile; absent/ambiguous lanes remain denied; old-source inverse denies only E0277 | Open: generated canonical access, child-derived phases/drain corpus and final repository gates |
 | DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: callback/associated-type distillation and final full gates. Entity main now awaits retirement without a semaphore; shared actual actor/family policy plus seven native tests and the binary pass current/MSRV debug/release, preserving complete callback values. Awaitable retire_entity36af335 preserves exact-slot completion, forced mode, cancellation, fresh reactivation and independent native/callback/task failure in24 compiler/profile executions; the owner23 and consumers2+11 pass debug/release. Admission-only clone/unused reply protocol/target wrapper removed; HTTP router receives the ApplicationHandle directly; five source-backed runtime tests and the real example binary pass both compilers/profiles, preserving original order allocation; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
-| DX23 | Zenoh is Bombay’s sole internal network transport. Business code composes actors and uses typed Bombay clients/recipients; it must not depend on Session, Query or SDK configuration, select a bus or gain transport access. The current public Node SDK callback remains an unfinished surface and is excluded from the canonical application path | Deferred: implementing networking, durability, identity and deployment belongs to later PRDs. Preserve the transport-hiding interface requirement; an extra wrapper or an ignored Session argument does not satisfy it |
+| DX23 | Zenoh is Bombay’s sole internal network transport. Business code composes actors and uses typed Bombay clients/recipients; it must not depend on Session, Query or SDK configuration, select a bus or gain transport access. The remaining paired Node SDK callback, configuration and query custody are unfinished surfaces and are excluded from the canonical business path | Deferred: implementing networking, durability, identity and deployment belongs to later PRDs. Preserve the transport-hiding interface requirement; an extra wrapper or an ignored Session argument does not satisfy it |
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Canonical counter main51→36 lines; source569→45 after five law tests move to runtime. Pool source191→90 with its full source-backed oracle retained in fifo_pool_runtime. Current-thread entries join automatically and retain reports. Supervisor source332→99 plus61 domain lines, documents383→34 plus95 domain lines, timer188→56, HTTP main128→32 and Entity source401→297 (main95/account26/accounts176); their original native oracles remain in runtime tests. Earlier FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks. A separate frozen-input standard counter comparison (120cc2d versus the native interpreter overlay) passes40 fresh processes on current/MSRV debug/release: before/after allocation counts and complete heap products are equal in every configuration; optimized peak138724 bytes and end56 bytes. Default-feature counter only; configured-service, remote and latency costs remain unproved |
@@ -2562,11 +2562,17 @@ reviews pass. The committed correctionfb295b6 passes all four construction cases
 on both compilers in debug/release; the optimized original-defect replay fails
 both joined cases with NodeAbsent and its restored control passes. Fresh39-case
 immutable diagnostic checks pass both compilers with609 conserved hashes.
-Complete native/client/Node runtime and all24 native Nix checks are running on
-that clean combined source. The first runtime verifier counted nine compile
-fixture paths as outer tests; it receives no passing-matrix credit. Its corrected
-verifier independently requires465 listed outer tests and all nine fixtures.
-No pre-merge or unfinished check proves final combined acceptance.
+The corrected native/client/Node matrix passes465 listed outer tests and nine
+exact client fixtures in each current/MSRV debug/release profile, conserving609
+source hashes. Its first verifier incorrectly counted fixture paths as outer
+tests and receives no passing-matrix credit. Three extracted archives contain75
+byte-identical production files; renamed consumers pass18 journeys on all eight
+compiler/profile/feature configurations. A separate completion audit conserves
+609 repository and493 extracted/consumer files plus the three archive hashes.
+These are15 native and3 pure-IO journeys, not18 native journeys; archive UI and
+broader remote acceptance are excluded. Both independent evidence reviews pass.
+All24 native Nix checks remain running on cleanfb295b6. No pre-merge or unfinished
+check proves final combined acceptance or the later actor-only Node callback.
 
 Adversarial test-review limits, DX01/20/25: the second independent review
 confirms the joined Node correction only for actual association, declaration and
@@ -2596,3 +2602,26 @@ Establish a real caller witness before changing this existing interface;
 implementing new remote delivery, authentication, identity or deployment features
 remains outside this selected local programme. The current source-frozen gates
 verify the current implementation only and cannot close this new interface gap.
+
+
+Actor-only Node callback, DX01/20: the isolateddevx-network branch first records
+one real Counter caller that fails E0282 at its inferred one-argument callback.
+Replacing only run_with's SDK callback with the existing Application FnOnce
+contract removes the Session parameter and higher-ranked callback requirement;
+no type, constructor, state, dependency, capability widening or new bound is
+added. Work still returns intact on missing-host refusal. The focused current/
+MSRV debug/release journey passes, retaining an actual non-Clone File, original
+Box allocation, reply/origin1, retired Counter value1, both notifications and the
+exact complete final Stop settlement. A real completion-owner settlement-loss
+inverse fails0-versus1 and its restored control passes. Both invariant and
+counterexample reviews accept this scope. The same actor-only callback preserves
+export association: both receipt-profile construction cases pass, removing its
+private association fails exactNodeAbsent, and restoration passes optimized.
+Those cases issue no Query and prove no provider semantics. Mechanical joined
+caller migration and the direct Session-argument denial are still being verified.
+Shared target directories reused a control executable, including after sequential
+commands; both failed attempts and the overlapping control receive no acceptance
+credit. Rebuild all workspace owners in dedicated checkout targets, then repeat
+with exact suite/fixture names and conserved source hashes.
+Paired SDK work, network configuration and query custody remain unfinished;
+source-frozenfb295b6 gates cannot prove this later interface change.
