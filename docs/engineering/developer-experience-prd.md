@@ -2246,3 +2246,50 @@ next reconcile it after the c1d5b2b checkpoint. Final combined-source MSRV, opti
 inverse, TLS subprocess, packages and all native Nix gates remain open; no requirement
 is closed by focused tests. Evidence lives in the existing Bombay coordination PRD
 and NODE-CURRENT-VERIFIED/NODE-HOST-CAUSAL-VERIFIED artifacts, with both test reviews.
+
+Stash construction, pre-edit (DX14/19): deliberate API composition policy over
+an existing derived replay law. A release may emit accepted Actions for several
+held inputs; those actions have no rollback. Existing Stash execution therefore
+requires the sealed StaticallyInfallible error capability. Bare Stash::new and
+ActorExt.with_stash currently admit fallible inner actors that cannot execute,
+release anything, expose mutable state or recover a valid inner actor. Require
+that SAME existing capability at construction, with a diagnostic at the caller's
+composition expression. Preserve Never and MachineError<A,M,Never> witnesses,
+closed phases, wrapper order and complete FIFO prefix/stop/tail custody.
+
+Before production changes, prove owning construction with its existing u8 rejection and ordinary facade
+construction with an owned Box<[u8]> rejection both unexpectedly compile. Change the
+existing owning compile-fail rustdoc so bare construction is the oracle; add a
+focused facade compile-fail fixture and retain the prior closed-phase denial.
+Only then put Error:StaticallyInfallible on the two construction methods and
+annotate the existing sealed trait with actionable diagnostic text. No broader
+struct/inspection bound, new trait/type/default/dependency or transition change.
+Reuse existing stash properties, actual worker/scope queue orders and Machine
+rollback tests. Add a compile-pass infallible Machine caller beside an ordinary
+infallible actor. Expected owner production+one trait diagnostic+one method bound;
+Bombay+one method bound; test/guidance updates together. No catalogue migration.
+
+Checkpoint before: control states unchanged (inner B plus owned FIFO queue),
+subordinate state/results0 added; the queue owns exact deferred inputs needed
+for replay/retirement. Existing StashRoute has3 alternatives, no new branch or
+module. Public type/trait/spelling count unchanged. Count exact retained deltas
+and replay tests after; scan for semantic flags/history/duplicated causes/nested
+authority/structural caller syntax. Cross-check DX14/19, Actions ownership and
+Stash statically-infallible replay documentation. Independent design review
+finds no supported non-executable storage use lost; constructor eligibility is
+the sole narrower promise. Bounded retention/overflow remains separate open work.
+
+Both pre-production REDs now fail for the intended oracle: owner rustdoc says
+construction compiled despite compile_fail; Bombay's sole new invalid-error
+fixture likewise unexpectedly succeeds, while its prior four fixtures pass.
+Preserve those original logs. Retain only the existing capability at the two
+constructors; no runtime implementation or type declaration changes.
+
+Source correction before retention: the first owner prototype used the old
+0.23 documentation branch. Its stash and algebra source files are identical to
+published0.26 apart from this patch, but those runs receive no selected-owner
+acceptance. Rebase the patch on published98983b4 (Core/Actors0.26.0,
+macros0.14.2; pinned owner Rust1.95), repeat bare-constructor RED before its
+production edit, and repeat the complete proof matrix. Bombay's original RED
+already uses locked registry0.26.0. The canonical checklist remains in this PRD;
+feature source and exact verification are recorded by their own revisions.
