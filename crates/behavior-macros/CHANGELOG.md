@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.2...bombay-behavior-macros-v0.15.0) - 2026-10-16
+
+### Breaking
+
+- Generate pool-worker completion requests through the public `pool` owner.
+  Pair this macro version with Actors0.27; Actors0.26 continues using the
+  compatible0.14 macro line and its original `atomic` namespace.
+  ([#98](https://github.com/devrandom-labs/bombay-behavior/pull/98))
+
 ## [0.14.2](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.1...bombay-behavior-macros-v0.14.2) - 2026-10-13
 
 ### Fixed

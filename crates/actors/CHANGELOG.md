@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.26.1...bombay-behavior-actors-v0.27.0) - 2026-10-16
+
+### Breaking
+
+- Replace `atomic` imports with the owning `supervisor`, `pool`, `proxy`,
+  `worker` and `diagnostic` modules. Construct supervisors through
+  `supervisor::roster::new` or `supervisor::directory::new`, and pools through
+  `pool::queue::new` or `pool::router::new`, with each owner's named `Config`.
+  Worker startup uses `StartupLimit` and `StartupPlan`.
+  ([#98](https://github.com/devrandom-labs/bombay-behavior/pull/98))
+
+### Changed
+
+- Infer exact supervisor and FIFO reply protocols; logical status, capabilities
+  and replies remain explicit opt-ins. Accept deferred startup closures without
+  named worker or startup-plan declarations, preserving complete preparation
+  rejection values. ([#102](https://github.com/devrandom-labs/bombay-behavior/pull/102))
+
+### Fixed
+
+- Reject fallible inner behaviors at `Stash::new` construction. Replay still
+  accepts infallible actors and machines and preserves their independent queues.
+  ([#99](https://github.com/devrandom-labs/bombay-behavior/pull/99))
+
+- Accept ordinary pool workers with named completion and business-effect lanes.
+  Missing or ambiguous completion lanes remain compile-time errors.
+  ([#104](https://github.com/devrandom-labs/bombay-behavior/pull/104))
+
 ## [0.26.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.26.0...bombay-behavior-actors-v0.26.1) - 2026-10-16
 
 ### Fixed

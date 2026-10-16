@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.26.1...bombay-behavior-v0.27.0) - 2026-10-16
+
+### Added
+
+- `OwnedItem` declares standard whole-input custody and receipt retention once;
+  the library supplies the existing `ActionItem` receiving loan. Direct
+  `ActionItem` implementations remain available for different custody contracts.
+  ([#100](https://github.com/devrandom-labs/bombay-behavior/pull/100))
+
+### Changed
+
+- Align the shared workspace version with the Actors policy and module changes.
+
 ## [0.26.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.26.0...bombay-behavior-v0.26.1) - 2026-10-16
 
 ### Changed

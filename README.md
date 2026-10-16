@@ -1,11 +1,9 @@
 # Bombay Behavior
 
-> Core and Actors `0.26` retain independently owned action/startup receiving
-> values, creation-failure provenance and complete rejected private inputs.
-> They require Macros `0.14.1`; see the changelogs for the breaking API changes.
-> Repeated creation correlations return the original request with an explicit rejection.
-> Initial worker factories return a submission directly or a fallible Result.
-> Let constructors infer preparation; replace explicit error type arguments with `.build()`.
+> Core and Actors `0.27` provide named policy configuration, inferred startup
+> and replies, and complete action custody. Standard interpreter requests can
+> use `OwnedItem`. This release pairs with Macros `0.15.0`.
+> See the changelogs for public module moves and other breaking API changes.
 
 Bombay Behavior is the statically typed functional core of the Bombay actor
 stack. `bombay-behavior` defines the pure `Behavior` fold and its explicit
@@ -144,8 +142,8 @@ See [Nominal Behavior attribute](docs/behavior-attribute.md).
 
 ```toml
 [dependencies]
-bombay-behavior = "0.26"
-bombay-behavior-actors = "0.26"
+bombay-behavior = "0.27"
+bombay-behavior-actors = "0.27"
 ```
 
 Composition has two axes. `Behavior::layer` invokes a statically typed
