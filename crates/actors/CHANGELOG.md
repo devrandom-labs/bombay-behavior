@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Infer borrowed worker roles at roster and FIFO construction. Explicit
+  `new::<...>` calls require a fifth type argument; prefer inferred calls.
+  Reusing a factory returned on refusal may require a mutable rejection binding
+  under the existing `FnMut` contract. Preparation still starts only at `build()`,
+  and refusal returns every original owned input.
+
 ## [0.27.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.26.1...bombay-behavior-actors-v0.27.0) - 2026-10-16
 
 ### Breaking

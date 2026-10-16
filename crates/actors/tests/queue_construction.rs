@@ -1,4 +1,5 @@
 use behavior::{Actions, Address, CreationKind, EndpointAddress, Protocol};
+use std::cell::Cell;
 mod installed_control;
 use behavior_actors::Activate as _;
 use behavior_actors::diagnostic::DiagnosticDisposition;
@@ -66,8 +67,12 @@ impl SearchWorker {
 
 #[test]
 fn initial_workers_preserve_roster_order_and_fresh_creation() {
-    let pool = queue::new(
-        |_: &SearchRole| WorkerSubmission::immediate(SearchWorker),
+    let prepared = Cell::new(0_usize);
+    let declaration = queue::new(
+        |_| {
+            prepared.set(prepared.get() + 1);
+            WorkerSubmission::immediate(SearchWorker)
+        },
         OrderedRoles::new(SearchRole::Primary, [SearchRole::Reserve])
             .expect("two distinct search roles"),
         queue::Config {
@@ -78,9 +83,12 @@ fn initial_workers_preserve_roster_order_and_fresh_creation() {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::terminate(),
         },
-    )
-    .build()
-    .unwrap_or_else(|_| panic!("both workers are prepared"));
+    );
+    assert_eq!(prepared.get(), 0);
+    let pool = declaration
+        .build()
+        .unwrap_or_else(|_| panic!("both workers are prepared"));
+    assert_eq!(prepared.get(), 2);
     let initialized = pool
         .initialize()
         .unwrap_or_else(|_| panic!("initialization emits the complete creation batch"));
@@ -114,8 +122,8 @@ fn preparation_refusal_returns_all_workers_and_original_configuration() {
     let route = Box::new(vec![173_u8, 179]);
     let route_address = core::ptr::from_ref(route.as_ref());
     let activation = StartupLimit::new(2).expect("two activations");
-    let rejection = match queue::new(
-        |role: &SearchRole| match role {
+    let mut rejection = match queue::new(
+        |role| match role {
             SearchRole::Primary | SearchRole::Reserve => {
                 Ok(WorkerSubmission::immediate(SearchWorker))
             }
