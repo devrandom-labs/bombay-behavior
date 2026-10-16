@@ -80,12 +80,18 @@ pub struct FifoBuilder<Factory, Role, Source, DiagnosticRoute, Replies> {
 }
 
 /// Begin pool construction with named policies and exact customer replies.
+///
+/// The factory accepts a borrowed role. Its parameter and return types are
+/// inferred here; preparation runs only when [`FifoBuilder::build`] is called.
 #[must_use]
-pub fn new<Factory, Role, Source, DiagnosticRoute>(
+pub fn new<Factory, Role, Source, DiagnosticRoute, Preparation>(
     factory: Factory,
     roles: OrderedRoles<Role>,
     config: Config<Source, DiagnosticRoute>,
-) -> FifoBuilder<Factory, Role, Source, DiagnosticRoute, ExactReplies> {
+) -> FifoBuilder<Factory, Role, Source, DiagnosticRoute, ExactReplies>
+where
+    Factory: FnMut(&Role) -> Preparation,
+{
     FifoBuilder {
         factory,
         roles,

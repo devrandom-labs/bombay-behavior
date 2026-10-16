@@ -775,7 +775,7 @@ fn construction_rejection_returns_the_worker_roster() {
     .unwrap_or_else(|_| panic!("worker roles are unique"));
     let startup = StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid"));
 
-    let rejection = match queue::new(
+    let mut rejection = match queue::new(
         move |role: &WorkerRole| {
             factory_calls.borrow_mut().push(*role);
             match role {

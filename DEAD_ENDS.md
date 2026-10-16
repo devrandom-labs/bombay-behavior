@@ -241,3 +241,16 @@ semantic boolean, or positional user syntax was added. The structural residue
 was the new bound repeated at many generic template declarations. The
 shutdown PRD, normalized atomic-actor documents, `BehaviorLayer` law, and
 `AGENTS.md` compiler-friction rule were cross-checked.
+## Deferring the worker factory input contract until build
+
+Disposition: `reopen`.
+
+Published queue/roster constructors stored an unconstrained factory, leaving its
+borrowed-role contract to build. Bombay's ordinary `|_|` FIFO replacement
+factory then fails lifetime inference. The 17-file mechanical migration was
+archived and restored byte-exact, without caller annotations. Reuse the existing
+call contract at the owning constructor; no new trait, default or runtime
+capability is justified. The abandoned caller batch retains no production change.
+Actor control states, subordinate alternatives, transition branches, modules and
+public types are unchanged. Cross-check construction custody, worker preparation
+order and the compiler-friction checkpoint before resuming migration.

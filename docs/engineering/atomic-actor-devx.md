@@ -37,8 +37,14 @@ drain and diagnostic disposition. No-op sources, unused routes and guessed
 nonces are not policy choices. Temporary recovery has no unused automatic
 source; immediate startup has no dummy asynchronous plan.
 
-Ordinary factories let Rust infer the composed worker type. Pass startup work
-as `WorkerSubmission::with_startup(worker, move || async move { ... })`; its
+Ordinary factories let Rust infer the composed worker type. Roster and FIFO
+constructors also infer the factory's borrowed role from `|role|` or `|_|`.
+When migrating explicit constructor type arguments, add a fifth inferred slot,
+or omit the type arguments. Reinvoking a factory returned on refusal needs
+mutable access: bind the owned rejection with `let mut rejection`. The factory
+remains an `FnMut`; neither constructor invokes it before `build()`.
+
+Pass startup work as `WorkerSubmission::with_startup(worker, move || async move { ... })`; its
 actual `Result` determines readiness and rejection. This avoids naming the
 wrapped worker, a startup struct or its associated types. Construction stores
 the closure; the existing initialization-authorized startup operation calls it

@@ -158,8 +158,8 @@ fn canonical_construction_prepares_every_declared_role() {
     .expect("search roles are unique");
     let startup = StartupLimit::new(2).expect("startup capacity is positive");
 
-    let _supervisor = roster::new(
-        move |role: &SearchRole| {
+    let declaration = roster::new(
+        move |role| {
             observed.set(observed.get() + 1);
             Ok::<_, PreparationRejection>(submission_for(role))
         },
@@ -171,10 +171,12 @@ fn canonical_construction_prepares_every_declared_role() {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::deliver_to(DiagnosticRoute),
         },
-    )
-    .publish_lifecycle(LifecycleRoute)
-    .build()
-    .unwrap_or_else(|_| panic!("every initial worker prepares"));
+    );
+    assert_eq!(prepared.get(), 0);
+    let _supervisor = declaration
+        .publish_lifecycle(LifecycleRoute)
+        .build()
+        .unwrap_or_else(|_| panic!("every initial worker prepares"));
 
     assert_eq!(prepared.get(), 3);
 }
@@ -184,7 +186,7 @@ fn route_free_diagnostic_termination_needs_no_annotation() {
     let roles = OrderedRoles::new(SearchRole::Search, []).expect("one role is non-empty");
 
     let _supervisor = roster::new(
-        |role: &SearchRole| Ok::<_, PreparationRejection>(submission_for(role)),
+        |_| WorkerSubmission::immediate(SearchWorker::Search),
         roles,
         roster::Config {
             startup: StartupLimit::new(1).expect("startup capacity is positive"),
@@ -378,8 +380,8 @@ fn preparation_rejection_returns_every_owned_input() {
     let route = Box::new(vec![173_u8, 179]);
     let route_address = core::ptr::from_ref(route.as_ref());
 
-    let rejection = match roster::new(
-        |role: &SearchRole| match role {
+    let mut rejection = match roster::new(
+        |role| match role {
             SearchRole::Index => Err(PreparationRejection::IndexUnavailable),
             SearchRole::Search | SearchRole::Spellcheck => Ok(submission_for(role)),
         },
