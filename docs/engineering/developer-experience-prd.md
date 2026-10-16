@@ -1167,8 +1167,11 @@ actual fixtures:128 unique (20 positive/108 negative),30 suites/26 targets,
 minimum.patch and original snapshot/case/ignored declarations stay unchanged.
 Both independent source/oracle reviews and current debug/release previews pass
 25 identical outer cases across seven targets, with16 UI fixture executions per
-profile. Full128-case corpus, minimum-compiler preview, remote cancellation and
-broad gates remain separate. The patch is private pending the AGENTS file-budget
+profile. The unchanged diagnostics checker passes all128 cases on both current and
+minimum compilers; the same25 focused cases pass debug/release on both. A fresh
+exclusive-target full workspace run passes791 tests with two existing controlled
+subprocess skips in295.082s. These are private source-selected proofs; registry,
+remote cancellation and authoritative native Nix gates remain separate. The patch is private pending the AGENTS file-budget
 expansion; the actual branch stays clean at native aedca53. Existing receipts
 NATIVE-MIGRATION-{FORMATTED,ASSERTIONS,INPUTS} bind the prepared result.
 
@@ -1186,17 +1189,33 @@ copy now; it is outside the pending24-file caller-only approval and remains a
 separately counted adoption prerequisite. Do not weaken the version assertion
 or rewrite historical evidence as current-source execution.
 
-A separate DX07 hygiene audit must check generic send products before their
-normal publication: changing only valid caller generic parameter spellings must
-not change construction, inferred insertion, effects or runtime obligations.
-Use a real Bombay facade actor with two exact delivery lanes and Application
-construction, with plain-name control versus names matching generated send
-parameters. Both own the same concrete move-only business inputs. A valid caller
-must not reserve macro implementation names. A compile failure here would be an
-independent owner witness, not justification for renaming the consumer or adding
-bounds. Reuse the existing derive/nominal generation; no production change is
-proposed until the consumer isolates the gap. Keep this audit separate from the
-pending native caller migration and preserve its completed proofs.
+A separate DX07 hygiene witness now proves that legal caller names collide with
+private macro parameters: the real two-lane Bombay consumer compiles with plain
+names and fails only two E0403 errors after alpha-renaming them to generated
+Input/SendPath names. Both fresh exclusive targets compile their actual roots;
+identical locks contain65 dependencies plus the consumer. The future is only
+constructed, not polled: this is compile evidence, not native execution. An
+initial shared-target apparent pass reused the plain binary and is uncredited.
+
+Derived syntax must preserve legal caller spellings, concrete ownership, inferred
+insertion and runtime obligations. Rust documents procedural-macro unhygiene;
+private binders must avoid referenced names as well as declared parameters,
+including raw identifiers and occupied fallback names. Pre-edit regression scope:
+all11 synthesized type-parameter names across derive/nominal sends, named lane
+methods, alias/bound capture and existing nominal lifetime/const support. Reuse
+GenericUses, BTreeSet, existing contracts, lanes and interpreter bodies. Select
+fresh private identifiers consistently; never reserve implementation spellings
+for callers, add bounds or change public generated names. See the
+[Rust macro reference](https://doc.rust-lang.org/reference/procedural-macros.html#procedural-macro-hygiene).
+
+Expected owner paths: existing macros/src/lib.rs, macros/CHANGELOG.md and
+actors/tests/send_products.rs (no new owner paths); production estimate net60–100
+lines, zero public types/traits/bounds/state/storage. One actor transition authority
+and all control/result alternatives, ordering, custody and interpreter paths stay
+unchanged. The private name set owns only lexical collision avoidance, not actor
+state. Record exact line/branch/spelling counts and double review after the RED
+cuts and before retention. Keep this repair separate from the pending native
+caller migration; its source-selected proofs remain valid at a863633.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
