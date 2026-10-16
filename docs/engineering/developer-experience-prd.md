@@ -1031,13 +1031,69 @@ all 2,342 frozen inputs, including tools and archive bytes. Current strict Clipp
 passes in 8.210s; actual workspace formatting passes in 5.014s. These observed
 build times are not a causal compile-performance comparison. Production field
 storage is unchanged; no full runtime heap/latency improvement is claimed.
-Both independent terminal reviews pass. Registry delivery and Linux CI remain
-pending. PR #111 stacks this owner change on PR #110; it is not authorization to
+Both independent terminal reviews pass. Exact-head Linux CI38945141204 passes
+all11 jobs; PR-only checks still require the eventual main base. PR #111 is ready
+for review and stacks on PR #110; it is not authorization to
 merge or publish. Actual Bombay adds 205 test and 22 coordination lines across
 two paths and no production code. Receipts live under the existing evidence root's `stash/` directory;
 `PREEDIT-TAKE-TERMINAL-AUDIT`, `FOCUSED-TERMINAL-CHECKPOINT` and
 `POSTLOWERING-DRIFT` and `RETAINED-REVIEW` bind their exact sources, failures and dispositions. These
 are bounded custody proofs, not bounded retention or full-programme acceptance.
+
+#### Stash limits — DX06/14/17 pre-edit law
+
+Selected policy: `actor.with_stash(8, refused, route)` or the owning
+`Stash::new(actor, 8, refused, route)` starts with an empty FIFO. The limit counts
+held logical inputs, not allocation bytes, Machine deferrals, runtime mailboxes
+or outgoing effects. Zero is valid. Only a newly selected `Stash` input at the
+limit is refused: its original `User` (sender and move-only message) moves to the
+supplied typed recipient through Actions, and the actor continues. Holding owns
+the original input; refusal owns it in an explicit send; release/take transfers
+that same ownership. No duplication, eviction, crash or rollback is involved.
+`Deliver`, `Release`, non-user events, initialization and stop keep their existing
+laws, including successful effect prefixes and untouched replay suffixes.
+
+This is Bombay resource policy, not an actor-model guarantee. Cross-check the
+[actor computation reductions](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/E9A5266BA5D37A1856D50C939679F31C/S095679689700261Xa.pdf/a-foundation-for-actor-computation.pdf),
+Behavior layer laws L4–6/8/9 and all four normalized atomic documents.
+`VecDeque::with_capacity` reserves storage; it does not enforce this limit.
+Expected refusal is a normal typed effect, not transition failure. Use existing
+DeliveryRoute logical/exact/mixed capabilities and SendProduct interpretation,
+settlement and source custody. A same-event `StashSends { actor, refusals }`
+preserves the inner effects first; add no synthetic ingress/event wrapper.
+The repeatable route alone needs Clone because DeliveryRoute consumes it;
+neither input nor inner actor acquires that bound.
+
+Reuse the one existing queue/replay authority as explicit `UnlimitedStash` for
+advanced unbounded use, including real Never/identity callers that need no
+refusal capability. Finite Stash adds only an empty queue owner, limit and real
+recipient. Do not convert populated queues without returning every original
+input on refusal. `take()` leaves the limit, recipient and pure selector intact.
+The finite constructor/generic-arity break is deliberate and requires migration
+guidance; the ordinary facade infers the complete type. There is no optional
+dummy port, policy trait, default generic, second queue or second replay engine.
+
+Isolated owner/native `codex/devx-stash-limits` start at5068f6a/c8dfe3b.
+Before production, execute focused owner and real Application REDs at the desired
+syntax, with frozen original dependencies. Prove zero/full/refill/release, two
+original senders and move-only allocations, both shutdown orders, MessageAdapter
+and Machine, inner initialization/sends/creates/stop, accepted refusal and closed
+exact-recipient custody. Review every test twice. Static denials must preserve
+protocol/phase/infallibility and exact-only routing without a logical host.
+Migration may begin only after the smallest complete downstream proof.
+
+Expected owner scope: stash/{mod,queue,limit}.rs replacing stash.rs, crate exports,
+one focused test, existing guide/changelog; about150 net production lines,
+two additional public types (UnlimitedStash and StashSends), no trait/event/error.
+Bombay scope: ActorExt, one native test and coordination; about20 production lines.
+Baseline:223 stash lines, one module, two types/two traits,11 public spellings,
+zero control-state sums, three transient route choices, three match/two if/one
+while. Surviving values are inner behavior, pure selector, FIFO originals, finite
+limit and actual refusal capability. Record measured drift and loss/order/sender/
+limit inversions before retention. Two independent pre-edit design passes clear
+only this Stash hypothesis. Machine bounded deferral remains open: Clone can
+share state, so cloning then discarding a mutated candidate does not prove rollback.
+Do not lower that reopened Machine hypothesis or weaken its existing bounds.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
