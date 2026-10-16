@@ -729,7 +729,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: final complete consumer and repository gates. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
-| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
+| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: shared generic-product insertion3389c00 passes1,003 owner tests,123 doctests,11 Nix gates and complete missing/ambiguous controls; finish downstream retention, catalogue reconciliation and delivery. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
 | DX10 | Owning roster/directory/queue/router constructors use Config and explicit recovery. Registry270/150 supplies startup closures and reply-lane policy. All338 library tests pass both compilers/profiles with1013 original assertions;31 resumed caller tests and real examples have source-selected503 proofs. Startupf244566 removes its named plan/alias. | Open: publish the reviewed inference repair, verify registry-only callers/nested locks, audit policy necessity/names and complete costs/full gates. Breaking source costs remain explicit. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
@@ -1033,8 +1033,8 @@ build times are not a causal compile-performance comparison. Production field
 storage is unchanged; no full runtime heap/latency improvement is claimed.
 Both independent terminal reviews pass. Exact-head Linux CI38945141204 passes
 all11 jobs. PR #111 merged into feature PR #110 as2d23f11; PR #110 merged into
-timer PR #109 as5a29896. These feature-base merges do not establish main or
-registry delivery. Actual Bombay adds 205 test and 22 coordination lines across
+timer PR #109 as5a29896, followed by its main merge e42088c6.
+Main delivery is established; no new registry publication is inferred. Actual Bombay adds 205 test and 22 coordination lines across
 two paths and no production code. Receipts live under the existing evidence root's `stash/` directory;
 `PREEDIT-TAKE-TERMINAL-AUDIT`, `FOCUSED-TERMINAL-CHECKPOINT` and
 `POSTLOWERING-DRIFT` and `RETAINED-REVIEW` bind their exact sources, failures and dispositions. These
@@ -1157,6 +1157,45 @@ leave all interpretation/custody/initialization ordering code byte-identical.
 This removes per-product caller-side insertion machinery rather than adding a
 parallel constructor or callback adapter. Preserve the original stash regression
 and prove it after integrating the shared fix before further stash lowering.
+
+Shared insertion is now implemented on `codex/devx-send-products` at3389c00.
+The common derive adds56 conditional field delegations across11 existing
+products, no public types, stored fields or actor control states. Macro source
+is+44/-1 (six added rustdoc lines); the existing interpreter/custody generation
+and nominal actor lane generator remain byte-identical. Seven focused tests
+pass debug/release, including actual move-only nominal messages and separately
+caller-local pure construction. Exact static checks retain E0277 for absence
+and E0283 for duplicate/aliased lanes, with explicit-selection positives.
+All1,003 workspace tests pass directly and under the release-profile Nix gate;
+all123 doctests and all11 native checks pass. Rooted realization takes278.226s;
+the authoritative flake rerun takes2.640s with835 frozen inputs/HEAD unchanged
+and every output's actual deriver/hash verified. Package preflight passes in
+10.321s (two workspaces; four fixture dead-code and two unused historical-patch
+warnings retained). Actual archives contain249 safe members/225 matching Rust
+files at the exact clean commit. FIFO/keyed positive completion and all four
+missing/ambiguous denials pass in both profiles without snapshot changes.
+These times are observations, not a controlled compile-performance comparison.
+New blanket impls can overlap hand-written field witnesses; migration guidance
+requires removing those duplicates. Interpretation and runtime storage are
+unchanged; no global memory/latency claim follows.
+
+The finite candidate is lowered again using this common fix. Seven focused
+pure tests pass debug/release, including both actual timeout orders and repeated
+elapsed denial. The outer order observes held cardinality; original held sender/
+Box recovery is independently checked in the reverse order. Existing26 algebra
+cases pass both profiles, including the new initialization/creation and replay
+stop-prefix/suffix cuts; only six old unlimited constructor names change there.
+Native accepted/closed-refusal journeys pass both supported compilers/profiles
+(eight executions), with the exact three owner paths and unchanged397 nonowner
+records. These are source-selected proofs; native static controls, independent
+loss/order/limit inversions, resource models, migration and full final-source
+gates remain open. The initial outer test wrongly expected Release to override
+its pure selector; the authoritative unchanged replay correctly reholds that
+input. The oracle was corrected, without a production change. A whole-product
+Debug-only assertion was replaced by the same complete PartialEq observation,
+without adding a bound. Earlier failed/setup runs remain uncredited in the
+existing evidence root; records under `send-products/` and `stash-limits/` bind
+all raw logs, source maps and before/after reviews.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
