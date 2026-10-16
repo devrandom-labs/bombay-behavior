@@ -938,7 +938,7 @@ registry adoption and the broader DX17 catalogue/bounds audit remain open.
 #### Stashed-message recovery — DX04/14/17 pre-edit law
 
 A retired stash owns original mailbox inputs, not just a queue length. The
-smallest caller recovery should be `let pending = stash.take_messages();`:
+smallest caller recovery should be `let pending = stash.take();`:
 move every currently held `User` in FIFO order to the caller, leave the stash
 empty, and preserve its inner behavior and routing policy. A second take is
 empty. There is no replay, transition, effect, cloning or new lifecycle
@@ -972,7 +972,11 @@ public type/trait. Bombay adds its native test and coordination only, no
 production. Baseline stash.rs is206 physical lines, one module, two public
 types/two traits and10 qualified public declarations. There is no stored control
 sum; StashRoute's three transient choices, the inner actor and the original
-FIFO remain the only values needed. There are three match, two if and one while
+FIFO remain the only values needed. `take` uses the stash receiver as its
+context; it takes the held messages, not the wrapped actor or unread runtime
+mailbox. The earlier `take_messages` compile failures remain valid evidence of
+the ownership gap; repeat the pre-edit proof for the selected spelling.
+There are three match, two if and one while
 selection keywords. Retained representation must add no state, field, enum,
 selection or generic parameter; only the recovery method changes public access.
 Record measured drift, two independent reviews and source-bound failure
