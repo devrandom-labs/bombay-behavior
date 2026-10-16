@@ -894,6 +894,7 @@ publication or downstream compatibility.
 | Bombayb8c2e6f, registry026/142 | All25 fresh native aarch64-Darwin checks pass in4750.519s with623 conserved hashes:776 outer tests/132 UI fixtures, selected remote debug/release422 outer+20 UI, owner coverage and50 audit controls. Two independent audits pass. | PR383; no reported classifier crash. Not the270 catalogue graph, all-systems proof or automatic-timer implementation. Axum example gate compiles but executes zero tests. |
 | Cataloguece12436 with source-selected503 |31 identical caller tests in seven targets pass1.99/1.96 debug/release; separate protected held-startup/sibling-progress retirement passes all four configurations;397 root and322 protected nonowner records remain exact. | Same747 original assertions plus Released; no final registry delivery, exhaustive custody or new readiness proof. Earlier inaccurate inverse matcher remains a failed matcher, separately attributed. |
 | Startupf244566 with source-selected503 | Existing native+pure tests pass both compilers/profiles (eight test executions), four actual example runs pass;2080 inputs conserved. Strict whole-workspace/all-target Clippy passes14.476s. | Same published closure law; no new panic/cancellation policy. Ordinary initial-factory inference still needs PR107. |
+| Bombay1cc0953 with mainf25e4a0, registry270/150 | Four supported-compiler/profile remote client runs each pass21 exact outer tests and nine UI denials; original declaration formatter fails the exact privacy assertion in current debug/release. Strict owner/client Clippy and workspace format pass;1876 inputs conserved before documentation updates,400 lock records exact; two independent reviews pass. | Normal Display/Debug privacy preserves original source/target. No full SDK hiding or execution proof for every Debug variant. Two stale-binary attempts were rejected and excluded; profile-specific rebuilds establish the six accepted comparisons. |
 | Frozen V3 local corpus, registry270/150 | Strict replay passes1.99/1.96 in167.118/174.517s:124 unique fixtures (19 positive/105 negative),29 suites,25 targets,107 outer passes and one named parent-invoked child ignore;1248 inputs conserved. | Local axum-enabled coverage, not remote/minimal-feature/archive/full-programme acceptance. Post-run patch serialization has a separate equivalence proof. |
 | Published270/150 archive/registry consumers | All220 shipped Rust files match reviewed release source. Five unchanged pool journeys execute against actual registry owners in debug/release without patches. | The runtime is adapted214d with five recorded naming/startup adapters; not current unadapted Bombay, minimum compiler or full catalogue gates. |
 
@@ -963,9 +964,15 @@ constraints. Reopen from the last retained representation, not the removed code.
 
 The Named(TimerId)/Owned(position) queue probe passes supported compilers/profiles
 and its collision inverse, proving only disjoint replacement/cancel namespaces.
-The no-ID compile witness remains RED; its three-notice runtime oracle does not
-prove cancellation, rearm, stale/duplicate/rejected/exhausted scheduling or inner
-settlement custody. Actual typed requests, wrappers and interpreter integration,
+A fresh compile-only witness on Bombay1cc0953 and actual registry270/270/150
+removes three IDs from the existing OneShot/OneShot/Periodic journey. It fails
+at all three missing-TimerId sites (plus one inference cascade), preserving all
+400 lock records and625 frozen inputs. Two independent reviews confirm the
+sole test-file change and unchanged named control; no runtime credit follows.
+Its three-notice oracle still does not prove cancellation, rearm, stale/duplicate/
+rejected/exhausted scheduling or inner settlement custody. An eventual runtime
+witness needs a finite watchdog and a genuine explicit named-request control;
+Rust cannot preserve both wrapper-method arities. Actual typed requests, wrappers and interpreter integration,
 including repeated occurrences and reorder/zero/failure/retirement journeys,
 remain required before migration. See retained timer witnesses and DEAD_ENDS.md.
 
@@ -975,3 +982,49 @@ retain accepted-prefix receipt, interrupted original, untouched suffix, actor an
 independent work/cleanup/notifications. This does not prove queue-prefix delivery
 or opaque panic-cause identity. Its b8/026 full-gate proof above is a prerequisite,
 not an implementation of automatic timer ownership.
+
+The next target-family experiment is not accepted yet. Before production,
+`wrapped_send_requests` fails at all four no-ID owning constructors and the two
+missing owned request/event aliases. It reuses the actual two templates, both
+Shutdown orders, nonempty inner initialization and existing ReportToParent lane;
+complete schedule/report slices and creation/verdict lanes are inspected. The
+next periodic generation must be accepted, not merely emitted. Separate native
+proof and explicit named/custom-port controls precede any catalogue migration.
+
+The proposed ownership equation is shared: request `(target,generation,time)`
+remains outside conversion until exact receipt `(target,generation)` or rejection
+`(original request,reason)`; elapsed input returns to that exact typed ingress.
+The closed targets are the existing TimerId (shared named replacement) and Here
+(current wrapper occurrence). This is deliberate Bombay composition policy;
+fresh creation, pure Actions and interpreter-owned clock laws stay unchanged.
+A public timer module would own four generic request/receipt/event families,
+with no generic defaults; existing root names project TimerId and four owned
+aliases project Here. Owned constructors supply their own capability. This adds
+one sealed capability trait, no behavior/state/registry/facade, and shares rather
+than copies the existing ActionItem custody implementation. A bound belongs only
+to its actual named or owned interpreter port. TimedEvent remains the existing
+named alias for Lease/Presence/CircuitBreaker; the four ordinary wrappers get
+owned elapsed lanes and delete their stored IDs.
+
+Expected scope: these eleven existing production files plus one timer protocol
+module; two runtime source files, four wrapper owners, their domain/event/module
+surfaces and focused tests. Expected production delta is net-positive, budgeted
+at no more than250 lines before remeasurement, not described as cleanup. Existing
+named LocalTimers schedule_at<Path>/schedule_after<Path> keep their exact single
+Path parameter and InjectEvent bound, including custom paths. Only new owned
+requests derive the occurrence ordinal; reject unsupported custom owned paths
+statically. The private queue key is an exhaustive Named/Owned sum, with no
+fallback ID, counter, wrapping ordinal or inferred lifecycle provenance. Named
+new/struct-literal/pattern/From syntax receives compatibility witnesses.
+
+Baseline checkpoint V2: eleven selected production module files,2126 lines,
+56 match arrows, eight enum declarations and56 direct public spellings. It
+excludes true test-module tails and the two inline test-only idle/live methods;
+the first truncating counter was rejected. Current states are B × TimerLease
+(NeverIssued/Armed/Idle/Exhausted), or B × OneShotSchedule (Unscheduled/Scheduled);
+TimerAdmission remains Accepted/Ignored and scheduling rejections remain2/3.
+Only current generation/deadline/inner behavior are needed; remove the obsolete
+ID from an owned schedule. No arrival history, repeated cause, semantic boolean
+or second transition authority is justified. Baseline disposition: pass; the
+candidate still needs exact after-counts, both reviews, inverses, supported
+compiler/profile owner+consumer proofs and memory measurements before retention.
