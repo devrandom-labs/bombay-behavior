@@ -745,7 +745,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained; complete final registry-only protected consumers and gates. Passing retries or repaired output headers do not explain that hang or establish compressed-content/permanent Darwin repair. |
-| DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
+| DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.28.0 and macros0.15.0 match verified registry checksums, tags and224 shipped Rust files at d9237dde. The normal release workflow and recovered Core tag/release are recorded below. Feature branches carry finite holding and generic-send fixes; registry0.28 does not contain them. Native source-selected and archive proofs retain their exact source limits. | Open: reviewed candidate publication, actual registry-only catalogue/nested-lock adoption, final feature/consumer/cost evidence, delivery docs and complete programme gates. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
 
@@ -1411,14 +1411,37 @@ original source scope. Current comparable compiler, service, remote, latency,
 heap and retention measurements remain with DX06/26; lexical/source counts are
 review diagnostics, not semantic or performance proof.
 
-Next bounded measurement (production/dependency/API edits: zero): one pure stash,
-64 move-only messages with 512-byte allocations, limits0/1/8/64 and explicit
-unlimited control. Measure heap while all held and refused originals coexist,
-after deliberate refusal disposal, after take, and after all custody is dropped.
-Use existing dhat0.3.3, exact original-allocation/sender/FIFO/effect oracles,
-an empty-input control and repeated optimized runs on both supported compilers.
-This measures retention placement, not equivalent acceptance policy, whole-process
-RSS, mailbox bounds or runtime throughput; no performance threshold is invented.
+The bounded stash measurement follows pre-edit law50aa188 and owner aafd1e9:
+one pure stash, 64 move-only messages with 512-byte allocations. Existing
+dhat0.3.3 measures requested live heap bytes. Five optimized repetitions per
+policy on Rust1.99/1.96 give identical values (50 executions), with ten empty
+controls and 841 conserved inputs per compiler. Exact original allocation,
+sender, contents, FIFO, refusal destination and complete Actions are checked.
+
+| Holding policy | All originals retained, bytes | After refusal disposal, bytes | Peak heap bytes | Allocation calls |
+| --- | --- | --- | --- | --- |
+| Limit0 | 34816 | 0 | 34848 | 133 |
+| Limit1 | 34912 | 608 | 34944 | 133 |
+| Limit8 | 35008 | 4288 | 35040 | 127 |
+| Limit64 | 34304 | 34304 | 34304 | 69 |
+| Explicit unlimited | 34304 | 34304 | 34304 | 69 |
+
+The limit bounds the stash, not a consumer retaining its complete refusals.
+Taking held inputs transfers the same live allocations; only dropping all
+custody reaches zero tracked blocks/bytes. At equal64 accepted inputs without
+overflow, finite/unlimited heap costs agree; actor storage is72/56 bytes.
+Refusal cases implement different acceptance policies, not a same-policy
+performance comparison. No process RSS, allocator overhead, native mailbox,
+interpreter, latency or whole-application memory claim follows.
+
+Two source/oracle reviews check complete ownership and challenge zero-valued
+instrumentation: selecting System instead of dhat fails the payload calibration.
+Final strict current Clippy and formatting pass. Initial probe-only Clippy
+rejects two style issues; equivalent locals/predicate preserve all measurements
+in the final repeated runs. No repository production, test, dependency or API
+changes. The isolated fixture/receipts remain under stash-limits/memory*, with
+MEMORY-V2-CHECKPOINT; portable measurement integration and broader costs remain
+required before DX26 closes. No performance threshold is invented.
 
 Expanded programme budget (2026-10-09) and one topology declaration (2026-10-11)
 are authorized. Release permission remains PR-specific; completed earlier
