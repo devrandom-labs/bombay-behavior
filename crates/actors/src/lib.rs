@@ -148,7 +148,7 @@ pub use routing::{
     WorkQueueOutcome, WorkQueueRejection, WorkQueueSends, WorkQueueState,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
-pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
+pub use stash::{Stash, StashRoute, StashSends, StashStatus, StaticallyInfallible, UnlimitedStash};
 pub(crate) use supervisor::directory::{InterruptedWorker, WorkerChange};
 pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,

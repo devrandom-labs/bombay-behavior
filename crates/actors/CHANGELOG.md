@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Construct finite holding with `Stash::new(actor, limit, refused, route)`.
+  Overflow returns the complete original `User` through the typed refusal
+  recipient and continues; zero is valid. Explicit types become `Stash<B, R>`.
+  `StashSends { actor, refusals }` preserves both effect lanes. Deliberate
+  unbounded holding moves to `UnlimitedStash::new(actor, route)`. Both policies
+  retain FIFO `take()`, replay ordering and the existing infallibility and
+  closed-phase requirements. The limit counts held inputs, not allocation bytes
+  or other actor/runtime queues.
+
 - Use `MessageAdapter::new(destination, map)` for logical, established and mixed
   reply destinations. Remove `MessageAdapterWithRoute`; the concrete route-aware
   actor now owns the canonical name. Explicit logical adapter types change from
