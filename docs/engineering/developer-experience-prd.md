@@ -1273,6 +1273,21 @@ remain the separate open changes already specified above.
 
 #### Timer ownership — DX13/16/25–27
 
+PR109 refresh c294687 merges main edf103e after PR107/108 landed. The two
+conflicts affect the changelog and this record only; all327 Rust files and six
+locks stay exact. All11 final native checks are realized and retained after a
+132.599s rebuild; the authoritative rerun passes in2.196s with833 unchanged
+inputs/HEAD,996 nextest,120 doctests and50 reference controls. The earlier
+final-head wrapper correctly failed despite Nix exit0 when two cached outputs
+were unavailable; its raw failure remains separate. Package preflight passes
+9.409s across two workspaces, with existing fixture/patch warnings;248 archive
+members/224 Rust files match clean c294 source. Separate online audit passes
+1.537s with65 dependencies/no findings or warnings (database479c888); sandbox
+yank lookup errors remain separate. Exact-head CI38950728786 is running.
+Two conflict reviews preserve the single28-row checklist and all change notices;
+final gate reviews remain separate from earlier648 verification. No publication
+or complete-programme acceptance follows from resolving this conflict.
+
 Ordinary OneShot, Periodic, Deadline and ReceiveTimeout constructors now take
 only the inner actor, delay/deadline and reaction. Bombay ActorExt exposes the
 same no-ID operations. Each wrapper owns its exact typed event ingress and
