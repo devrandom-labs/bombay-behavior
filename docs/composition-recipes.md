@@ -76,10 +76,10 @@ The old `ScheduleAt`, `ScheduleAfter`, `TimerScheduled`, `TimerElapsed` and
 across event ports. Named domain services retain that contract. Rejection keeps
 the complete request and reason; an earlier accepted effect is not rolled back.
 
-Executable witnesses: [wrapper orders](../crates/actors/tests/wrapped_send_requests.rs),
-[deadline and inactivity](../crates/actors/tests/deadline_requests.rs),
-[request custody](../crates/actors/tests/timer_requests.rs) and
-[independent inactivity observations](../crates/behavior-testkit/tests/receive_timeout.rs).
+Executable witnesses: [wrapper orders](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/wrapped_send_requests.rs),
+[deadline and inactivity](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/deadline_requests.rs),
+[request custody](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/timer_requests.rs) and
+[independent inactivity observations](https://github.com/devrandom-labs/bombay-behavior/blob/7f4f0b3/crates/behavior-testkit/tests/receive_timeout.rs).
 
 ### Actor-to-actor topology
 
