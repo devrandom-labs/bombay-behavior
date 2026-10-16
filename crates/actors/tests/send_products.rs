@@ -549,3 +549,34 @@ mod arrays {
         assert_eq!(*actions.sends.references[0].message, [13, 17]);
     }
 }
+
+macro_rules! product_names {
+    ($($module:ident: $name:ident),+ $(,)?) => {$ (
+        mod $module {
+            use super::*;
+
+            #[derive(behavior_macros::SendProduct)]
+            struct $name<Invoices, Receipts> {
+                invoices: Invoices,
+                receipts: Receipts,
+            }
+
+            #[test]
+            fn product_names_remain_visible_inside_generated_contracts() {
+                let sends = $name { invoices: vec![3_u8], receipts: vec![5_u16] };
+                let actions: Actions<MailAddr, Never, _, NoBirths> = Actions::send(sends)
+                    .with_send(7_u8).with_send(11_u16);
+                assert_eq!(actions.become_, Step::Continue);
+                assert!(actions.creates.is_empty());
+                assert_eq!(actions.sends.invoices, [3, 7]);
+                assert_eq!(actions.sends.receipts, [5, 11]);
+            }
+        }
+    )+};
+}
+
+product_names!(
+    invoice: __BombayInput,
+    notice: __BombayEvent,
+    receipt: __BombaySettlementHost,
+);
