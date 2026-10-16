@@ -86,12 +86,18 @@ pub struct FixedConstructionRejected<
 }
 
 /// Begin the sole fixed-supervisor construction path with every required policy.
+///
+/// The factory accepts a borrowed role. Its parameter and return types are
+/// inferred here; preparation runs only when [`FixedBuilder::build`] is called.
 #[must_use]
-pub fn new<Factory, Role, Source, DiagnosticRoute>(
+pub fn new<Factory, Role, Source, DiagnosticRoute, Preparation>(
     factory: Factory,
     roles: OrderedRoles<Role>,
     config: Config<Source, DiagnosticRoute>,
-) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Infallible, ExactReplies, ExactReplies> {
+) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Infallible, ExactReplies, ExactReplies>
+where
+    Factory: FnMut(&Role) -> Preparation,
+{
     FixedBuilder {
         factory,
         roles,

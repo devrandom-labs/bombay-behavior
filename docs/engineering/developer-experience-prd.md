@@ -706,7 +706,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | Pure actor authoring and composed staged creation retained; actor/worker rustdoc and renamed consumer fixes published in macros0.14.1. Actual self-creating actor facade executes inside a native Entity family with original launch-refusal custody on both compilers/profiles. Empty-birth alias/spoof regressions pass owner/downstream profiles and ten native gates | Open: complete generic/private corpus; empty-alias fix91/97 is merged and published in macros0.14.2 |
 | DX08 | Unique composed send lanes, six owner regressions, OneShot/Periodic in both shutdown orders, complete Actions and static denials published in Behavior/Actors0.24.0; actual Bombay uses the registry contracts | Open: full named-lane catalogue evidence |
 | DX09 | Existing ActorExt inspected | Open: prove missing real decorations and delete duplicate recipes |
-| DX10 | Published0.26.0 accepts inferred direct/fallible fixed/FIFO/keyed factories. Feature owners roster/directory/queue/router use named Config; fixed and pool recovery use their distinct RecoveryPolicy. Complete refusal, prefix, replacement, wrapper and joined-retirement proofs pass current/MSRV debug/release; retained actors remain344/152/272/264 bytes | All five owning constructors and startup names are proven. Headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 archive journeys. Open: registry policy delivery, compact delivery documentation and remaining final consumer/cost evidence |
+| DX10 | Published0.27.0 owns named Config/RecoveryPolicy and exact roster/FIFO replies. Factory-input candidate preserves ordinary unannotated factories:7 focused cases in both profiles and15 downstream cases on both compilers/profiles; complete refusal retained | Open: candidate full Nix/archive/release gates, remaining catalogue migration and final costs |
 | DX11 | All11 original fixed-supervisor/FIFO runtime/recovery/source-refusal journeys use the inferred path and pass both compilers/profiles/features;246 original checks preserve prepared prefix, source panic/refusal, assigned payload, shutdown and full retirement. Keyed affinity/exact rejection/unbind/joined retirement adds56 assertions, passing all eight configurations | Open: dynamic supervision, independent late completion and remaining policy/failure/final gates |
 | DX12 | Occurrence/correlation owners inspected; actual duplicate-correlation panic reproduced. Behavior821380e adds complete typed rejection; owner962 tests/ten Nix gates pass. Private native guard preserves accepted prefix/suffix, original birth/replacement/replay requests and both joined children on both compilers/profiles | Registry guard passes native birth/replacement/replay, prefix/suffix and joined retirement on both compilers/profiles; the registry adoption passes all21 native gates/646 optimized tests and complete package journeys. Open: remaining creation/occurrence acceptance. Exact-recipient comparison now passes real queue/dynamic/native Entity identity and closure witnesses |
 | DX13 | Locked TimerQueue generation law inspected | Open: occurrence identity experiment and timer inversion corpus |
@@ -715,7 +715,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX16 | Complete startup/provenance, raw/projected retirement and control/report rejection retained; actual303 owner tests pass both compilers/features/profiles. Earlier e4d2db1 had a topology failure; current registry adoption passes all21 native gates/646 optimized tests, preserving the full denial corpus | Open: generated topology/custody and complete downstream gates |
 | DX17 | Retained custody accessor/product and composed send changes have bounded interface provenance; DirectoryConfig owns immutable validated limits, removing impossible family/runtime error branches and preserving affine inputs | Open: consumer/invariant audit and competing spelling deletion |
 | DX18 | No new dependencies selected; existing thiserror owns the narrow configuration rejection with both original limits | Open: error embeddings, bounds and costs measured |
-| DX19 | Existing child declaration pass/denial executed | Open: complete pinned diagnostic corpus and renamed/minimal consumers |
+| DX19 | Existing child declaration pass/denial; factory-input candidate has focused compile REDs, real downstream inverse and explicit original-caller compatibility failures | Open: complete pinned diagnostic corpus, renamed/minimal consumers and final candidate gates |
 | DX20 | Application and exported interfaces establish clients/senders for exact recipients and stable Entity references. Root is the default; one shared ExternalActor can select multiple typed targets. Reply inference, original-target allocation rejection/retry, exact command custody, fresh origins, prefix draining and wrapper orders pass; eight denials preserve capabilities | Open: complete correlated/cancelled/slow-customer/late-reply corpus, capacity and final gates; pre-root scope retains exact endpoints through missing-host/prepared/staging/HTTP retry |
 | DX21 | Method-local inferred shutdown ingress; runners require only capabilities they execute. Both root wrapper orders, request replay, natural domain/HTTP completion and complete retirement pass7 focused tests per profile; absent/ambiguous lanes remain denied; old-source inverse denies only E0277 | Open: generated canonical access, child-derived phases/drain corpus and final repository gates |
 | DX22 | One Application owner composes ordinary/cold actors, HTTP and Entity. Declared family roots derive actual actor/child custody; finite two-family, recursive and all four original cold/family recovery journeys preserve their independent receiving, launch refusal and original heaps on both compilers/profiles | Open: remaining Entity/HTTP acceptance and full gates; admission-only clone/unused reply protocol/target wrapper removed; real closed admission preserves original order allocation, five example tests pass both compilers/profiles; all38 original receiving/failure journeys plus five HTTP runtime cases pass both compilers/profiles/features |
@@ -723,7 +723,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence remains authoritative; FIFO role-rejection consumption now preserves the exact owned failure and lifecycle product through both projection orders, inverse, native consumer and ten owner gates | Open: bounded borrowed operational inspection and telemetry failures |
 | DX25 | Lossless-result regressions/inversion and 65 custody tests; canonical inference fixtures; original startup falsifier repaired in actual coupled-source runtime; owner tests and static denials preserved | Open: retain inferred API and complete downstream corpus/final gates |
 | DX26 | Actual counter main98 lines, FIFO184; Entity communication removes its unused reply protocol/interface and repeated target argument. Complete independent retirement oracles remain. Exact warm costs and full tracked/untracked deltas recorded | Open: broader comparable caller/compiler/runtime measurements and final resource gates. Five paired complete counter journeys use equal77 registry dependencies:74 allocation blocks each, peak heap122916→123644 bytes (+728), unchanged end heap; no memory reduction claimed. Scope adds another measured8 peak bytes with identical allocation blocks |
-| DX27 | Published Core/Actors0.26.0 and macros0.14.2 at98983b4: owner ten native gates,964 tests, archive preflight, exact CI and normal release pass. Bombay selects those registry versions without patches; actual207 owner sources match. Correlation native journey passes both compilers/profiles and its optimized defect inverse fails. Prior0.25/scope/WorkerFactory full gates retain their revision limits | Adoption passes all21 native gates in2306.566 seconds,646 optimized tests and current/MSRV debug/release archive journeys; policy headbc7718c passes ten native gates/969 tests, four-workspace preflight and28 current/MSRV archive journeys. Open: policy publication, documentation pruning in its delivery branch and remaining final programme consumers |
+| DX27 | Published Core/Actors0.27.0 and macros0.15.0 atb8307d1: ten native gates,987 tests,118 doctests, four-workspace preflight, exact CI, normal release and registry source/consumer verification pass. Bombay selects registry packages without patches | Open: factory-input candidate breaking release review, current whole-catalogue adoption and final programme gates |
 | DX28 | Initial pruning preserved; one canonical guide is included through Cargo readme metadata. Complete leaf Application/joined cleanup executes in workspace and extracted runtime/engine/macros on all eight configurations;59 local links resolve | Open: compact reconciliation, rendered external links and final documentation gates. Scope guide executes in all eight workspace/archive configurations; stale normative version prose delegates to the current selection record |
 
 ### Retained contracts and evidence
@@ -861,6 +861,79 @@ checks are recorded below; local owner patches are not a registry release.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
+Factory input (DX10/19/27), law recorded before production: ordinary
+`queue::new(|_| WorkerSubmission::immediate(worker), roles, config).build()` and
+`roster::new(|role| submission(role), roles, config).build()` must infer the
+borrowed role at the owning constructor. This is a Rust API policy, not a new
+actor-model law. Reuse the existing `FnMut(&Role) -> Preparation` contract;
+direct submission and fallible `Result` are its two real forms. No preparation
+runs before build. Refusal still owns the original factory, prepared prefix,
+refused role/reason, untouched suffix and complete configuration.
+Rust's closure parameter contract is primary:
+https://doc.rust-lang.org/reference/expressions/closure-expr.html.
+
+The real Bombay FIFO replacement caller falsifies published027 with uncoded
+FnMut/FnOnce lifetime-generality diagnostics. The17-file mechanical migration
+was archived and restored, without adding caller annotations. Focused queue/
+roster REDs precede production (101,12.663/1.610s); all original43 assertions
+survive, with three added deferred-call checks. Seven focused cases pass pinned
+Rust1.95 debug/release (2.781/19.045s). Fifteen actual downstream cases pass on
+Rust1.99/1.96 debug/release (8.260/106.170/28.033/122.175s),807 frozen inputs
+conserved through the run. The byte-identical native FIFO caller against original
+owner source fails only the intended call contract (101,9.512s). Source/oracle
+and gate evidence each received two independent reviews.
+Extracted candidate archives preserve all220 shipped Rust sources. Ten actual
+native FIFO/source-refusal/replay cases pass both compilers/profiles (21.719/
+79.374/24.426/90.027s), with659 frozen inputs and62 nonowner package records
+conserved. Every row compiles all three exact extracted owners and a unique
+consumer in a fresh target. This is not registry publication, remote support or
+an additional static-denial claim; the initial bad archive-path setup fails before
+tests and receives no credit. Archive source/evidence each receive two reviews.
+
+Compatibility costs are explicit: constructor generic arity4→5, and an exact
+original annotated caller reusing its returned factory without mutable access
+fails E0596. Three existing rejection tests now bind the original rejection
+mutably; a breaking0.x release is required. No stronger Fn bound, adapter,
+default or ownership reconstruction is introduced. Initial full nextest attempts
+failed on that third caller and an accidental test-edit typo; both raw failures
+remain, neither earns passing credit. The corrected whole FIFO file equals its
+baseline plus one mut keyword. All987 owner nextest tests then pass (31.260s).
+
+Aggregate checkpoint: each five-way control sum is unchanged. FIFO retains
+Constructed/Operating/Draining/Stopped/ForcedRetirement; fixed supervision retains
+New/Operating/ShuttingDown/Terminating/Stopped. Every existing subordinate enum
+payload and both constructor bodies are byte-identical; no actor transition,
+state, result, field, module or public type is added. Source-inclusive inventories
+(including cfg-tests): FIFO7 files,12 sums/59 variants,358 lexical match arrows,
+6522→6528 lines; fixed20 files,47 sums/179 variants,748 arrows,11177→11183 lines.
+Arrows are diagnostics, not independent semantic branch coverage. Selected public
+type/function/trait declarations29/231 are unchanged; they exclude constants and
+re-exports. Production+16/-4/net12; tests+27/-17/net10; public types+0/-0.
+`FACTORY-INPUT-AGGREGATE-V3.json` retains exact unchanged sum payloads (V1's
+where-bound miscount is superseded). No new arrival history, repeated cause,
+cardinality assumption, transition authority, semantic bool or structural syntax.
+Cross-check: FIFO/fixed actor laws, atomic architecture/features/DevX/verification,
+construction custody and declaration-order preparation. Shape disposition: pass;
+final retention awaits clean Nix gates, archive consumers and release review.
+The first full Nix process reports ten outputs/exit0 (251.855s),987 optimized
+tests and118 doctests, but its raw nextest fixup reports classifier crash35733.
+The strict wrapper rejects it; this is not a clean gate. All827 frozen tracked
+inputs remain unchanged through that run. A separate build-audit branch adopts
+the already-proven byte-oriented scan; no actor change or waiver follows.
+
+Scope limits: queue correlation alone does not prove distinct identities or every
+role's order; the roster direct-form case intentionally switches to immediate
+startup. The two native Stash/shutdown orders initially prove runtime compatibility,
+not independent wrapper-policy execution. A deliberate test-route bypass passes
+both old oracles (12.615s). Adding the same-worker Released assertion passes
+all3 cases on both compilers/profiles (11.295/44.702/12.499/52.605s); bypassing
+Stash then fails both cases at the intended state and custody assertions in debug/
+release (11.634/45.000s). The first shared-cache probe is invalid and uncredited;
+the corrected six-row run uses distinct package identities, verifies actual source
+compilation, and conserves794 inputs. Inner shutdown is additionally supplied by
+the proxy and is not independently proved by these native cases.
+
+
 Owning modules expose supervisor/roster, supervisor/directory, pool/queue,
 pool/router, proxy and worker. Parent modules curate public contracts; config
 children and state/settlement machinery remain private. Folder context supplies
@@ -945,6 +1018,52 @@ current/MSRV both profiles; test-only+46/-5/net41, no production/API change.
 The deliberately interrupted426.907-second stale-binding run is not a pass.
 
 #### Verification, costs and delivery — DX19/25–28
+
+Build-output audit, pre-edit: the actual factory-input owner full check reports
+all ten outputs but its nextest fixup classifier crashes (PID35733); the wrapper
+correctly rejects that nominal exit0 (251.855s). This is a build policy: every
+output scan must finish and propagate enumeration/read/header/search/cleanup
+failure while rejecting forbidden wrapper/RPATH references. No actor law changes.
+Reuse Bombay's already-proven byte-oriented audit and50-control test; replace the
+existing hook implementation without adding a second hook. First run that copied
+test against this owner's exact pinned old hook and require the failed-enumeration
+witness. Expected four files: flake, audit source, existing-style test script and
+this owning record; about91 tooling lines/136 test lines, zero Rust or public type
+changes. All actor control states, subordinate values, transitions, cardinality,
+provenance and ownership stay byte-identical to publishedb8307d1. Recheck source
+hashes and normalized architecture/feature/verification laws; aggregate disposition
+awaits focused controls, integration, inversions and a fresh full eleven-check run.
+No package publication or general Darwin crash root-cause claim follows.
+Scope checkpoint before the next edit: commonArgs does not reach the four
+existing fmt/TOML/audit/deny checks. The same owned audit must be selected for
+all eleven workspace checks; upstream dependency hooks remain separate. First
+assert exact evaluated preFixup source selection for every check, then reuse
+commonArgs.preFixup in those four existing constructors (about four more lines).
+The configuration regression first names exactly those four missing checks;
+all eleven then select the byte-identical store audit. Pinned Crane73b9805
+forwards preFixup through the four constructors to stdenv; no global hook is added.
+The pinned old-hook test fails on enumeration37→0 (2.835s), while50 direct
+controls pass (5.943s). Six copied-source inversions fail for their intended
+status/header laws (matrix7.865s). Normal owner-pinned stdenv fixup accepts the
+healthy output (1.743s) and rejects the exact forbidden wrapper (1.250s). These
+are separate from the new focused Nix derivation and required eleven-check run.
+
+Aggregate disposition: pass for this build-only representation. All323 Rust
+files and all tracked locks match b8307d1. Every actor state/subordinate value,
+transition branch, policy, protocol spelling, creation provenance and custody
+representation is unchanged; zero actor-state or public-type additions/removals.
+Tooling+96/-3/net93; tests+136/-0; four files. The serial scan owns only its
+checked temporary file and exact process statuses; it retains no history and
+registers no second hook. Each temporary file is removed on completed/error paths
+unless cleanup itself fails, whose original failure is reported. Exact four-byte
+headers intentionally fix the old character-read near-NUL/newline classification;
+ELF port tests use mocked patchelf, not real ELF parsing. Original upstream and
+other platforms remain outside any Darwin-root-cause claim. Cross-check actor
+architecture/features/verification and the existing construction/retirement laws.
+Raw sources/results: OWNER-REFERENCES-{COMPLETE,INTEGRATION}-*.json and
+OWNER-REFERENCES-SELECTION-{RED,GREEN}.json. Two independent reviews inspect
+source and raw controls; full-gate and CI receipts remain required for delivery.
+
 
 | Exact source | Executed verification | Scope limit |
 | --- | --- | --- |

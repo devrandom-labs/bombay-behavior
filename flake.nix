@@ -82,6 +82,8 @@
             ./scripts/check_rustdoc_error_codes.py
             ./scripts/check_assertion_effects.py
             ./scripts/test_check_assertion_effects.py
+            ./nix/references.sh
+            ./scripts/test_references.sh
             (pkgs.lib.fileset.maybeMissing ./mutants-baseline.json)
             ./mutants/actors
           ];
@@ -89,6 +91,9 @@
         commonArgs = {
           inherit src;
           strictDeps = true;
+          preFixup = ''
+            source ${./nix/references.sh}
+          '';
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
@@ -121,6 +126,19 @@
           });
       in {
         checks = {
+          bombay-behavior-output-references = pkgs.runCommand "bombay-behavior-output-references"
+            ({
+              nativeBuildInputs = [
+                pkgs.bash pkgs.coreutils pkgs.findutils pkgs.gnugrep pkgs.unixtools.locale
+              ];
+              inherit (commonArgs) preFixup;
+            } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+              LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
+            })
+            ''
+              bash ${src}/scripts/test_references.sh ${src}/nix/references.sh
+              mkdir "$out"
+            '';
           bombay-behavior = craneLib.buildPackage (commonArgs // {
             inherit cargoArtifacts;
             # Nextest and the doctest derivation own the test runs.
@@ -160,12 +178,22 @@
             doInstallCargoArtifacts = false;
             doCheck = false;
           });
-          bombay-behavior-fmt = craneLib.cargoFmt { inherit src; };
+          bombay-behavior-fmt = craneLib.cargoFmt {
+            inherit src;
+            inherit (commonArgs) preFixup;
+          };
           bombay-behavior-toml-fmt = craneLib.taploFmt {
             src = pkgs.lib.sources.sourceFilesBySuffices src [ ".toml" ];
+            inherit (commonArgs) preFixup;
           };
-          bombay-behavior-audit = craneLib.cargoAudit { inherit src advisory-db; };
-          bombay-behavior-deny = craneLib.cargoDeny { inherit src; };
+          bombay-behavior-audit = craneLib.cargoAudit {
+            inherit src advisory-db;
+            inherit (commonArgs) preFixup;
+          };
+          bombay-behavior-deny = craneLib.cargoDeny {
+            inherit src;
+            inherit (commonArgs) preFixup;
+          };
           bombay-behavior-package = craneLib.mkCargoDerivation (commonArgs // {
             inherit cargoArtifacts;
             pnameSuffix = "-package";
