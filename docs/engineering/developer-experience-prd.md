@@ -1173,7 +1173,15 @@ remote cancellation and authoritative native Nix gates remain separate. The patc
 expansion; the actual branch is clean at dc09bb after merging main49cc897 (internal TLS
 dependency/locks/docs only, no Rust changes); the prepared patch still applies.
 Earlier private execution keeps its original graph, rather than certifying this
-new lock. Existing receipts
+new lock. Refreshed native e69c6dc with source-selected owner aafd1e9 separately
+passes all 791 default workspace tests on pinned 1.99 in 298.503s, with the same two
+controlled child skips. All 633 inputs in each native copy and 837 owner inputs stay exact;
+all 396 current nonowner records are conserved. An independent actual nextest
+listing matches every executed case and identifies both skips. No minimum,
+remote TLS runtime, protected nested, registry or authoritative native Nix credit
+is inferred. Initial preparation and audit checks failed on incorrect assumptions;
+corrected checks preserve the original run verdict and source bytes. Receipts:
+NATIVE-REFRESHED-V2-{SOURCES,SOURCE-REVIEW,CHECKPOINT}. Existing receipts
 NATIVE-MIGRATION-{FORMATTED,ASSERTIONS,INPUTS} bind the prepared result.
 
 The broader private source-selected nextest run exits100:790 pass/one failure/
@@ -1234,6 +1242,11 @@ and cached offline audit limits remain explicit. Candidate archives have252
 safe members/228 exact Rust files and clean58ce331 provenance, not registry028
 contents. Exact receipts are in the existing evidence root's send-names,
 send-names-common, send-names-stash and stash-limits/SEND-NAMES-* records.
+Both exact heads are ready and mergeable with all14 GitHub checks passing.
+The release skill's four-workspace preflight passes at809/aafd in8.222/8.218s.
+Merge/publication authorization remains pending; the new generic impls require
+a reviewed breaking macro version, preserving compatibility for older published
+Actors users with their existing manual impls.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
@@ -1242,6 +1255,13 @@ sender, empty Stop lanes, complete retirement and independent cleanup/notificati
 All65 nonroot package records remain exact; the direct Tokio test host reuses the
 already selected package. Both final oracle reviews pass. These are source-selected
 proofs, not registry, cancellation/panic or universal generic-corpus acceptance.
+The same three journeys separately execute against common-only809 on both
+compilers/profiles (12 additional executions). Its actual pre-finite Bombay
+commit269011d supplies392 byte-exact Rust files; only private root dependency
+selection changes, preserving397 workspace nonowner records. An initial attempt
+pairing the newer finite facade with the common-only owner fails its constructor
+contract and earns no credit. This selects a real compatible consumer rather
+than changing production code to satisfy the compiler.
 Normal reviewed breaking publication and actual downstream adoption remain open.
 
 #### Policy construction and startup — DX10/11/19/24/27
