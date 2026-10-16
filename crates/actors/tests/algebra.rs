@@ -716,11 +716,12 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |_, message| match message {
-        0 => StashRoute::Release,
-        1 => StashRoute::Stash,
-        _ => StashRoute::Deliver,
-    });
+    let behavior =
+        behavior_actors::UnlimitedStash::new(Seen(Vec::new()), |_, message| match message {
+            0 => StashRoute::Release,
+            1 => StashRoute::Stash,
+            _ => StashRoute::Deliver,
+        });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stashed = behavior.transition(User::user(MailAddr(1), 1)).unwrap();
@@ -805,7 +806,7 @@ fn stash_accepts_an_infallible_machine_and_preserves_both_queues() {
             })
         },
     );
-    let stash = behavior_actors::Stash::new(machine, |machine, parcel| match parcel {
+    let stash = behavior_actors::UnlimitedStash::new(machine, |machine, parcel| match parcel {
         Parcel::Held(_) if machine.phase() == Phase::Closed => StashRoute::Stash,
         Parcel::Release => StashRoute::Release,
         Parcel::Direct(_) | Parcel::Held(_) => StashRoute::Deliver,
@@ -953,10 +954,8 @@ fn finite_stash_preserves_initial_effects_and_a_stopping_release_trigger() {
         let stopped = behavior::delegate_transition(&mut stash, User::user(MailAddr(19), 99))
             .expect("a stopping release trigger leaves the held FIFO untouched");
         let behavior_actors::StashSends { actor, refusals } = stopped.sends;
-        assert_eq!(
-            actor.deliveries,
-            [Delivery::new(Recipient::global(MailAddr(9)), 99)]
-        );
+        let expected_deliveries = [Delivery::new(Recipient::global(MailAddr(9)), 99)];
+        assert!(actor.deliveries == expected_deliveries);
         assert!(actor.markers.is_empty());
         assert!(refusals.is_empty());
         assert!(stopped.creates.is_empty());
@@ -1050,7 +1049,7 @@ fn finite_stash_keeps_replayed_effects_before_stop_and_the_untouched_suffix() {
 
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -1071,7 +1070,7 @@ async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
 
 #[tokio::test]
 async fn stash_replay_preserves_fifo_and_selectively_retains_ineligible_input() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -1100,7 +1099,7 @@ async fn stash_replay_preserves_fifo_and_selectively_retains_ineligible_input() 
 
 #[tokio::test]
 async fn stash_replay_stop_preserves_the_unread_held_tail() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -1315,7 +1314,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_no_births((Quiet).base());
 
     let creator = behavior_actors::Watch::new(
-        behavior_actors::Stash::new(
+        behavior_actors::UnlimitedStash::new(
             behavior_actors::Deadline::new(
                 ExplicitInitialization {
                     received: Vec::new(),

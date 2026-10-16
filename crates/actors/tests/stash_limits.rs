@@ -1,12 +1,15 @@
 use std::time::Duration;
 
 use behavior::{
-    Actions, BehaviorBase as _, Delivery, EventLayer, MailAddr, MessageProtocol, Never, NoSends, Recipient, SendLayer,
-    Step, Stopped, User, UserEvent, delegate_transition, initialize,
+    Actions, BehaviorBase as _, Delivery, EventLayer, MailAddr, MessageProtocol, Never, NoSends,
+    Recipient, SendLayer, Step, Stopped, User, UserEvent, delegate_transition, initialize,
 };
 use behavior_actors::{
-    Machine, MessageAdapter, Move, OwnedTimerElapsed, ReceiveTimeout, ShutdownRequested, Stash, StashRoute, StashSends, StashStatus as _, StopOnShutdown,
+    Machine, MessageAdapter, Move, OwnedTimerElapsed, ReceiveTimeout, ShutdownRequested, Stash,
+    StashRoute, StashSends, StashStatus as _, StopOnShutdown,
 };
+use proptest::collection::vec;
+use proptest::prelude::*;
 
 struct Invoice {
     number: u8,
@@ -334,13 +337,18 @@ fn a_timeout_outside_a_full_stash_can_send_to_the_existing_actor_lane() {
     let paid = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(29));
     let refused =
         Recipient::<MessageProtocol<MailAddr, User<MailAddr, Invoice>>>::global(MailAddr(31));
-    let stash = Stash::new(MessageAdapter::new(paid, number), 1, refused, |_, invoice| {
-        if invoice.number == 0 {
-            StashRoute::Release
-        } else {
-            StashRoute::Stash
-        }
-    });
+    let stash = Stash::new(
+        MessageAdapter::new(paid, number),
+        1,
+        refused,
+        |_, invoice| {
+            if invoice.number == 0 {
+                StashRoute::Release
+            } else {
+                StashRoute::Stash
+            }
+        },
+    );
     let delay = Duration::from_secs(3);
     let mut timeout = ReceiveTimeout::new(stash, delay, |stash| {
         Actions::cont().with_send(Delivery::new(*stash.base().destination(), 99))
@@ -358,8 +366,15 @@ fn a_timeout_outside_a_full_stash_can_send_to_the_existing_actor_lane() {
         let allocation = receipt.as_ptr();
         let actions = delegate_transition(
             &mut timeout,
-            EventLayer::Inner(User::user(from, Invoice { number: value, receipt })),
-        ).expect("holding and refusal both preserve the outer timeout");
+            EventLayer::Inner(User::user(
+                from,
+                Invoice {
+                    number: value,
+                    receipt,
+                },
+            )),
+        )
+        .expect("holding and refusal both preserve the outer timeout");
         assert_eq!(actions.sends.owned.len(), 1);
         assert_eq!(actions.sends.owned[0].after, delay);
         assert_ne!(actions.sends.owned[0].generation, generation);
@@ -385,7 +400,8 @@ fn a_timeout_outside_a_full_stash_can_send_to_the_existing_actor_lane() {
         let actions = delegate_transition(
             &mut timeout,
             EventLayer::Owned(OwnedTimerElapsed::new(generation)),
-        ).expect("only the first matching elapsed may emit a reminder");
+        )
+        .expect("only the first matching elapsed may emit a reminder");
         assert!(actions.sends.owned.is_empty());
         assert_eq!(actions.sends.inner.actor.len(), expected.len());
         for (delivery, value) in actions.sends.inner.actor.into_iter().zip(expected) {
@@ -400,20 +416,223 @@ fn a_timeout_outside_a_full_stash_can_send_to_the_existing_actor_lane() {
     }
     let released = delegate_transition(
         &mut timeout,
-        EventLayer::Inner(User::user(MailAddr(19), Invoice {
-            number: 0,
-            receipt: Box::new([0, 1]),
-        })),
-    ).expect("the reminder leaves the held input available for replay");
+        EventLayer::Inner(User::user(
+            MailAddr(19),
+            Invoice {
+                number: 0,
+                receipt: Box::new([0, 1]),
+            },
+        )),
+    )
+    .expect("release reconsiders the held input through the unchanged selector");
     assert_eq!(released.sends.owned.len(), 1);
     assert_eq!(released.sends.owned[0].after, delay);
-    assert_eq!(released.sends.inner.actor.len(), 2);
-    for (delivery, value) in released.sends.inner.actor.into_iter().zip([0, 7]) {
+    assert_eq!(released.sends.inner.actor.len(), 1);
+    for (delivery, value) in released.sends.inner.actor.into_iter().zip([0]) {
         assert_eq!(delivery.to, paid);
         assert_eq!(delivery.message, value);
     }
     assert!(released.sends.inner.refusals.is_empty());
     assert!(released.creates.is_empty());
     assert_eq!(released.become_, Step::Continue);
-    assert_eq!(timeout.stashed_messages(), 0);
+    assert_eq!(timeout.stashed_messages(), 1);
+}
+
+#[test]
+fn a_timeout_inside_a_full_stash_can_send_without_consuming_held_inputs() {
+    let paid = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(29));
+    let refused =
+        Recipient::<MessageProtocol<MailAddr, User<MailAddr, Invoice>>>::global(MailAddr(31));
+    let delay = Duration::from_secs(3);
+    let timeout = ReceiveTimeout::new(MessageAdapter::new(paid, number), delay, |adapter| {
+        Actions::cont().with_send(Delivery::new(*adapter.destination(), 99))
+    });
+    let mut stash = Stash::new(timeout, 1, refused, |_, _| StashRoute::Stash);
+    let started = initialize(&mut stash).expect("the inner timeout initializes exactly once");
+    assert_eq!(started.sends.actor.owned.len(), 1);
+    assert_eq!(started.sends.actor.owned[0].after, delay);
+    let generation = started.sends.actor.owned[0].generation;
+    assert!(started.sends.actor.inner.is_empty());
+    assert!(started.sends.refusals.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, Step::Continue);
+    let receipt = Box::new([7, 11]);
+    let allocation = receipt.as_ptr();
+    let held = delegate_transition(
+        &mut stash,
+        UserEvent::user(MailAddr(7), Invoice { number: 7, receipt }),
+    )
+    .expect("holding does not reach or rearm the inner timeout");
+    assert!(held.sends.actor.owned.is_empty());
+    assert!(held.sends.actor.inner.is_empty());
+    assert!(held.sends.refusals.is_empty());
+    assert!(held.creates.is_empty());
+    assert_eq!(held.become_, Step::Continue);
+    let receipt = Box::new([13, 17]);
+    let refused_allocation = receipt.as_ptr();
+    let full = delegate_transition(
+        &mut stash,
+        UserEvent::user(
+            MailAddr(13),
+            Invoice {
+                number: 13,
+                receipt,
+            },
+        ),
+    )
+    .expect("overflow preserves the original input and inner timeout");
+    assert!(full.sends.actor.owned.is_empty());
+    assert!(full.sends.actor.inner.is_empty());
+    assert!(full.creates.is_empty());
+    assert_eq!(full.become_, Step::Continue);
+    let mut refusals = full.sends.refusals;
+    assert_eq!(refusals.len(), 1);
+    let refusal = refusals.pop().expect("one complete overflow input");
+    assert_eq!(refusal.to, refused);
+    assert_eq!(refusal.message.from, MailAddr(13));
+    assert_eq!(refusal.message.message.number, 13);
+    assert_eq!(refusal.message.message.receipt.as_ptr(), refused_allocation);
+    assert_eq!(*refusal.message.message.receipt, [13, 17]);
+    for expected in [vec![99], vec![]] {
+        let actions = delegate_transition(
+            &mut stash,
+            EventLayer::Owned(OwnedTimerElapsed::new(generation)),
+        )
+        .expect("timer events bypass finite user admission and cannot be accepted twice");
+        assert!(actions.sends.actor.owned.is_empty());
+        assert_eq!(actions.sends.actor.inner.len(), expected.len());
+        for (delivery, value) in actions.sends.actor.inner.into_iter().zip(expected) {
+            assert_eq!(delivery.to, paid);
+            assert_eq!(delivery.message, value);
+        }
+        assert!(actions.sends.refusals.is_empty());
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.become_, Step::Continue);
+        assert_eq!(stash.held(), 1);
+        assert_eq!(stash.base().destination(), &paid);
+    }
+    let mut original = stash.take();
+    assert_eq!(original.len(), 1);
+    let input = original
+        .pop_front()
+        .expect("the timeout leaves original custody with the stash");
+    assert_eq!(input.from, MailAddr(7));
+    assert_eq!(input.message.number, 7);
+    assert_eq!(input.message.receipt.as_ptr(), allocation);
+    assert_eq!(*input.message.receipt, [7, 11]);
+    assert_eq!(stash.held(), 0);
+    let repeated = stash.take();
+    assert!(repeated.is_empty());
+}
+
+// The oracle ranks all hold-selected inputs within each interval between takes.
+// It has no mutable model queue, no replay loop and no production route call.
+fn finite_stash_matches_ranked_admission(limit: usize, inputs: &[(u8, u64)]) {
+    let paid = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(29));
+    let refused =
+        Recipient::<MessageProtocol<MailAddr, User<MailAddr, Invoice>>>::global(MailAddr(31));
+    let mut stash = Stash::new(
+        MessageAdapter::new(paid, number),
+        limit,
+        refused,
+        |_, invoice| match invoice.receipt[0] {
+            0 => StashRoute::Stash,
+            1 => StashRoute::Deliver,
+            _ => StashRoute::Release,
+        },
+    );
+    let initialized = initialize(&mut stash).expect("the adapter starts without effects");
+    assert!(initialized.sends.actor.is_empty());
+    assert!(initialized.sends.refusals.is_empty());
+    assert!(initialized.creates.is_empty());
+    assert_eq!(initialized.become_, Step::Continue);
+    let mut selected = Vec::new();
+    for (index, (choice, sender)) in inputs.iter().chain(core::iter::once(&(3, 0))).enumerate() {
+        let choice = choice % 4;
+        if choice == 3 {
+            let originals = stash.take();
+            let expected: Vec<_> = selected.iter().take(limit).collect();
+            assert_eq!(originals.len(), expected.len());
+            for (original, &&(from, number, allocation)) in originals.into_iter().zip(&expected) {
+                assert_eq!(original.from, from);
+                assert_eq!(original.message.number, number);
+                assert_eq!(original.message.receipt.as_ptr(), allocation);
+                assert_eq!(*original.message.receipt, [0, number]);
+            }
+            selected.clear();
+            assert_eq!(stash.held(), 0);
+        } else {
+            let number =
+                u8::try_from(index).expect("the bounded sequence has unique input numbers");
+            let receipt = Box::new([choice, number]);
+            let allocation = receipt.as_ptr();
+            let from = MailAddr(*sender);
+            let invoice = Invoice { number, receipt };
+            let actions = delegate_transition(&mut stash, UserEvent::user(from, invoice))
+                .expect("admission produces complete Actions");
+            let StashSends {
+                actor,
+                mut refusals,
+            } = actions.sends;
+            let expected_actor = if choice == 0 {
+                Vec::new()
+            } else {
+                vec![Delivery::new(paid, number)]
+            };
+            assert!(actor == expected_actor);
+            assert!(actions.creates.is_empty());
+            assert_eq!(actions.become_, Step::Continue);
+            if choice == 0 {
+                selected.push((from, number, allocation));
+            }
+            let overflow = selected
+                .iter()
+                .skip(limit)
+                .filter(|(_, candidate, _)| *candidate == number)
+                .count();
+            assert_eq!(refusals.len(), overflow);
+            for delivery in refusals.drain(..) {
+                assert_eq!(delivery.to, refused);
+                assert_eq!(delivery.message.from, from);
+                assert_eq!(delivery.message.message.number, number);
+                assert_eq!(delivery.message.message.receipt.as_ptr(), allocation);
+                assert_eq!(*delivery.message.message.receipt, [choice, number]);
+            }
+            assert_eq!(stash.held(), selected.iter().take(limit).count());
+            assert_eq!(stash.base().destination(), &paid);
+        }
+    }
+}
+
+#[test]
+fn finite_stash_exhaustive_sequences_match_ranked_admission() {
+    let mut checked = 0;
+    for length in 0..=6 {
+        for code in 0..4_usize.pow(length) {
+            let mut rest = code;
+            let inputs: Vec<_> = (0..length)
+                .map(|index| {
+                    let choice = u8::try_from(rest % 4).expect("four choices");
+                    rest /= 4;
+                    (choice, u64::from(index % 2) + 7)
+                })
+                .collect();
+            for limit in 0..=2 {
+                finite_stash_matches_ranked_admission(limit, &inputs);
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 16_383);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+    #[test]
+    fn finite_stash_long_sequences_match_ranked_admission(
+        limit in 0_usize..=8,
+        inputs in vec((0_u8..4, any::<u64>()), 0..128),
+    ) {
+        finite_stash_matches_ranked_admission(limit, &inputs);
+    }
 }
