@@ -1032,9 +1032,9 @@ passes in 8.210s; actual workspace formatting passes in 5.014s. These observed
 build times are not a causal compile-performance comparison. Production field
 storage is unchanged; no full runtime heap/latency improvement is claimed.
 Both independent terminal reviews pass. Exact-head Linux CI38945141204 passes
-all11 jobs; PR-only checks still require the eventual main base. PR #111 is ready
-for review and stacks on PR #110; it is not authorization to
-merge or publish. Actual Bombay adds 205 test and 22 coordination lines across
+all11 jobs. PR #111 merged into feature PR #110 as2d23f11; PR #110 merged into
+timer PR #109 as5a29896. These feature-base merges do not establish main or
+registry delivery. Actual Bombay adds 205 test and 22 coordination lines across
 two paths and no production code. Receipts live under the existing evidence root's `stash/` directory;
 `PREEDIT-TAKE-TERMINAL-AUDIT`, `FOCUSED-TERMINAL-CHECKPOINT` and
 `POSTLOWERING-DRIFT` and `RETAINED-REVIEW` bind their exact sources, failures and dispositions. These
@@ -1094,6 +1094,18 @@ limit inversions before retention. Two independent pre-edit design passes clear
 only this Stash hypothesis. Machine bounded deferral remains open: Clone can
 share state, so cloning then discarding a mutated candidate does not prove rollback.
 Do not lower that reopened Machine hypothesis or weaken its existing bounds.
+
+Pre-production result: owner debug/release REDs fail at missing StashSends and
+the four-argument constructor (with the related untyped Machine selector); the
+real native consumer fails only the missing product and three-argument facade.
+All835 owner and1,504 native/archive inputs stay frozen. Five pure and two native
+tests now specify the intended limits, original custody and lifecycle journeys;
+this is compile-failure evidence, not runtime acceptance. Two source reviews
+caught and corrected a zero-limit coverage gap, a waiting endpoint left open,
+and an invalid assumption about retirement-settlement order. Nonempty inner
+initialization/creation/stop-prefix and static-denial cuts still precede lowering.
+Production remains byte-identical to the baseline. The initial missing private
+native driver and pre-format check are setup failures, with no proof credit.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
