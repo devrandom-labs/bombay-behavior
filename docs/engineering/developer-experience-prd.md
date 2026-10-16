@@ -42,16 +42,14 @@ require the remaining consumers, inferred standalone roots and full gates.
 
 ## Evidence and scope
 
-The isolated Bombay registry branch at1a8f20b selects registry Behavior/Actors0.27.0,
-macros0.15.0, Address0.3.0, Communication0.1.6, Timers0.2.0, Tokio1.53.1 and
-Axum0.8.9, without repository patches. All220 shipped owner Rust files match
-published sourceb8307d1. Its catalogue migration still needs the reviewed
-constructor inference repair50348d7 published through the normal workflow;
-source-selected consumer proofs are explicitly separate from registry delivery.
-Bombay mainf25e4a0 and timer PR383 still select owners026/142. The timer
-branch's25 fresh native gates pass; its scope does not certify the newer
-catalogue branch. The single checklist below owns remaining acceptance.
-Earlier registry/private-patch results retain their exact revision limits.
+Published Behavior/Actors0.28.0 and macros0.15.0 are verified against registry
+checksums, tags and exact source at owner d9237dde; the constructor inference
+repair is delivered. This release does not include finite holding or generic
+send insertion. Isolated Bombay branch dc09bb still selects registry027/150;
+its new finite facade needs the unpublished owner candidate. Local source-selected
+proofs and prepared catalogue adoption are explicitly separate from registry
+verification. The owning checklist records the remaining delivery and gates;
+older inventory and proofs retain their original package/revision limits.
 
 The following table and observations preserve the initial review baseline,
 not the current dependency selection. Claims come from source and test bodies
@@ -728,19 +726,19 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX04 | ApplicationOutcome joins work, native retirement, notifications and families; consuming completion returns value plus ApplicationRetirement or the original whole report. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection, final-source minimum-compiler/archive/full gates. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: final complete consumer and repository gates. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
-| DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
-| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: shared generic-product insertion3389c00 passes1,003 owner tests,123 doctests,11 Nix gates and complete missing/ambiguous controls; finish downstream retention, catalogue reconciliation and delivery. |
+| DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters now avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys pass the bounded matrices below. | Open: final common-owner publication and complete generic/private/public, renamed/sibling-target and duplicate-role reconciliation. |
+| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: shared generic-product insertion and caller-name repair809e7b3 pass1,022 owner tests,123 doctests,11 Nix gates and complete missing/ambiguous controls; finish downstream retention, catalogue reconciliation and delivery. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
 | DX10 | Owning roster/directory/queue/router constructors use Config and explicit recovery. Registry270/150 supplies startup closures and reply-lane policy. All338 library tests pass both compilers/profiles with1013 original assertions;31 resumed caller tests and real examples have source-selected503 proofs. Startupf244566 removes its named plan/alias. | Open: inference repair is published in0.28.0; verify registry-only callers/nested locks, audit policy necessity/names and complete costs/full gates. Breaking source costs remain explicit. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: authoritative Bombay and protected nested gates, remaining acceptance cuts and registry0.28 caller migration. Candidate/source/archive proofs do not certify the complete programme. |
-| DX14 | Owner a863633 adds finite admission, complete refusal and unwind-safe previously held custody; `take()` transfers originals. Both wrapper orders, initialization/replay/Stop, native open/closed/panic retirement, static denials, ranked/property/fuzz sequences and four independent defects pass the bounded matrices below. All11 owner gates pass with1,016 tests/123 doctests. | Open: Bombay catalogue adoption, breaking publication/registry/final downstream gates and Machine bounds/retention audit. Approved owner migration and replay-panic custody cuts pass; Clone-based rollback remains disproven. |
+| DX14 | Owner aafd1e9 retains a863633 finite admission, complete refusal and unwind-safe previously held custody; `take()` transfers originals. Both wrapper orders, initialization/replay/Stop, native open/closed/panic retirement, static denials, ranked/property/fuzz sequences and four independent defects pass the bounded matrices below. All11 current owner gates pass with1,035 tests/123 doctests. | Open: Bombay catalogue adoption, breaking publication/registry/final downstream gates and Machine bounds/retention audit. Approved owner migration and replay-panic custody cuts pass; Clone-based rollback remains disproven. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
-| DX19 | Strict124-fixture replay passes both compilers:19 positive/105 negative,29 suites,25 targets and107 outer tests plus the exact parent-invoked child. Canonical child denial now covers both feature configurations without duplicate source; unchanged verifier, compiler/fixture/source/patch controls and two independent reviews pass. | Open: remaining full minimal/renamed/remote/archive coverage and final programme gates. Earlier failed/incomplete runs remain failures; post-run patch equivalence has separate evidence. |
+| DX19 | Prepared catalogue replay passes all128 fixtures on both compilers:20 positive/108 negative,30 suites,26 targets and111 outer tests plus the exact parent-invoked child. Original cases, snapshots, minimum patch, verifier and255 assertions are preserved; two reviews pass. The source-selected private workspace passes791 tests/two parent-controlled skips. | Open: apply the separately budgeted native migration, then final minimal/renamed/remote/registry/archive coverage and programme gates. Earlier failed/incomplete runs remain uncredited. |
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply corpus, capacity and final-source minimum-compiler/full gates. Admission remains distinct from business completion. |
 | DX21 | Shutdown ingress is inferred at the operation; runners require only capabilities they execute. Root wrapper orders, request replay, natural completion and complete retirement pass focused tests; missing/ambiguous authority remains denied. | Open: generated canonical access, child-derived phases/drain/deadline/forced-retirement corpus and final repository gates. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
@@ -748,7 +746,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained; complete final registry-only protected consumers and gates. Passing retries or repaired output headers do not explain that hang or establish compressed-content/permanent Darwin repair. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
-| DX27 | Actual registry Behavior/Actors0.27.0 and macros0.15.0 match verified tags, checksums and220 shipped Rust files. Bombay05ca9db adopts them without changing397 root nonowner records;4086cbd integrates mainfbb5c74. Existing pool, supervisor, protected retirement and complete static consumers have source-bound evidence in the sections below. Timer branchb8c2e6f passes25 fresh native checks against its actual026/142 graph; candidate-selected catalogue tests prove their stated scope separately. | Open: owner inference-repair publication, current registry-only catalogue and nested-lock adoption, final consumers/features/costs, delivery docs and full programme gates. A local candidate or older graph cannot certify final delivery. |
+| DX27 | Published Behavior/Actors0.28.0 and macros0.15.0 match verified registry checksums, tags and224 shipped Rust files at d9237dde. The normal release workflow and recovered Core tag/release are recorded below. Feature branches carry finite holding and generic-send fixes; registry0.28 does not contain them. Native source-selected and archive proofs retain their exact source limits. | Open: reviewed candidate publication, actual registry-only catalogue/nested-lock adoption, final feature/consumer/cost evidence, delivery docs and complete programme gates. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
 
 ### Retained contracts and evidence
@@ -1172,7 +1170,10 @@ minimum compilers; the same25 focused cases pass debug/release on both. A fresh
 exclusive-target full workspace run passes791 tests with two existing controlled
 subprocess skips in295.082s. These are private source-selected proofs; registry,
 remote cancellation and authoritative native Nix gates remain separate. The patch is private pending the AGENTS file-budget
-expansion; the actual branch stays clean at native aedca53. Existing receipts
+expansion; the actual branch is clean at dc09bb after merging main49cc897 (internal TLS
+dependency/locks/docs only, no Rust changes); the prepared patch still applies.
+Earlier private execution keeps its original graph, rather than certifying this
+new lock. Existing receipts
 NATIVE-MIGRATION-{FORMATTED,ASSERTIONS,INPUTS} bind the prepared result.
 
 The broader private source-selected nextest run exits100:790 pass/one failure/
@@ -1189,33 +1190,59 @@ copy now; it is outside the pending24-file caller-only approval and remains a
 separately counted adoption prerequisite. Do not weaken the version assertion
 or rewrite historical evidence as current-source execution.
 
-A separate DX07 hygiene witness now proves that legal caller names collide with
-private macro parameters: the real two-lane Bombay consumer compiles with plain
-names and fails only two E0403 errors after alpha-renaming them to generated
-Input/SendPath names. Both fresh exclusive targets compile their actual roots;
-identical locks contain65 dependencies plus the consumer. The future is only
-constructed, not polled: this is compile evidence, not native execution. An
-initial shared-target apparent pass reused the plain binary and is uncredited.
+#### Generated send parameters — DX07/08
 
-Derived syntax must preserve legal caller spellings, concrete ownership, inferred
-insertion and runtime obligations. Rust documents procedural-macro unhygiene;
-private binders must avoid referenced names as well as declared parameters,
-including raw identifiers and occupied fallback names. Pre-edit regression scope:
-all11 synthesized type-parameter names across derive/nominal sends, named lane
-methods, alias/bound capture and existing nominal lifetime/const support. Reuse
-GenericUses, BTreeSet, existing contracts, lanes and interpreter bodies. Select
-fresh private identifiers consistently; never reserve implementation spellings
-for callers, add bounds or change public generated names. See the
-[Rust macro reference](https://doc.rust-lang.org/reference/procedural-macros.html#procedural-macro-hygiene).
+Changing valid caller spellings must preserve construction, inferred insertion,
+concrete ownership, effects and runtime obligations. This is a derived Rust syntax
+law; [procedural macros are unhygienic](https://doc.rust-lang.org/reference/procedural-macros.html#procedural-macro-hygiene).
+The real two-lane Bombay facade/Application witness compiles with ordinary names
+and fails only two E0403 errors after renaming to generated Input/SendPath names.
+Fresh exclusive targets establish that RED; the first shared-target apparent
+pass reused the plain artifact and is uncredited. Compile-only construction
+never receives native-execution credit.
 
-Expected owner paths: existing macros/src/lib.rs, macros/CHANGELOG.md and
-actors/tests/send_products.rs (no new owner paths); production estimate net60–100
-lines, zero public types/traits/bounds/state/storage. One actor transition authority
-and all control/result alternatives, ordering, custody and interpreter paths stay
-unchanged. The private name set owns only lexical collision avoidance, not actor
-state. Record exact line/branch/spelling counts and double review after the RED
-cuts and before retention. Keep this repair separate from the pending native
-caller migration; its source-selected proofs remain valid at a863633.
+Pre-edit PRD52590e7 and regression commita133488 precede fix58ce331. Final REDs
+fail25 capture diagnostics in both profiles; an alpha-only plain control runs23
+cases in both. Three independent owner-name cuts fail six diagnostics against
+the original generator. Candidate26 cases pass debug/release, preserving the
+original seven oracles. Coverage includes all11 binder families, raw names,
+occupied fallback names, aliases/bounds, owner names and existing nominal
+lifetime/const support. Two source/oracle reviews pass. Reversing lexical
+selection/substitution reproduces the entire prior macro file after removing
+comments/whitespace; no other body, bound, lane, public spelling or order changes.
+
+The fix reuses GenericUses/BTreeSet and consistently selects unused private names.
+No migration is needed for this naming repair. Macro production+112/-67/net45;
+tests+312, public types/traits/storage/actor states/result alternatives/runtime
+branches+0. Four existing owner paths change, adding none to the28-path stack;
+owner production net322/native17, combined339. One compile-time private method
+owns collision avoidance, with no actor state/authority, history, duplicated
+cause, flag or structural user syntax. Cross-check the same algebra, layer,
+normalized atomic and Driver custody laws: disposition pass. No runtime-memory,
+latency or comparative compile-time improvement is claimed.
+
+PR113/809e7b3 now includes published main0.28.0;1,022 nextest/zero skips,
+123 doctests, all11 native Nix outputs and four-workspace package preflight pass.
+PR114/aafd1e9 shares the exact tree f243d3b with58ce331:1,035 nextest/zero skips,
+123 doctests and50 reference controls pass, followed by11 verified rooted outputs
+and authoritative flake checks at both clean commits. Initial9 checks build fresh;
+audit/TOML are cached. Their actual hashes/derivers and837 owner files plus each
+runner stay exact; later cached realization is not fresh test execution. No
+signing/disk failure occurred. Six license warnings, two duplicate groups,
+four package-fixture dead-code warnings, two intended historical-patch warnings
+and cached offline audit limits remain explicit. Candidate archives have252
+safe members/228 exact Rust files and clean58ce331 provenance, not registry028
+contents. Exact receipts are in the existing evidence root's send-names,
+send-names-common, send-names-stash and stash-limits/SEND-NAMES-* records.
+
+Three actual Bombay journeys prove both sends accepted, both completely rejected,
+and first rejected without skipping the later accepted receipt. Both compilers
+1.99/1.96 pass debug/release, with exact original allocations/bytes/destinations,
+sender, empty Stop lanes, complete retirement and independent cleanup/notifications.
+All65 nonroot package records remain exact; the direct Tokio test host reuses the
+already selected package. Both final oracle reviews pass. These are source-selected
+proofs, not registry, cancellation/panic or universal generic-corpus acceptance.
+Normal reviewed breaking publication and actual downstream adoption remain open.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
