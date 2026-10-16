@@ -57,8 +57,8 @@ use crate::templates::pool::worker::{
     WorkerRecoveryPreparation, WorkerReplacementError, WorkerReplacementRelease, creation_identity,
 };
 use crate::templates::pool::{
-    AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, CompletesAssignments, Completion,
-    Interruption, PoolFailureReaction, ShutdownSequence, SubmissionId,
+    AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, Completion, Interruption,
+    PoolFailureReaction, ShutdownSequence, SubmissionId,
 };
 use crate::templates::pool::{PoolRecoveryState, WorkerRecoveryDecision};
 use crate::templates::restart::{RecoveryRelease, RestartAdmission, RestartBudget, admit_restart};
@@ -359,7 +359,6 @@ where
     Role: Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Diagnostics:
@@ -3806,7 +3805,6 @@ where
     Role: Send + Sync,
     W: Behavior + Send,
     W::Protocol: behavior::Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     BehaviorAddr<W>: EndpointAddress,
@@ -3943,7 +3941,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Diagnostics:

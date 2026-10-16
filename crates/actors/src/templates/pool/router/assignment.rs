@@ -16,7 +16,7 @@ use crate::templates::pool::assignment::{
 use crate::templates::pool::worker as direct_worker;
 use crate::templates::pool::worker::{Member, MemberState, ShutdownJoin, Worker, WorkerPhase};
 use crate::templates::pool::{
-    AssignWorker, Assignment, BacklogCapacity, CompletesAssignments, Completion, CustomerDelivery,
+    AssignWorker, Assignment, BacklogCapacity, Completion, CustomerDelivery,
 };
 use crate::templates::restart::RecoveryCount;
 use crate::templates::roster::RoleName;
@@ -98,7 +98,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Selector: Fn(&Key) -> Role,

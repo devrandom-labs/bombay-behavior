@@ -28,8 +28,7 @@ use crate::templates::pool::worker::{
     WorkerReplacementError, WorkerReplacementRelease,
 };
 use crate::templates::pool::{
-    Assignment, CompletesAssignments, Interruption, PoolFailureReaction, PoolRecoveryState,
-    WorkerRecoveryDecision,
+    Assignment, Interruption, PoolFailureReaction, PoolRecoveryState, WorkerRecoveryDecision,
 };
 use crate::templates::restart::{
     RecoveryCount, RecoveryRelease, RestartAdmission, RestartBudget, admit_restart,
@@ -122,7 +121,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Selector: Fn(&Key) -> Role,
