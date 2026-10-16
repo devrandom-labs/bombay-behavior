@@ -3440,6 +3440,21 @@ warnings, expected unused150-patch diagnostics and an ignored Nix SQLite-busy
 message remain disclosed. External interpreter tests pass29 tests plus11 exact
 compile denials in each debug/release profile (14.056/15.120s).
 
+Combined release archive downstream proof: all220 shipped Rust files and archive
+VCS matchb204637. Five unchanged native pool journeys pass current1.99 debug/
+release (11.407/37.187s), with597 frozen inputs conserved. Independent reviews
+check correlated completion, original rejected audit payload pointers, both real
+timer orders, accepted parent completion plus rejected business delivery, cleanup,
+notifications and complete retirement. Runtime remains214d5b0 plus five previously
+proved namespace/startup adapters and two root dependency version updates. Of620
+tracked runtime files, the other614 remain exact; all three caller Rust files
+retain their recorded contents. Helper rows classified Accepted are not fully inspected;
+timer uniqueness/provenance, closed-parent and affine-job custody remain separate.
+No registry, minimum compiler, unadapted latest-main or full Bombay gate claim.
+Initial wrong-target archive setup rejects stale002fcc7 by source hash before
+Cargo executes and receives no passing credit; V2 uses exact final archives.
+Evidence: release-027-downstream-v2/{inputs,metadata,sources,results}.json.
+
 All827 frozen tracked hashes remain exact. All322 existing Rust files match
 merged main18653a7; Clerk is the sole new Rust file. Four nonowner lock graphs
 retain61/24/30/35 exact records. Final release diff:12 files, production Rust
