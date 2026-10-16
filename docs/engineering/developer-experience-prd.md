@@ -908,6 +908,15 @@ publication or downstream compatibility.
 
 #### Verification, costs and delivery — DX19/25–28
 
+Main reconciliation: PR107 merged as509a10b and PR108 asedf103e. This branch
+already contains their reviewed constructor and complete output-scan changes;
+the refresh changes documents only. Keep the newer single requirement table and
+all unreleased timer/adapter/recovery/factory notices. Detailed factory-input
+REDs, ownership sums and build-scan failure/inversion evidence remain in the
+[merged owner record](https://github.com/devrandom-labs/bombay-behavior/blob/edf103e958e291b907a1b6eb9a95da5a9c84af45/docs/engineering/developer-experience-prd.md).
+Those earlier receipts do not certify the refreshed head; fresh gates and CI
+remain required. Registry publication is not inferred from merging these PRs.
+
 | Exact source | Verified result | Limit |
 | --- | --- | --- |
 | Owner50348d7 | Eleven native Nix checks,987 nextest/118 doctests/50 audit controls, four-workspace archive preflight and all14 exact-head GitHub checks pass. Actual extracted owner consumers and external contracts retain their supported-compiler/profile evidence. | PR107 plus audit PR108 remain open; normal reviewed publication is pending. Sandbox yank lookups were unavailable; separate online audit succeeds. |
