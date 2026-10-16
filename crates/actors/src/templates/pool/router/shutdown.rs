@@ -15,6 +15,7 @@ use super::{
     KeyedQueuedReturnReason, protocol,
 };
 use crate::templates::drain::{ForcedRetirementCause, ShutdownDeadline};
+use crate::templates::pool::Assignment;
 use crate::templates::pool::assignment::AssignmentShutdown;
 use crate::templates::pool::worker as direct_worker;
 use crate::templates::pool::worker::{
@@ -22,7 +23,6 @@ use crate::templates::pool::worker::{
     WorkerCustody, WorkerDeparture, WorkerPreparationError, WorkerPreparationStartFault,
     WorkerRecoveryPreparation, WorkerReplacementError, WorkerStartupCustody,
 };
-use crate::templates::pool::{Assignment, CompletesAssignments};
 use crate::templates::worker::WorkerCreationSettlement;
 use crate::worker::WorkerSource;
 use crate::worker::{StartupPlan, WorkerCreationRejection};
@@ -33,7 +33,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Selector: Fn(&Key) -> Role,

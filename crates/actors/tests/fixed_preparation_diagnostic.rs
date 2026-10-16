@@ -4,6 +4,7 @@ use behavior::{
     ActiveTurn, Address, Behavior, BehaviorActed, EndpointAddress, InterpreterFault,
     MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, User,
 };
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::supervisor::roster::{
     FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
 };
@@ -123,7 +124,14 @@ fn diagnostic_route_names_only_domain_types() {
     let route: Recipient<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchPlan, SearchSource>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchPlan,
+                SearchSource,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     > = Recipient::global(RuntimeAddr(8));
     assert_eq!(route.address(), RuntimeAddr(8));

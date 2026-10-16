@@ -15,6 +15,7 @@ use behavior::{
     EstablishedRecipient, EventIngress, ItemSettlement, Never, NoBirths, Protocol, RoutedCreation,
     SettledItem, Step, User,
 };
+use behavior_actors::composition::replies::ExactReplies;
 use behavior_actors::proxy::{
     InitialWorkerOutcome, ProxyControl, ProxyDiagnostic, ProxyDrain, ProxyEffects, ProxyOutcome,
     ProxyPhase, ReplacementOutcome, StableProxy, WorkerStartResult,
@@ -126,6 +127,8 @@ fn supervisors_accept_their_stable_proxy_diagnostic_report() {
             Hydrate,
             ActionItemResult<PrepareWorkers<Never, (), Worker, Hydrate>>,
             WorkerPreparation<Never, (), Worker, Hydrate>,
+            ExactReplies,
+            ExactReplies,
         >,
     >();
     require_parent_ingress::<DynamicSupervisorEvent<(), Worker, Hydrate>>();

@@ -17,10 +17,10 @@ Their distinct ownership laws remain separate.
 | Stable service across replacement | `proxy::StableProxy::new`; `immediate` selects a no-work startup plan |
 | Fixed roster supervision | `supervisor::roster::new(factory, roles, roster::Config { … }).build()` |
 | Dynamic membership supervision | `supervisor::directory::new(directory::Config { … })` |
-| FIFO worker distribution | `pool::queue::new(factory, roles, queue::Config { … })` |
+| FIFO worker distribution | `pool::queue::new(factory, roles, queue::Config { … }).build()` |
 | Key-affine worker distribution | `pool::router::new(factory, roles, selector, router::Config { … })` |
 | Worker definition and readiness | `worker::WorkerSubmission::immediate` or `with_startup` |
-| Assignment worker authoring | `pool::pool_worker`, `Assignment::payload`, `Assignment::complete` |
+| Assignment worker authoring | Ordinary actor effects, `Assignment::payload`, `Assignment::complete`; `pool::pool_worker` for completion-only workers |
 
 Config names simultaneous choices and consumes them into flat actor storage.
 Automatic fixed recovery takes `roster::RecoveryPolicy { strategy, limit, delay }`;
@@ -36,6 +36,36 @@ roster/capacity, startup, recovery, restart budget/release, interruption,
 drain and diagnostic disposition. No-op sources, unused routes and guessed
 nonces are not policy choices. Temporary recovery has no unused automatic
 source; immediate startup has no dummy asynchronous plan.
+
+Ordinary factories let Rust infer the composed worker type. Pass startup work
+as `WorkerSubmission::with_startup(worker, move || async move { ... })`; its
+actual `Result` determines readiness and rejection. This avoids naming the
+wrapped worker, a startup struct or its associated types. Construction stores
+the closure; the existing initialization-authorized startup operation calls it
+once. Do not invoke it while constructing the submission. Named `StartupPlan`
+implementations remain available when a separate domain plan is useful.
+A closure covered by this implementation cannot also implement the trait itself.
+
+Supervisor and FIFO replies use exact established recipients by default.
+Older applications using logical reply addresses select `logical_status()` and
+`logical_capabilities()` independently on the supervisor builder, or
+`logical_replies()` on the FIFO builder, before `build()`. Host only protocols
+whose logical replies the application actually uses. Exact customers need no
+logical reply namespace or structural reply-type alias.
+
+An ordinary worker can emit its assignment completion and business messages
+in the same named send product. FIFO and keyed construction infer the result
+from one unambiguous completion lane, including through timer wrappers; no
+pool-specific capability implementation is needed. Missing or ambiguous lanes
+are rejected at construction. The focused
+[consumer tests](https://github.com/devrandom-labs/bombay-behavior/blob/234235d6fb2487c2af2ac40fc9519cabd480b23d/tests/interpreter-contract/tests/pool_completion.rs)
+retain both inferred constructors and their four compile denials.
+
+Generic code that previously named the sealed `CompletesAssignments` trait
+should express the existing `SendInput<ReportToParent<Completion<R>>, Path>`
+capability only where it selects a worker at construction. `R: Send` remains
+required there. Ordinary calls infer that proof; it is not another pool type
+parameter, runtime route or stored policy.
 
 ## Ownership obligations
 

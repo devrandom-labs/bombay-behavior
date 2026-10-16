@@ -2,6 +2,7 @@
 
 use core::convert::Infallible;
 
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, StableProxy, WorkerStartResult};
@@ -31,7 +32,7 @@ where
     Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     pub(crate) supervisor:
-        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>>,
+        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible, MixedReplies, MixedReplies>>,
     pub(crate) proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     pub(crate) proxy_id: CreationId,
     pub(crate) worker: WorkerAttempt,
@@ -79,7 +80,7 @@ where
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    )
+    ).logical_status().logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker is prepared"))
     .initialize()

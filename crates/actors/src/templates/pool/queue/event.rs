@@ -1,5 +1,7 @@
 //! Closed application and worker-runtime inputs for one FIFO pool.
 
+use crate::composition::replies::ReplyRoutes;
+
 use behavior::{
     ActionItemResult, Behavior, BehaviorAddr, Births, ChildReport, CreationsSettled,
     EndpointAddress, EventIngress, InjectEvent, Protocol, RecoverEvent, User, UserEvent,
@@ -16,8 +18,16 @@ use crate::worker::{StartupPlan, WorkerInitializationReport, WorkerStartup};
 
 /// Every typed input accepted by one FIFO pool.
 #[doc(hidden)]
-pub enum FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
-where
+pub enum FifoEvent<
+    Role,
+    W,
+    P,
+    Job,
+    WorkerResult,
+    PreparationStart,
+    PreparationReturn,
+    Replies: ReplyRoutes,
+> where
     W: Behavior,
     W::Protocol: Protocol<Msg = super::Assignment<Job>>,
     P: StartupPlan,
@@ -25,7 +35,7 @@ where
     <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
     Job: Send,
 {
-    Command(User<BehaviorAddr<W>, FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult>>),
+    Command(User<BehaviorAddr<W>, FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>>),
     WorkerCreationsSettled(CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>),
     WorkerInitialization(WorkerInitializationReport<W, P>),
     WorkerStartupReported(WorkerStartup<W, P>),
@@ -40,8 +50,9 @@ where
     Shutdown(ShutdownRequested),
 }
 
-impl<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn> UserEvent
-    for FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
+impl<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn, Replies: ReplyRoutes>
+    UserEvent
+    for FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn, Replies>
 where
     W: Behavior,
     W::Protocol: Protocol<Msg = super::Assignment<Job>>,
@@ -51,7 +62,7 @@ where
     Job: Send,
 {
     type Addr = BehaviorAddr<W>;
-    type Message = FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult>;
+    type Message = FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
         Self::Command(User::new(from, message))
@@ -67,9 +78,26 @@ where
 
 macro_rules! injected_fifo_input {
     ($input:ty, $variant:ident) => {
-        impl<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
-            InjectEvent<$input, behavior::Here>
-            for FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
+        impl<
+            Role,
+            W,
+            P,
+            Job,
+            WorkerResult,
+            PreparationStart,
+            PreparationReturn,
+            Replies: ReplyRoutes,
+        > InjectEvent<$input, behavior::Here>
+            for FifoEvent<
+                Role,
+                W,
+                P,
+                Job,
+                WorkerResult,
+                PreparationStart,
+                PreparationReturn,
+                Replies,
+            >
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = super::Assignment<Job>>,
@@ -83,9 +111,26 @@ macro_rules! injected_fifo_input {
             }
         }
 
-        impl<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
-            RecoverEvent<$input, behavior::Here>
-            for FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
+        impl<
+            Role,
+            W,
+            P,
+            Job,
+            WorkerResult,
+            PreparationStart,
+            PreparationReturn,
+            Replies: ReplyRoutes,
+        > RecoverEvent<$input, behavior::Here>
+            for FifoEvent<
+                Role,
+                W,
+                P,
+                Job,
+                WorkerResult,
+                PreparationStart,
+                PreparationReturn,
+                Replies,
+            >
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = super::Assignment<Job>>,
@@ -106,9 +151,26 @@ macro_rules! injected_fifo_input {
 
 macro_rules! returned_fifo_input {
     ($request:ty, $input:ty, $variant:ident) => {
-        impl<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
-            EventIngress<$request, $input>
-            for FifoEvent<Role, W, P, Job, WorkerResult, PreparationStart, PreparationReturn>
+        impl<
+            Role,
+            W,
+            P,
+            Job,
+            WorkerResult,
+            PreparationStart,
+            PreparationReturn,
+            Replies: ReplyRoutes,
+        > EventIngress<$request, $input>
+            for FifoEvent<
+                Role,
+                W,
+                P,
+                Job,
+                WorkerResult,
+                PreparationStart,
+                PreparationReturn,
+                Replies,
+            >
         where
             W: Behavior,
             W::Protocol: Protocol<Msg = super::Assignment<Job>>,
@@ -160,7 +222,7 @@ returned_fifo_input!(
     RestartScheduleSettled
 );
 
-impl<Role, W, P, Source, Job, WorkerResult>
+impl<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
     EventIngress<
         PrepareWorkers<Source, Role, W, P>,
         ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
@@ -173,6 +235,7 @@ impl<Role, W, P, Source, Job, WorkerResult>
         WorkerResult,
         ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         WorkerPreparation<Source, Role, W, P>,
+        Replies,
     >
 where
     Role: Send + Sync,
@@ -189,7 +252,7 @@ where
     }
 }
 
-impl<Role, W, P, Source, Job, WorkerResult>
+impl<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
     InjectEvent<WorkerPreparation<Source, Role, W, P>, behavior::Here>
     for FifoEvent<
         Role,
@@ -199,6 +262,7 @@ impl<Role, W, P, Source, Job, WorkerResult>
         WorkerResult,
         ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         WorkerPreparation<Source, Role, W, P>,
+        Replies,
     >
 where
     Role: Send + Sync,
@@ -215,7 +279,7 @@ where
     }
 }
 
-impl<Role, W, P, Source, Job, WorkerResult>
+impl<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
     RecoverEvent<WorkerPreparation<Source, Role, W, P>, behavior::Here>
     for FifoEvent<
         Role,
@@ -225,6 +289,7 @@ impl<Role, W, P, Source, Job, WorkerResult>
         WorkerResult,
         ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         WorkerPreparation<Source, Role, W, P>,
+        Replies,
     >
 where
     Role: Send + Sync,

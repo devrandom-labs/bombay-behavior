@@ -7,6 +7,7 @@
 
 mod delivery_route;
 mod message_adapter;
+pub mod replies;
 
 pub use crate::activation::{Activate, Active, Initialized};
 pub use crate::machine::{Machine, Move};

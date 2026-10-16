@@ -2,6 +2,7 @@
 
 use core::convert::Infallible;
 
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, StableProxy, WorkerStartResult};
@@ -50,11 +51,11 @@ where
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Source>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Source, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     pub(crate) members: Vec<ReadyMember>,
 }
@@ -110,7 +111,7 @@ where
                 WorkerEndpoint,
             )),
         },
-    )
+    ).logical_status().logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("each declared role has an initial worker"))
     .initialize()

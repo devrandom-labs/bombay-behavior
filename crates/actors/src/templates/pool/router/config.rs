@@ -8,7 +8,7 @@ use super::{
 };
 use crate::diagnostic::DiagnosticDisposition;
 use crate::lifecycle::ActorDrainPolicy;
-use crate::pool::{Assignment, BacklogCapacity, CompletesAssignments, Interruption, PoolRecovery};
+use crate::pool::{Assignment, BacklogCapacity, Interruption, PoolRecovery};
 use crate::templates::worker::{
     InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers,
 };
@@ -49,6 +49,10 @@ pub struct KeyedConstructionRejected<Factory, Selector, Role, W, P, Rejection, S
 }
 
 /// Construct one keyed pool after preparing every declared worker in order.
+///
+/// Workers may emit ordinary business sends alongside assignment completion.
+/// Construction infers the result from an unambiguous completion lane, including
+/// named products and wrappers.
 /// The factory may return `WorkerSubmission` directly or a fallible `Result`.
 /// Rejection returns the original factory, prepared prefix, role, refusal and
 /// untouched suffix together with the selector and every construction policy.
@@ -64,6 +68,7 @@ pub fn new<
     Key,
     Job,
     WorkerResult,
+    Path,
 >(
     factory: Factory,
     roles: OrderedRoles<Role>,
@@ -89,7 +94,9 @@ where
     Role: Eq,
     W: Behavior,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
+    W::Sends:
+        behavior::SendInput<behavior::ReportToParent<crate::pool::Completion<WorkerResult>>, Path>,
+    WorkerResult: Send,
     BehaviorAddr<W>: EndpointAddress,
 {
     let prepared = match prepare_initial_workers(factory, roles) {

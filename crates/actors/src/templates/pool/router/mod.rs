@@ -23,8 +23,8 @@ use crate::templates::pool::assignment::{
 use crate::templates::pool::worker as direct_worker;
 use crate::templates::pool::worker::{Member, MemberState, RetiringWorker, Worker, WorkerPhase};
 use crate::templates::pool::{
-    AssignWorker, Assignment, BacklogCapacity, CompletesAssignments, CustomerDelivery,
-    Interruption, PoolRecoveryState, ShutdownSequence, SubmissionId,
+    AssignWorker, Assignment, BacklogCapacity, CustomerDelivery, Interruption, PoolRecoveryState,
+    ShutdownSequence, SubmissionId,
 };
 use crate::worker::{
     InitializeWorker, PreparedWorker, StartWorker, StartupLimit, StartupPlan, WorkerAttempt,
@@ -312,7 +312,6 @@ where
     Role: Send + Sync,
     W: Behavior + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     BehaviorAddr<W>: EndpointAddress,
@@ -331,7 +330,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Selector: Fn(&Key) -> Role,
@@ -1072,7 +1070,6 @@ where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
     Selector: Fn(&Key) -> Role + Send,

@@ -8,6 +8,7 @@ use behavior::{
     Protocol, User,
 };
 use behavior_actors::ChildStopped;
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::supervisor::roster::{FixedDiagnostic, RecoveryDenialReason, RecoveryDenied};
 use behavior_actors::worker::RestartReleaseFailure;
 
@@ -113,7 +114,14 @@ fn diagnostic_route_names_only_domain_types() {
     let _diagnostic_route: behavior::EstablishedRecipient<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchPlan, SearchSource>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchPlan,
+                SearchSource,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     > = behavior::EstablishedRecipient::issued(Endpoint);
 }

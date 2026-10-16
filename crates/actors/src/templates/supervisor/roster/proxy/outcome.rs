@@ -1,5 +1,7 @@
 //! Exact StableProxy outcome correlation for fixed-roster members.
 
+use crate::composition::replies::ReplyRoutes;
+
 use behavior::{Behavior, BehaviorAddr, ChildReport, EndpointAddress};
 
 use crate::templates::roster::RoleName;
@@ -17,6 +19,8 @@ pub(in super::super) enum InitialProxyDecision<
     Plan,
     PreparationStart,
     PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
 > where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -35,7 +39,15 @@ pub(in super::super) enum InitialProxyDecision<
     },
     Rejected {
         roster: FixedRoster<Role, Worker, Plan>,
-        rejection: FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        rejection: FixedSupervisorError<
+            Role,
+            Worker,
+            Plan,
+            PreparationStart,
+            PreparationReturn,
+            StatusReplies,
+            CapabilityReplies,
+        >,
     },
 }
 
@@ -65,10 +77,23 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_initial_outcome<PreparationStart, PreparationReturn>(
+    pub(in super::super) fn accept_initial_outcome<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         report: ChildReport<ProxyOutcome<Worker, Plan>>,
-    ) -> InitialProxyDecision<Role, Worker, Plan, PreparationStart, PreparationReturn> {
+    ) -> InitialProxyDecision<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    > {
         match self {
             Self::Operating(mut members) => {
                 match members

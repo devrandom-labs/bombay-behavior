@@ -12,6 +12,14 @@ transition.
 The crate contains no dynamic protocol registry, type erasure, executor, or
 transport.
 
+For a custom interpreter request that lends its whole owned input, implement
+`OwnedItem` with its accepted, rejection and prerequisite types. The library
+supplies its standard `ActionItem` receiving loan; keep `InterpretItem` as the
+runtime implementation. Existing requests with a different custody equation
+continue to implement `ActionItem` directly. When migrating a standard request,
+replace that implementation rather than implementing both traits, and preserve
+its accepted-receipt retention policy.
+
 From the repository root, run the current `#[behavior]` example:
 
 ```sh
