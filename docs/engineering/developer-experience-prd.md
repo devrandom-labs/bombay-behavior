@@ -1121,6 +1121,20 @@ and a real exact-only positive without a logical host. These are the remaining
 focused test edits, not permission for catalogue migration before the native
 accepted/closed-recipient journeys pass.
 
+Before retention, also prove the existing DX08/L4 insertion law: adding a
+same-event named effect product must preserve `Actions::cont().with_send(request)`
+for a unique typed inner lane. A ReceiveTimeout outside the finite stash must
+emit a real reminder to the MessageAdapter destination without naming the stash
+product or a structural path. Initialize, hold one original input, refuse a second,
+fire the actual latest schedule generation, and prove exactly one reminder plus
+unchanged original custody; replaying elapsed must emit nothing. This is a derived
+composition law, not new timer semantics. Generic SendProduct currently derives
+interpretation/custody but no insertion delegation; inspect that common owner
+and existing SendLayer/SendInput proofs before choosing a fix. A failing witness
+reopens this unretained lowering; do not compensate in the callback or migrate
+the catalogue. Any common fix needs a second real product and wrapper order,
+missing/duplicate-lane denials, and unchanged interpreter ordering/custody.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
@@ -1297,7 +1311,9 @@ were unavailable; its raw failure remains separate. Package preflight passes
 9.409s across two workspaces, with existing fixture/patch warnings;248 archive
 members/224 Rust files match clean c294 source. Separate online audit passes
 1.537s with65 dependencies/no findings or warnings (database479c888); sandbox
-yank lookup errors remain separate. Exact-head CI38950728786 is running.
+yank lookup errors remain separate. Exact-head CI38950728786 and all14 GitHub checks pass at c294687.
+PR #109 merged externally as e42088c6 on October16; this establishes main
+delivery, not a new registry publication.
 Two conflict reviews preserve the single28-row checklist and all change notices;
 final gate reviews remain separate from earlier648 verification. No publication
 or complete-programme acceptance follows from resolving this conflict.
