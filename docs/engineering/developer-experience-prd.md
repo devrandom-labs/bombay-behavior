@@ -3183,17 +3183,22 @@ reason/suffix/configuration product. No interpreter or transition is replaced.
 Complete root sums remain FIFO Constructed(prepared workers), Operating(current
 pool), Draining(members,deadline), Stopped and ForcedRetirement(members,cause);
 Keyed has the same five alternatives with Retiring(workers,deadline) for drain.
-The corrected, module-qualified AST checkpoint excludes cfg(test) modules:
-61 sums/244 alternatives,66 products,370 function bodies,894 match arms and54
-if branches are unchanged. Every surviving alternative's complete fields and
-every body are token-identical. Production is+25/-67/net-42 over eight files;
-physical source files stay25 and declared library modules fall24→23. The
-application contract loses one trait and its associated type; no public type is
-added. Unrestricted pub declarations fall190→187, including the private sealing
-trait. The source-inclusive inventory is63/248/78/416/926/55; the initial75 struct
-figure collided on test names and has no retained counting credit. See
-pool-census/qualified-{sources,results}.json (54 frozen inputs, locked pinned
-replay). Physical line totals include tests and are not production-only totals.
+The module-qualified source-AST checkpoint excludes inline cfg(test) modules
+and their two explicitly pathed external files:59 sums/240 alternatives,56
+products,320 function bodies,830 match arms and47 if branches are unchanged.
+Every surviving alternative's complete fields and every body are token-identical.
+Production is+25/-67/net-42 over eight files; selected source files stay23 and
+declared modules fall23→22. These are source counts, not macro-expanded or
+feature-evaluated production metrics. The application contract loses one trait
+and its associated type; no public type is added. Unrestricted pub declarations
+fall190→187, including the private sealing trait. The full25-file source
+inventory, including tests, is63/248/78/416/926/55, with34→33 declared modules
+and20047→20005 physical lines. Initial tools collided on three test struct names
+and included two external test modules in their exclusion row; those figures
+have no retained counting credit. See worker-effects/pool-census-v3/
+ownership-{sources,results}.json (54 frozen inputs, locked pinned replay,
+two independent review passes). Physical selected-file line counts still
+include inline test text and are not production-only totals.
 
 Current evidence: plain FIFO, Keyed, both exercised OneShot/Periodic orders and
 closed-auditor rejection pass current1.99/minimum1.96 debug/release (five native
