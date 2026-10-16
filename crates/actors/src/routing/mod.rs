@@ -9,6 +9,41 @@
 /// Routing templates use this product when these are their complete and
 /// semantically distinct effect lanes. Interpretation always exhausts
 /// `deliveries` before beginning `outcomes`.
+/// Unique typed requests can be appended with `Actions::with_send` through
+/// generic products and behavior layers. Insertion changes only the selected
+/// lane and preserves its prefix; it does not interpret or settle any effect.
+///
+/// An absent request capability remains unavailable:
+///
+/// ```compile_fail,E0277
+/// let mut sends = behavior_actors::DeliveryOutcomes {
+///     deliveries: Vec::<u8>::new(),
+///     outcomes: Vec::<u32>::new(),
+/// };
+/// behavior::SendEffects::send(&mut sends, 7_u16);
+/// ```
+///
+/// Repeated capabilities require an explicit static selection; inference does
+/// not select the first matching field:
+///
+/// ```compile_fail,E0283
+/// let mut sends = behavior_actors::DeliveryOutcomes {
+///     deliveries: Vec::<u8>::new(),
+///     outcomes: Vec::<u8>::new(),
+/// };
+/// behavior::SendEffects::send(&mut sends, 7_u8);
+/// ```
+///
+/// A type alias does not establish a separate capability:
+///
+/// ```compile_fail,E0283
+/// type Notices = Vec<u8>;
+/// let mut sends = behavior_actors::DeliveryOutcomes {
+///     deliveries: Notices::new(),
+///     outcomes: Vec::<u8>::new(),
+/// };
+/// behavior::SendEffects::send(&mut sends, 7_u8);
+/// ```
 #[derive(behavior_macros::SendProduct)]
 pub struct DeliveryOutcomes<Deliveries, OutcomeSends> {
     pub deliveries: Deliveries,
