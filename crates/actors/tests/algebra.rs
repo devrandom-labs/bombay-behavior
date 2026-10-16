@@ -780,6 +780,63 @@ enum StashAdmission {
     Accepting,
 }
 
+#[test]
+fn stash_accepts_an_infallible_machine_and_preserves_both_queues() {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Phase {
+        Closed,
+        Open,
+    }
+
+    #[derive(Clone)]
+    enum Parcel {
+        Direct(u64),
+        Held(u64),
+        Release,
+    }
+
+    let machine = Machine::new(
+        Vec::new(),
+        Phase::Closed,
+        |phase, received: &mut Vec<u64>, parcel| {
+            Ok::<_, Never>(match (phase, parcel) {
+                (Phase::Closed, Parcel::Direct(_)) => Move::Defer,
+                (_, Parcel::Direct(value) | Parcel::Held(value)) => {
+                    received.push(*value);
+                    Move::Stay
+                }
+                (_, Parcel::Release) => Move::Goto(Phase::Open),
+            })
+        },
+    );
+    let stash = behavior_actors::Stash::new(machine, |machine, parcel| match parcel {
+        Parcel::Held(_) if machine.phase() == Phase::Closed => StashRoute::Stash,
+        Parcel::Release => StashRoute::Release,
+        Parcel::Direct(_) | Parcel::Held(_) => StashRoute::Deliver,
+    });
+    let initialized = stash.initialize().expect("infallible machine starts");
+    assert_no_vec_effects!(initialized.actions, Step::Continue);
+    let mut stash = initialized.behavior;
+    for parcel in [Parcel::Direct(3), Parcel::Held(5), Parcel::Held(7)] {
+        let actions = stash
+            .transition(User::user(MailAddr(1), parcel))
+            .expect("both owners retain their own work");
+        assert_no_vec_effects!(actions, Step::Continue);
+    }
+    assert_eq!(stash.held(), 2);
+    assert_eq!(stash.base().held(), 1);
+    assert_eq!(stash.base().phase(), Phase::Closed);
+    assert_eq!(stash.base().state(), &[]);
+    let released = stash
+        .transition(User::user(MailAddr(2), Parcel::Release))
+        .expect("both owned queues replay without failure");
+    assert_no_vec_effects!(released, Step::Continue);
+    assert_eq!(stash.held(), 0);
+    assert_eq!(stash.base().held(), 0);
+    assert_eq!(stash.base().phase(), Phase::Open);
+    assert_eq!(stash.base().state(), &[3, 5, 7]);
+}
+
 struct StashRecording {
     admission: StashAdmission,
     received: Vec<u64>,
