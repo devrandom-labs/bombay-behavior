@@ -84,6 +84,13 @@ an empty queue. The actor, selector, limit and refusal recipient remain
 unchanged, so a later refill follows the same policy. Unread runtime mailbox
 inputs have separate retirement custody and must also be consumed.
 
+If replay unwinds, previously held inputs not yet delegated to the actor remain
+available through `take()`, after any inputs reheld earlier in that replay.
+A selector only borrows the current input, so that input is retained too. A
+panicking inner actor may consume its delegated input and change its own state;
+there is no rollback or recovery of Actions it never returned. Aborts and
+allocator/destructor failure are outside this recovery contract.
+
 The limit counts held inputs, not bytes, allocation capacity, runtime mailbox
 entries, outgoing effects or an inner Machine's separate deferrals. Both stash
 policies require a closed phase and a statically uninhabited transition error;

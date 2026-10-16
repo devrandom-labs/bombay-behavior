@@ -26,7 +26,9 @@ pub struct StashSends<ActorSends, Refusals> {
 /// the inner actor and held FIFO stay unchanged and this actor continues.
 /// Zero refuses every newly selected held input. Deliver, release and non-user
 /// events remain available at capacity. Replay preserves successful effects
-/// before the first stop and retains the untouched suffix.
+/// before the first stop and retains the untouched suffix. On an unwinding
+/// replay panic, previously held originals not yet delegated remain available
+/// through [`Self::take`]; inner mutations and consumed inputs are not rolled back.
 ///
 /// The limit counts held inputs, not bytes, allocation capacity, runtime mailbox
 /// entries or queues owned by an inner actor. The selector is pure. The inner

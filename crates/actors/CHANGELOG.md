@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep previously held, undelegated originals available through `take()` when
+  replay selection or inner execution unwinds. A selector only borrows its
+  current input; inner execution may consume its delegated input. This does
+  not roll back inner state or recover Actions never returned by a panic.
+
 ### Breaking
 
 - Construct finite holding with `Stash::new(actor, limit, refused, route)`.

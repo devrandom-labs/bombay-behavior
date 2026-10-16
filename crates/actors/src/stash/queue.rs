@@ -75,6 +75,19 @@ pub struct UnlimitedStash<B: Behavior> {
     held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
+// Still-undelegated originals belong to the actor even if selection or inner
+// execution unwinds. Reunite the unread suffix after the already reheld prefix.
+struct HeldInputs<'a, A: Address, M> {
+    held: &'a mut VecDeque<User<A, M>>,
+    unread: VecDeque<User<A, M>>,
+}
+
+impl<A: Address, M> Drop for HeldInputs<'_, A, M> {
+    fn drop(&mut self) {
+        self.held.append(&mut self.unread);
+    }
+}
+
 impl<B: Behavior> UnlimitedStash<B> {
     /// Take all held messages in arrival order, leaving this stash empty.
     ///
@@ -84,6 +97,11 @@ impl<B: Behavior> UnlimitedStash<B> {
     ///
     /// Messages still in a runtime mailbox belong to that mailbox, not this
     /// stash. A second call returns an empty queue.
+    ///
+    /// With unwinding panics, a replay selector retains its borrowed original;
+    /// inner execution retains only originals not yet delegated to it. Neither
+    /// case rolls back inner mutations or recovers consumed inputs or Actions
+    /// that the panicking transition never returned. Aborts are not recoverable.
     #[must_use]
     pub fn take(
         &mut self,
@@ -179,10 +197,17 @@ where
         &mut self,
         acc: &mut Actions<behavior::BehaviorAddr<B>, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
-        let mut batch = core::mem::take(&mut self.held);
-        while let Some(user) = batch.pop_front() {
-            match (self.route)(&self.inner, &user.message) {
-                StashRoute::Stash => self.held.push_back(user),
+        let mut inputs = HeldInputs {
+            unread: core::mem::take(&mut self.held),
+            held: &mut self.held,
+        };
+        while let Some(user) = inputs.unread.front() {
+            let route = (self.route)(&self.inner, &user.message);
+            let Some(user) = inputs.unread.pop_front() else {
+                break;
+            };
+            match route {
+                StashRoute::Stash => inputs.held.push_back(user),
                 StashRoute::Deliver | StashRoute::Release => {
                     let actions = behavior::delegate_transition(
                         &mut self.inner,
@@ -191,7 +216,6 @@ where
                     acc.sends.append(actions.sends);
                     acc.creates.extend(actions.creates);
                     if let Step::Stop(exit) = actions.become_ {
-                        self.held.extend(batch);
                         acc.become_ = Step::Stop(exit);
                         return Ok(());
                     }
