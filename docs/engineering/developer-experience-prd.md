@@ -720,7 +720,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
 | DX04 | ApplicationOutcome joins work, native retirement, notifications and families; consuming completion returns value plus ApplicationRetirement or the original whole report. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection, final-source minimum-compiler/archive/full gates. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: final complete consumer and repository gates. |
-| DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
+| DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
@@ -799,45 +799,48 @@ not affine job inputs; a closed auditor is not a closed parent-report recipient.
 Keep original-work refusal, parent-report
 closure and affine job input distinct from unrelated delivery failures.
 
-#### Mailbox validation — DX06 pre-edit law
+#### Mailbox validation — DX06
 
-A successful `MailboxCapacity::new(minimum)` must represent a size accepted by
-the selected native mailbox before resource allocation. Refusal returns the
-original minimum through the existing error. This is derived runtime validation
-policy, not an actor-model capacity law. Communication0.1.6 rounds to a power of
-two with floor two and panics unless the result is below2^31; its largest valid
-power is2^30. It exposes no reusable capacity validator or public limit. Bombay
-currently checks zero and integer overflow only. Inspect the actual early client
-path Scope→ExternalActor::establish→mailbox_channel→channel, then reproduce both
-its accepted-invalid value/panic and the desired constructor refusal before
-production edits. No huge valid mailbox may be allocated by a test.
+Successful `MailboxCapacity::new(minimum)` must fit the selected native mailbox
+before resource allocation; refusal retains the original minimum. This is
+derived runtime validation policy, not an actor-model capacity law.
+Communication0.1.6 requires the rounded power of two below2^31, so the largest
+valid minimum is2^30. No public native validator/limit exists. Bombay now uses
+one private maximum in its existing guard and actionable error text. The
+checked rounding chain, NonZeroUsize product, default, public types and native
+construction path remain unchanged. This is no available-memory guarantee.
 
-Use a fresh `codex/devx-mailbox-limits` worktree from registry1a8f20b, preserving
-other branches. Selected owners remain Behavior/Actors270, macros150, Address030,
-Communication016 and Timers020 from the unchanged lock; Observe remains the
-workspace module at1a8f20b. Keep the existing
-NonZeroUsize product, error and round-once construction. One private maximum
-may state the selected native limit for validation and truthful error text;
-add no public type, dependency, runtime check after construction or policy flag.
-Expected four Bombay paths: mailbox owner, existing client-capacity tests, usage
-and coordination; approximately12 net production lines. Initial control and
-subordinate sums are zero, one validation decision, one module and two existing
-public types. The stored value and Result alternatives must stay identical.
-Test zero/overflow, the last valid minimum and first invalid rounded minimum,
-then actual existing bounded client/root/child/Entity rejection and retirement.
-Record exact drift, supported compilers, two reviews and required gates before
-retention. The adapter and its ready release heads remain separate.
+The pre-edit law/budget at3bc6579 precedes production. At registry1a8f20b both
+profiles incorrectly accept1073741825 as2147483648. Independent native
+Scope→ExternalActor→mailbox_channel controls reach the primitive's exact panic
+before ring allocation. Those two expected failures/two expected-panic controls
+remain historical evidence only; eight supported pairs pass without allocating
+huge mailboxes. Both independent audits bind1254 unchanged inputs and actual
+registry Cargo files without patches. Receipts: `mailboxes/PREEDIT-*`.
 
-The pre-edit registry-only matrix at1a8f20b reproduces the typed-refusal failure
-in debug/release: minimum1073741825 is incorrectly accepted as2147483648.
-An independent native Scope external-recipient probe reaches the selected
-primitive's exact ticket-window panic before ring allocation in both profiles;
-these expected-panic baseline controls are historical evidence only. The eight
-supported rounding/boundary inputs pass without mailbox allocation. All bound
-sources and the original Cargo graph remain exact through the six commands;
-receipts are `mailboxes/PREEDIT-{SOURCES,RESULTS}.json`. Production is unchanged
-at this checkpoint. The native small-capacity/retirement matrix and final gates
-must still verify the retained fix.
+Fixe629464 on isolated `codex/devx-mailbox-limits` preserves the complete original
+requested minimum. Six client and six root/child/cold/Entity cases pass Rust1.99/
+1.96 debug/release (48 executions). These retain the existing bounded payload,
+refusal, retry and retirement assertions; they are not exhaustive all-field
+custody evidence. Current strict Clippy and formatting pass. Doctests pass six
+with three existing ignores, retaining denials for private construction and
+raw-integer actor/client capacity selection. All628 bound inputs remain exact
+through the matrix and both independent reviews pass. Sources/results:
+`mailboxes/FINAL-*`, including the four-profile terminal checkpoint; an earlier
+three-profile checkpoint is intermediate only.
+
+Four Bombay paths change: production+10/-4/net6; tests+35/-0; public types+0/-0.
+There remain one production module, two public types, no control/subordinate
+state sum, the same two Result alternatives and one explicit validation if.
+The raw substring count including rustdoc was corrected; it does not count
+implicit compiler branches. No repeated cause, lifecycle authority, late check,
+semantic flag or structural caller syntax is introduced. The primitive,
+application capacity and Driver contracts cross-check unchanged; source/model
+checkpoint:pass. The actual registry graph remains exact (270/270/150,
+Address030, Communication016, Timers020; workspace Observe). The25 required
+Bombay Nix gates are running on cleane629464; no full-gate pass is claimed yet.
+Expanded resource/cost accounting and final combined-source delivery remain
+with DX06/26. Ready owner PR heads remain unchanged.
 
 #### Effects, preparation and worker factories — DX07–11/15
 
@@ -922,7 +925,9 @@ atomic laws remain unchanged; source/model checkpoint:pass. Two existing
 integration targets migrate only names/type indices. The actual Bombay witness
 adds340 test lines and one inventory constant update, with no production change.
 Native tests exercise shutdown decoration only, not arbitrary wrapper orders.
-PR107/108/109 retain their reviewed heads. Exact-head CI, normal publication,
+PR107/108/109 retain their reviewed heads. Exact-head CI38931592499 passes all11
+jobs through the normal dispatchable workflow;
+PR-only checks still require the eventual main base. Normal publication,
 registry adoption and the broader DX17 catalogue/bounds audit remain open.
 
 #### Policy construction and startup — DX10/11/19/24/27
@@ -986,6 +991,18 @@ Actors261 pool worker, while150 correctly leaves compatible registry142 selected
 The durable archive fixture/preflight must reject an unused *compatible* patch;
 version labels, a locally compiled owner or a planned release do not prove
 publication or downstream compatibility.
+
+The fresh registry-only e629464 Nix run separately reproduces the protected
+consumer's stale nested lock: its vendor contains026 while the path dependency
+requires027. Before any transfer, prepare one private copy with the same actual
+root and refresh only Behavior/Actors026→027 and macros142→150. These versions
+are already published; no candidate patch, manifest change or nonowner update
+is selected. This is build-coherence policy, not a new actor law. Expected
+retained scope: nested Cargo.lock plus coordination, production/public types+0.
+Preserve all322 nonowner package records, source, existing protected assertion
+sets and ignore policy. Prove locked default/protected consumers and the required
+Nix gate before recording registry acceptance. The original full run stays
+unchanged and cannot pass after an in-flight dependency edit.
 
 #### Verification, costs and delivery — DX19/25–28
 
