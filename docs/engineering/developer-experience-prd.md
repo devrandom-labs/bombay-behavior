@@ -3071,14 +3071,23 @@ complete1000inputs each (29.059/10.685seconds), not a long fuzz campaign or an
 exact-family corpus. Generated corpora are archived outside the source tree;
 original tracked seeds remain byte-exact.
 
-The final Nix run exposes a real tooling limitation: Darwin's background temporary-
-path audit classifier segfaults although Nix exits0; source inspection shows its
-status is not joined. The Rust build/tests still complete. Both copied header
-classifiers and the exact audit routine pass independently on the actual output
-archive (1.864/0.826seconds); this narrows the issue, not its root cause. Initial
-sandbox advisory audit also cannot query registry yanks. No signing or disk failure
-occurs;18GiB remains free. These warnings are recorded, not treated as completed
-validation of the failed audit subprocess or a waiver of future gates.
+Nix verification: the first full invocation exposes Darwin's background
+path-audit classifier segfault; Nix returns0 because the classifier is not joined.
+A fresh rooted nextest build passes979/0skip (202.077seconds), then all ten checks
+return0 with max-jobs1/cores2 (65.766seconds), with no reported classifier crash.
+This does not establish the cause of the intermittent failure. The sandbox audit
+still cannot query registry yanks. A separate pinned online cargo audit, using an
+isolated Cargo home, updates the registry and scans all65 locked dependencies
+successfully (3.755seconds). No signing/disk failure occurs in these runs.
+
+Audit probes preserve that distinction: an injected classifier exit37 is masked
+by the original routine, but returned by the copied routine with an explicit
+producer join and top-level status check. Its actual98,120,993-byte rooted archive
+passes all four C/en_US.UTF-8 and ordinary/strict-shell scans. Exact source/log
+hashes are in REPLIES-NIX-CLASSIFIER-STATUS.details.json. An earlier locale probe
+found absent old outputs and returned before inspecting files; it receives no
+credit. These are observations of the tooling, not a repository patch or waiver
+of the original subprocess failure.
 
 Final migration binding freezes732 source/manifest/context files, changing19
 existing test/benchmark files from the closure binding. All hashes remain equal
