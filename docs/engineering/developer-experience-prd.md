@@ -719,18 +719,18 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: final complete consumer and repository gates. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
-| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 is merged into pending PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
+| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98/stash99 are merged on main. Repaired startup/pool PR102/3e99ce0 preserves their contracts and passes ten native gates,980 tests,117 doctests and four-workspace preflight; fresh GitHub checks are running. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98, stash99 and startup/pool102 are merged on main. Release105/b204637 preserves their contracts and passes ten native gates,987 tests,118 doctests and four-workspace preflight; fresh release CI is pending. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
-| DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: merge/publication authorization, registry adoption, bounds audit and bounded-retention/overflow witnesses. |
+| DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: authorized release105 publication, registry adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
-| DX16 | Startup/provenance and complete source/interpretation custody remain. Draft PR100 head9948bdd supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: owner delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
+| DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: authorized release105 delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
-| DX19 | Strict supported-compiler replay checks exact fixture names/modes, coverage and unchanged sources. Native owner denials add missing-interpreter/wrong-owner cases; damaged-expectation, empty-success and added-source controls reject. | Open: remaining diagnostic/renamed/minimal-feature corpus, owner diagnostic publication and final archive gates. Node/client denials keep their separate caller checks. |
+| DX19 | Strict supported-compiler replay checks exact fixture names/modes, coverage and unchanged sources. Native owner denials add missing-interpreter/wrong-owner cases; damaged-expectation, empty-success and added-source controls reject. Release preflight retains the historical published261 worker: candidate macros143 fails; incompatible150 leaves compatible registry142 selected and compiling. | Open: remaining diagnostic/renamed/minimal-feature corpus, owner diagnostic publication and final archive gates. Node/client denials keep their separate caller checks. |
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply corpus, capacity and final-source minimum-compiler/full gates. Admission remains distinct from business completion. |
 | DX21 | Shutdown ingress is inferred at the operation; runners require only capabilities they execute. Root wrapper orders, request replay, natural completion and complete retirement pass focused tests; missing/ambiguous authority remains denied. | Open: generated canonical access, child-derived phases/drain/deadline/forced-retirement corpus and final repository gates. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
@@ -3387,9 +3387,71 @@ static denials each. Sandbox100 audit emits60 missing yank-index errors;
 separate online audit passes1329 advisories/65 dependencies on both identical
 root locks. No cached unavailable lookup is described as successful.
 Both repairs are pushed by normal fast-forward to their existing PR branches;
-GitHub reports both mergeable, with fresh exact-head checks running. PR100
-includes102 and should merge afterward; the inherited breaking batch uses the
+GitHub reports both clean/mergeable. All14 current exact-head checks pass
+for each: CI38851721955/38851791993, including all eight mutation shards and
+the strict aggregate. The superseded100 label run is cancelled and its
+cancellation aggregate fails; these old records are preserved, not counted as
+current successes. Explicit user authorization covers102 then100 and their
+reviewed normal publication. Both are merged as3ac0672/18653a7, with entire
+trees exactly equal tested3e99ce0/2243858; the inherited breaking batch uses the
 explicit semver-breaking audit class. Publication and final downstream adoption
 remain separate. Evidence: {REPLIES,ITEMS}-MAIN-REPAIR source/provenance and
 native/preflight/external receipts under the existing evidence root. No old
 head CI pass or local archive label establishes registry delivery.
+
+Release105 owns the selected Core/Actors0.27.0 and Macros0.15.0 delivery.
+The initial generated002fcc7 contains98/99; finalb204637 includes merged102/100
+from main18653a7. User authorization covers both feature merges and reviewed
+normal publication; no bypass or manual workflow dispatch is authorized or used.
+
+Release metadata law (recorded before edits): all four --locked workspaces must
+select their declared local owners, preserve every nonowner package record,
+and agree with installation guidance. Initial pinned preflight fails2.991s on
+three stale isolated locks and README dependencies. Reuse the existing
+four-workspace and archive consumer checks; change no production state, type,
+bound or expansion body. The first bad lock-selector guard rejects before
+edits; its mislabeled GREEN receipt remains a failure with no passing credit.
+
+Macro compatibility law (recorded before edits): a compatible macro update must
+preserve a valid published caller. Candidate143 emits `pool::Completion`, while
+published Actors261 exposes `atomic` and accepts macros^0.14.2. The same ordinary
+pool_worker compiles with published261/142 (7.497s) and fails with selected143
+(E0433 missing `pool`,4.740s). The strengthened full archive preflight reproduces
+that RED before metadata changes. Cargo compatibility therefore requires150;
+no compatibility namespace, version query or changed expansion is introduced.
+Primary rule: https://doc.rust-lang.org/cargo/reference/semver.html.
+
+The durable Clerk fixture and existing package verifier resolve fresh metadata
+for exact registry Core/Actors261. A compatible0.14 candidate must be selected
+from its exact extracted archive; an incompatible candidate must leave a
+registry0.14 macro selected. Ambiguous owners or an unused compatible candidate
+fail. The actual143 archive fails this guard (3.836s);150 leaves registry142
+compiling (2.684s). This proves the historical namespace regression, not universal
+future macro compatibility. Final preflight executes the same strengthened guard.
+
+Finalb204637 verification: ten pinned native Nix gates exit0/86.374s,987 actual
+nextest passes/0skipped and118 doctests/0ignored. Two independent gate reviews
+check raw logs and actual numbered pass rows; the final log reports no classifier
+crash. Its60 sandbox audit errors are unavailable yank-index lookups, not passing
+lookups; independent online audit exits0/1.037s for1329 advisories/65 dependencies.
+Four-workspace package preflight exits0/6.003s, compiling actual extracted270/150
+and historical registry261/142 consumers. Four existing dead-code fixture
+warnings, expected unused150-patch diagnostics and an ignored Nix SQLite-busy
+message remain disclosed. External interpreter tests pass29 tests plus11 exact
+compile denials in each debug/release profile (14.056/15.120s).
+
+All827 frozen tracked hashes remain exact. All322 existing Rust files match
+merged main18653a7; Clerk is the sole new Rust file. Four nonowner lock graphs
+retain61/24/30/35 exact records. Final release diff:12 files, production Rust
++0/-0, public types+0/-0, no changed actor state/authority/transition branch.
+Two source and two gate reviews pass. The earlier e8cc3fc source excludes102/100
+and its Nix log contains classifier crash P97817 despite exit0; that obsolete
+receipt is not a clean check and does not certifyb204637. The underlying Darwin
+hook issue is not declared permanently fixed.
+
+Official PR105 now carriesb204637 with the breaking label and accurate versions,
+changelogs and installation guidance. Fresh exact-head GitHub checks, normal
+post-merge main CI/publication, registry archives/tags and final real downstream
+adoption remain required. No local package, older head or planned release closes
+DX27. Raw receipts: RELEASE-027-015-FINAL-*, MACRO-COMPATIBILITY-* and
+MACRO-ARCHIVE-GUARD-* under the existing evidence root.
