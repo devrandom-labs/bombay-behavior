@@ -12,7 +12,7 @@ use behavior_actors::worker::{ImmediateStartup, WorkerSubmission};
 use behavior_actors::{
     Activate as _, CancelObservation, DeliveryRoute, EstablishedObservation,
     EstablishedTerminationMonitor, Exit, HeterogeneousShutdownPlan,
-    InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapterWithRoute,
+    InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapter,
     NoShutdownTargets, ObservationAuthority, ObservationId, ObservationRejection,
     ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout, ReplyRoute, ShutdownChoice,
     ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
@@ -988,9 +988,9 @@ fn adapt_exact(value: u16) -> u8 {
 
 #[tokio::test]
 async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
-    type ExactAdapter = MessageAdapterWithRoute<u16, EstablishedRecipient<WorkerProtocol>>;
+    type ExactAdapter = MessageAdapter<u16, EstablishedRecipient<WorkerProtocol>>;
     let recipient = EstablishedRecipient::issued(Endpoint::new(RuntimeAddr(46), 10));
-    let mut active = MessageAdapterWithRoute::new(recipient, adapt_exact)
+    let mut active = MessageAdapter::new(recipient, adapt_exact)
         .initialize()
         .unwrap()
         .behavior;
@@ -1011,6 +1011,47 @@ async fn message_adapter_selects_exact_delivery_without_logical_resolution() {
     };
     assert!(matches!(settlement, Interpretation::Complete(_)));
     assert_eq!(runtime.delivered, [(RuntimeAddr(46), 10, 7)]);
+}
+
+#[tokio::test]
+async fn message_adapter_preserves_both_mixed_reply_routes() {
+    for (route, expected) in [
+        (
+            ReplyRoute::<WorkerProtocol>::logical(Recipient::global(RuntimeAddr(51))),
+            DeliveryKind::Logical(RuntimeAddr(51), 7),
+        ),
+        (
+            ReplyRoute::established(EstablishedRecipient::issued(Endpoint::new(
+                RuntimeAddr(52),
+                13,
+            ))),
+            DeliveryKind::Established(RuntimeAddr(52), 13, 7),
+        ),
+    ] {
+        let initialized = MessageAdapter::new(route, adapt_exact)
+            .initialize()
+            .unwrap();
+        assert!(initialized.actions.sends.as_slice().is_empty());
+        assert!(initialized.actions.creates.is_empty());
+        assert_eq!(initialized.actions.become_, Step::Continue);
+        let mut adapter = initialized.behavior;
+        let actions = adapter.receive(RuntimeAddr(1), 7).unwrap();
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.become_, Step::Continue);
+        assert_eq!(actions.sends.as_slice().len(), 1);
+        let mut progress = Some(InterpretationProgress::Original(actions.sends));
+        let mut runtime = DeliveryRuntime::default();
+        <_ as InterpretSends<_, User<RuntimeAddr, u16>, Here>>::interpret(
+            &mut progress,
+            &mut runtime,
+        )
+        .await;
+        let Some(InterpretationProgress::Completed(settlement)) = progress else {
+            panic!("the complete mixed adapter interpretation remains owned");
+        };
+        assert!(matches!(settlement, Interpretation::Complete(_)));
+        assert_eq!(runtime.order, [expected]);
+    }
 }
 
 #[tokio::test]

@@ -71,6 +71,23 @@ pub struct Stash<B: Behavior> {
     held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
+impl<B: Behavior> Stash<B> {
+    /// Take all held messages in arrival order, leaving this stash empty.
+    ///
+    /// Original senders and messages move to the caller without cloning.
+    /// The inner behavior and routing policy stay unchanged. This operation
+    /// does not replay messages or produce actor effects.
+    ///
+    /// Messages still in a runtime mailbox belong to that mailbox, not this
+    /// stash. A second call returns an empty queue.
+    #[must_use]
+    pub fn take(
+        &mut self,
+    ) -> VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>> {
+        core::mem::take(&mut self.held)
+    }
+}
+
 impl<B: Behavior<Ph = Never>> Stash<B> {
     /// Wrap `inner` with `route`, a pure decision over the actual inner state and message.
     ///

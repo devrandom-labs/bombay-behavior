@@ -40,7 +40,7 @@ add only transformations that own a distinct event/effect law:
 ```text
 StopOnShutdown                         root lifecycle transformation
 └── ReceiveTimeout                     activity/timer transformation
-    └── Stash                          bounded hold/replay transformation
+    └── Stash                          FIFO hold/replay transformation
         └── DomainBehavior             application transition law
 ```
 
@@ -58,6 +58,19 @@ still owns and documents its event routing, initialization order, sends
 product, failure, and terminal decision. Reordering layers can therefore
 change the program and must be chosen from those laws, not from type
 convenience.
+
+### Recovering held messages
+
+When you own a stash, `let pending = stash.take();` moves its held messages
+into your custody in arrival order. Each value retains its original sender
+and message; taking again returns an empty queue. The wrapped actor and routing
+policy remain available, and a later release still follows that policy.
+This operation performs no replay or actor effect. Unread runtime mailbox
+inputs have their own retirement custody and must also be consumed.
+
+The current stash has no capacity limit; recovery does not add one. Executable
+[recovery and wrapper-order tests](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs) cover both
+shutdown orders and preserve a machine's separate deferrals and future replay.
 
 ### Timer ownership
 
@@ -281,6 +294,22 @@ install that concrete protocol. For stable replaceable workers, subscribe the
 logical stable protocol, not a stale exact worker incarnation. Different
 destination protocols remain different actors and are connected with typed
 `MessageAdapter`s; `Topic` never erases them into a common envelope.
+
+## Protocol adapters
+
+Use `MessageAdapter::new(destination, map)` for one ordinary actor hop between
+protocols. The actual destination selects logical, established or mixed reply
+routing. The pure mapper runs once per input; the adapter emits one typed
+communication and keeps running. Use the ordinary shutdown decoration when the
+application needs to stop it. Delivery rejection retains the complete mapped
+message and its original destination capability; it cannot reconstruct an input
+that the mapper consumed.
+
+Construction is inferred. For an explicitly named logical type, write
+`MessageAdapter<Input, Recipient<Destination>>`; the second parameter names the
+route rather than repeating its protocol. This replaces the logical-only alias
+and the competing `MessageAdapterWithRoute` name. No child-route capability is
+added: a standalone adapter has no creation namespace of its own.
 
 ## Root shutdown
 

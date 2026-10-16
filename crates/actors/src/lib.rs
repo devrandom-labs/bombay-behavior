@@ -76,10 +76,7 @@ mod watch;
 pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
-pub use composition::{
-    DeliveryRoute, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery,
-    ReplyRoute,
-};
+pub use composition::{DeliveryRoute, MessageAdapter, ReplyDeliveries, ReplyDelivery, ReplyRoute};
 pub(crate) use diagnostic::{DiagnosticAction, DiagnosticDisposition, DiagnosticRoute};
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,

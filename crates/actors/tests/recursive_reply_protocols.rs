@@ -58,7 +58,7 @@ macro_rules! recursive_reply_case {
     ($module:ident, $input:ty, $subject:ty) => {
         mod $module {
             struct Root;
-            type Reply = super::MessageAdapter<$input, Root>;
+            type Reply = super::MessageAdapter<$input, super::Recipient<Root>>;
             type Subject = $subject;
 
             impl super::Protocol for Root {
