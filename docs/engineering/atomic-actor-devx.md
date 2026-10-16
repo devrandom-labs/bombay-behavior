@@ -58,7 +58,7 @@ in the same named send product. FIFO and keyed construction infer the result
 from one unambiguous completion lane, including through timer wrappers; no
 pool-specific capability implementation is needed. Missing or ambiguous lanes
 are rejected at construction. The focused
-[consumer tests](../../tests/interpreter-contract/tests/pool_completion.rs)
+[consumer tests](https://github.com/devrandom-labs/bombay-behavior/blob/234235d6fb2487c2af2ac40fc9519cabd480b23d/tests/interpreter-contract/tests/pool_completion.rs)
 retain both inferred constructors and their four compile denials.
 
 Generic code that previously named the sealed `CompletesAssignments` trait
