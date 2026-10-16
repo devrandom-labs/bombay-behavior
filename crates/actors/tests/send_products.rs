@@ -268,3 +268,284 @@ fn local_product_insertion_requires_no_thread_transfer() {
         assert_eq!(Rc::strong_count(&receipt), 1);
     }
 }
+
+// Legal caller names must not become reserved macro implementation details.
+macro_rules! send_names {
+    ($($module:ident: $parameter:ident),+ $(,)?) => {$ (
+        mod $module {
+            use super::*;
+
+            #[derive(behavior_macros::SendProduct)]
+            struct Notices<$parameter, Receipts> {
+                invoices: $parameter,
+                receipts: Receipts,
+            }
+
+            struct Clerk<$parameter>(core::marker::PhantomData<$parameter>);
+
+            #[behavior::behavior(
+                addr = MailAddr,
+                message = $parameter,
+                sends = {
+                    invoices: Vec<Delivery<MessageProtocol<MailAddr, $parameter>>>,
+                    receipts: Vec<Delivery<MessageProtocol<MailAddr, u32>>>,
+                },
+            )]
+            impl<$parameter> Clerk<$parameter> {
+                fn receive(&mut self, from: MailAddr, message: $parameter) -> BehaviorActed<Self> {
+                    Ok(Actions::cont()
+                        .send_invoices(Delivery::new(Recipient::global(from), message))
+                        .send_receipts(Delivery::new(Recipient::global(from), 17)))
+                }
+            }
+
+            #[test]
+            fn generic_and_nominal_products_preserve_originals() {
+                let invoice = Recipient::<MessageProtocol<MailAddr, Box<[u8]>>>::global(MailAddr(7));
+                let receipt = Recipient::<MessageProtocol<MailAddr, u32>>::global(MailAddr(11));
+                let bytes: Box<[u8]> = Box::from([3, 5]);
+                let allocation = bytes.as_ptr();
+                let notices = Notices {
+                    invoices: Vec::<Delivery<MessageProtocol<MailAddr, Box<[u8]>>>>::new(),
+                    receipts: Vec::<Delivery<MessageProtocol<MailAddr, u32>>>::new(),
+                };
+                let actions: Actions<MailAddr, Never, _, NoBirths> = Actions::send(notices)
+                    .with_send(Delivery::new(invoice, bytes))
+                    .with_send(Delivery::new(receipt, 13));
+                assert_eq!(actions.become_, Step::Continue);
+                assert!(actions.creates.is_empty());
+                assert_eq!(actions.sends.invoices.len(), 1);
+                assert_eq!(actions.sends.receipts.len(), 1);
+                let delivery = actions.sends.invoices.into_iter().next().expect("one original invoice");
+                assert_eq!(delivery.to, invoice);
+                assert_eq!(delivery.message.as_ptr(), allocation);
+                assert_eq!(&*delivery.message, &[3, 5]);
+                let acknowledgment = &actions.sends.receipts[0];
+                assert_eq!(acknowledgment.to, receipt);
+                assert_eq!(acknowledgment.message, 13);
+
+                let mut clerk = Clerk::<Box<[u8]>>(core::marker::PhantomData);
+                let actions = delegate_transition(&mut clerk, User { from: invoice.address(), message: delivery.message })
+                    .expect("named lane methods retain the original invoice")
+                    .with_send(Delivery::new(receipt, 19));
+                assert_eq!(actions.become_, Step::Continue);
+                assert!(actions.creates.is_empty());
+                assert_eq!(actions.sends.invoices.len(), 1);
+                assert_eq!(actions.sends.receipts.len(), 2);
+                let delivery = &actions.sends.invoices[0];
+                assert_eq!(delivery.to, invoice);
+                assert_eq!(delivery.message.as_ptr(), allocation);
+                assert_eq!(&*delivery.message, &[3, 5]);
+                for (delivery, (to, message)) in actions.sends.receipts.into_iter().zip([(Recipient::global(invoice.address()), 17), (receipt, 19)]) {
+                    assert_eq!(delivery.to, to);
+                    assert_eq!(delivery.message, message);
+                }
+            }
+        }
+    )+};
+}
+
+send_names!(
+    event: __BombayEvent,
+    interpreter: __BombayInterpreter,
+    root: __BombayRootEvent,
+    path: __BombayPath,
+    host: __BombaySettlementHost,
+    settlement: __BombaySettlementEvent,
+    input: __BombayInput,
+    route: __BombaySendPath,
+    address: __BombayAddress,
+    phase: __BombayPh,
+    birth: __BombayBirth,
+    raw: r#__BombayInput,
+);
+
+mod aliases {
+    use super::*;
+
+    type __BombayInput = Vec<Delivery<MessageProtocol<MailAddr, Box<[u8]>>>>;
+    type __BombayInterpreter = Vec<Delivery<MessageProtocol<MailAddr, u32>>>;
+    type __BombayAddress = Vec<Delivery<MessageProtocol<MailAddr, u16>>>;
+    struct Clerk;
+
+    #[behavior::behavior(
+        addr = MailAddr,
+        message = Box<[u8]>,
+        sends = {
+            invoices: __BombayInput,
+            receipts: __BombayInterpreter,
+            notices: __BombayAddress,
+        },
+    )]
+    impl Clerk {
+        fn receive(&mut self, from: MailAddr, message: Box<[u8]>) -> BehaviorActed<Self> {
+            Ok(Actions::cont()
+                .send_invoices(Delivery::new(Recipient::global(from), message))
+                .send_receipts(Delivery::new(Recipient::global(from), 23))
+                .send_notices(Delivery::new(Recipient::global(from), 29)))
+        }
+    }
+
+    #[test]
+    fn referenced_aliases_keep_their_meanings() {
+        let mut clerk = Clerk;
+        let message: Box<[u8]> = Box::from([31, 37]);
+        let allocation = message.as_ptr();
+        let actions = delegate_transition(
+            &mut clerk,
+            User {
+                from: MailAddr(41),
+                message,
+            },
+        )
+        .expect("concrete aliases denote the original delivery products");
+        assert_eq!(actions.become_, Step::Continue);
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.sends.invoices.len(), 1);
+        assert_eq!(
+            actions.sends.invoices[0].to,
+            Recipient::global(MailAddr(41))
+        );
+        assert_eq!(actions.sends.invoices[0].message.as_ptr(), allocation);
+        assert_eq!(&*actions.sends.invoices[0].message, &[31, 37]);
+        assert_eq!(actions.sends.receipts.len(), 1);
+        assert_eq!(
+            actions.sends.receipts[0].to,
+            Recipient::global(MailAddr(41))
+        );
+        assert_eq!(actions.sends.receipts[0].message, 23);
+        assert_eq!(actions.sends.notices.len(), 1);
+        assert_eq!(actions.sends.notices[0].to, Recipient::global(MailAddr(41)));
+        assert_eq!(actions.sends.notices[0].message, 29);
+    }
+}
+
+mod suffixes {
+    use super::*;
+
+    #[derive(behavior_macros::SendProduct)]
+    struct Notices<
+        r#__BombayInput,
+        __BombayInput_,
+        __BombayInput__,
+        __BombaySendPath,
+        __BombaySendPath_,
+    > {
+        invoices: r#__BombayInput,
+        receipts: __BombayInput_,
+        notices: __BombayInput__,
+        reminders: __BombaySendPath,
+        letters: __BombaySendPath_,
+    }
+
+    #[test]
+    fn occupied_fallback_names_remain_ordinary_lane_parameters() {
+        let sends = Notices {
+            invoices: vec![3_u8],
+            receipts: vec![5_u16],
+            notices: vec![7_u32],
+            reminders: vec![11_u64],
+            letters: vec![13_u128],
+        };
+        let actions: Actions<MailAddr, Never, _, NoBirths> = Actions::send(sends)
+            .with_send(17_u8)
+            .with_send(19_u16)
+            .with_send(23_u32)
+            .with_send(29_u64)
+            .with_send(31_u128);
+        assert_eq!(actions.become_, Step::Continue);
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.sends.invoices, [3, 17]);
+        assert_eq!(actions.sends.receipts, [5, 19]);
+        assert_eq!(actions.sends.notices, [7, 23]);
+        assert_eq!(actions.sends.reminders, [11, 29]);
+        assert_eq!(actions.sends.letters, [13, 31]);
+    }
+}
+
+mod bounds {
+    use super::*;
+    use core::marker::Sized as __BombayInput;
+
+    #[derive(behavior_macros::SendProduct)]
+    struct Notices<Invoices, Receipts>
+    where
+        Invoices: __BombayInput,
+    {
+        invoices: Invoices,
+        receipts: Receipts,
+    }
+
+    #[test]
+    fn referenced_bounds_keep_their_meaning() {
+        let notices = Notices {
+            invoices: vec![3_u8],
+            receipts: vec![5_u16],
+        };
+        let actions: Actions<MailAddr, Never, _, NoBirths> =
+            Actions::send(notices).with_send(7_u8).with_send(11_u16);
+        assert_eq!(actions.become_, Step::Continue);
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.sends.invoices, [3, 7]);
+        assert_eq!(actions.sends.receipts, [5, 11]);
+    }
+}
+
+#[allow(
+    non_upper_case_globals,
+    reason = "the const name challenges a generated type binder"
+)]
+mod arrays {
+    use super::*;
+
+    struct Clerk<'a, const __BombayInput: usize> {
+        retained: &'a [u8; __BombayInput],
+    }
+
+    #[behavior::behavior(
+        addr = MailAddr,
+        message = [u8; __BombayInput],
+        sends = {
+            arrays: Vec<Delivery<MessageProtocol<MailAddr, [u8; __BombayInput]>>>,
+            references: Vec<Delivery<MessageProtocol<MailAddr, &'a [u8; __BombayInput]>>>,
+        },
+    )]
+    impl<'a, const __BombayInput: usize> Clerk<'a, __BombayInput> {
+        fn receive(&mut self, from: MailAddr, message: [u8; __BombayInput]) -> BehaviorActed<Self> {
+            Ok(Actions::cont()
+                .send_arrays(Delivery::new(Recipient::global(from), message))
+                .send_references(Delivery::new(Recipient::global(from), self.retained)))
+        }
+    }
+
+    #[test]
+    fn lifetimes_and_const_parameters_keep_their_domains() {
+        let retained = [13, 17];
+        let mut clerk = Clerk {
+            retained: &retained,
+        };
+        let actions = delegate_transition(
+            &mut clerk,
+            User {
+                from: MailAddr(19),
+                message: [23, 29],
+            },
+        )
+        .expect("existing borrowed and const-parameterized lanes remain usable");
+        assert_eq!(actions.become_, Step::Continue);
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.sends.arrays.len(), 1);
+        assert_eq!(actions.sends.arrays[0].to, Recipient::global(MailAddr(19)));
+        assert_eq!(actions.sends.arrays[0].message, [23, 29]);
+        assert_eq!(actions.sends.references.len(), 1);
+        assert_eq!(
+            actions.sends.references[0].to,
+            Recipient::global(MailAddr(19))
+        );
+        assert!(core::ptr::eq(
+            actions.sends.references[0].message,
+            &retained
+        ));
+        assert_eq!(*actions.sends.references[0].message, [13, 17]);
+    }
+}
