@@ -1153,6 +1153,25 @@ PANIC-OWNER-ORIGINAL-RESULTS, PANIC-NATIVE-GREEN-{SOURCES,RESULTS}, FUZZ-V5 and
 full-panic/FULL-RESULTS. The single DX01–DX28 checklist remains authoritative.
 
 
+The prepared native migration preserves existing unbounded policies through
+UnlimitedStash rather than inventing refusal ports or capacities. Its11-path
+private patch touches10 additional files beyond the14-path native finite batch
+(24 native paths;52 with the28 owner paths). It adds no production lines,
+public types, policy, bounds or runtime machinery; combined production stays
+net297 (owner277/native20), two added public types. All255 original assertion
+macro bodies/order/string bytes remain exact after formatting. A Never facade
+constructor comparison transfers to the existing real finite Documents fixture;
+all original compile denials remain, registered once. The manifest adds four
+actual fixtures:128 unique (20 positive/108 negative),30 suites/26 targets,
+111 expected outer passes plus the existing controlled child ignore. Checker,
+minimum.patch and original snapshot/case/ignored declarations stay unchanged.
+Both independent source/oracle reviews and current debug/release previews pass
+25 identical outer cases across seven targets, with16 UI fixture executions per
+profile. Full128-case corpus, minimum-compiler preview, remote cancellation and
+broad gates remain separate. The patch is private pending the AGENTS file-budget
+expansion; the actual branch stays clean at native aedca53. Existing receipts
+NATIVE-MIGRATION-{FORMATTED,ASSERTIONS,INPUTS} bind the prepared result.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
