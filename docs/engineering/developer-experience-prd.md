@@ -1158,7 +1158,7 @@ UnlimitedStash rather than inventing refusal ports or capacities. Its11-path
 private patch touches10 additional files beyond the14-path native finite batch
 (24 native paths;52 with the28 owner paths). It adds no production lines,
 public types, policy, bounds or runtime machinery; combined production stays
-net297 (owner277/native20), two added public types. All255 original assertion
+net294 (owner277/native17; facade+25/-8), two added public types. All255 original assertion
 macro bodies/order/string bytes remain exact after formatting. A Never facade
 constructor comparison transfers to the existing real finite Documents fixture;
 all original compile denials remain, registered once. The manifest adds four
