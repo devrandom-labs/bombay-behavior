@@ -993,6 +993,26 @@ adoption,7f4f0b3 independent oracles and7b0d013/c8c2104 migration guidance.
 | Reconciled Engine inventory | Registry1a8f20b passes all11 inventory checks on both compilers/profiles; four intended metadata inversions fail. All45 templates/19 capability families and24 historical98983 evidence records remain. Candidate241088d additionally binds Actors to6488965 and its shared timer family. | Presence scans are inventory, not complete type/interpreter proof or refreshed historical execution. Registry source still uses named wrappers; candidate remains unpublished. |
 | Independent inactivity fuzz |20000 runs per nightly1.101 debug/release with sanitizer disabled; complete actual notices/targets, schedules, actor state, creations and verdict checked against unchanged InactivityModel. Eight intended assertion failures reject missing/duplicate/future notification and service rearm. | Evolving corpus, not identical comparative trials or sanitizer evidence; errors, terminal turns and exhaustion have separate tests. |
 
+The subsequent pinned1.99 remote feature matrix passes both child-feature
+harnesses (six fixtures each) and all426 debug outer cases/20 separate UI
+fixtures. Optimized execution fails one Counter Node startup before pressure or
+retry work;425 other cases pass. Its old panic discarded the startup cause, so
+no cause is established. A same-source isolated pass does not repair that failed
+matrix. Clippy/docs and minimum-compiler feature runs have not executed.
+
+The focused next witness is test-only: retain startup cause diagnostics and hold
+both actual loopback listeners at the chosen nonzero port. Require the original
+endpoint to fail specifically at native address binding, then prove the complete
+unchanged local pressure journey with `tls/localhost:0` while those listeners
+remain held. This is fixture ownership policy: only a real SDK listener owns a
+port reservation; both pressure cases have no peer that needs a preselected
+port. Reuse their actual Node, configuration and full failure/retirement oracles;
+change no runtime/API, shared two-node fixture or retry policy. Expected retained
+surface: one test file, zero production/public-type delta. A successful control
+would prove this fixture vulnerability and repair, not recover the original
+historical cause. The failed matrix remains failed.
+
+
 Two old oracles were repaired separately from mechanical migration. The service
 test previously sent its alleged inner event to the outer ingress; it now
 observes the inner state change, original outer timeout, exact98-to91 notice,
