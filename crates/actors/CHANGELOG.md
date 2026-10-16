@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Stash::take()` returns all held messages and their original senders in FIFO
+  order, leaving the stash empty while preserving its wrapped actor and route.
+  It performs no replay and requires no cloned messages. Retired applications
+  retain unread runtime mailbox inputs separately.
+
 ### Breaking
 
 - Use `MessageAdapter::new(destination, map)` for logical, established and mixed
