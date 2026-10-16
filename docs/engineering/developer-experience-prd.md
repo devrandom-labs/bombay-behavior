@@ -1309,6 +1309,31 @@ code must remain byte-identical. Record exact before/after counts and a pass or
 reopen disposition after the failing witness and retained experiment; PR114
 remains draft and DX14 stays open until these cuts and downstream adoption pass.
 
+The pre-edit Application witness now fails at the intended custody assertion
+in both profiles: take() returns0 originals instead of2 after the independently
+identified selector panic. Cleanup, both notifications, native panic
+classification, partially mutated Open state and every other custody lane
+already pass. A setup-only wrong import was corrected without changing any
+contract; it supplies no execution evidence. Independent double review required
+attributing the existing native Rust panic payload to this exact selector; that
+stronger oracle also fails both profiles. It introduces no erased message/effect
+protocol. Two pure owner regressions fail both profiles: the reheld prefix
+survives but selector panic loses current+tail, while inner panic loses only the
+still-undelegated tail. The already delegated parcel remains in inner state.
+
+Choose a private held-input custody product over indexed queue removal: one
+borrowed retained FIFO plus the existing unread FIFO reunite on scope exit,
+including unwind. Classify front by borrow before popping. It owns no behavior,
+route, Actions, dispatch, phase or lifecycle authority; Drop only appends unread
+originals after the reheld prefix. This deletes detached unprotected custody
+and explicit stop-only reunion. Indexed removal could shift repeatedly and
+become quadratic; the scoped queue preserves the existing linear traversal.
+No allocation-free, abort recovery, allocator failure or destructor-panic
+promise is made. Baseline queue240 lines, three modules, zero control/subordinate
+state sums/private custody products, three route alternatives, four public
+types/two public traits. One private custody product is justified by unwind
+reunion; public surface and all interpreter paths must remain unchanged.
+
 
 #### Policy construction and startup — DX10/11/19/24/27
 
