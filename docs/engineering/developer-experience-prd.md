@@ -735,7 +735,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: authoritative Bombay and protected nested gates, remaining acceptance cuts and breaking registry delivery. Candidate/source/archive proofs do not certify the complete programme. |
-| DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction. Owner 5068f6a adds `stash.take()` for original FIFO custody; focused owner/wrapper/independent-Machine tests and real Bombay shutdown pass, with isolated loss/order/sender inversions rejected. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
+| DX14 | Owner5068f6a adds FIFO `take()`. Candidate3248540 adds finite admission and complete original-input refusal through existing typed routes. Both wrapper orders, initialization/replay effects, native open/closed-recipient custody, static denials, exhaustive/property/fuzz sequences and loss/order/sender/limit inversions pass their bounded matrices below. | Open: prepared owner migration approval, full final-source gates, Bombay catalogue adoption and Machine bounds/retention audit. Clone-based rollback remains disproven. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -1205,6 +1205,52 @@ without adding a bound. Earlier failed/setup runs remain uncredited in the
 existing evidence root; records under `send-products/` and `stash-limits/` bind
 all raw logs, source maps and before/after reviews.
 
+Before extending resource tests, use the existing Invoice/MessageAdapter witness
+with an independent interval projection: between take operations, the first N
+hold-selected originals are retained and the remaining originals are refused.
+Deliver/release inputs never occupy those slots. Check complete per-turn effects
+and original FIFO custody on every take, exhaustive short inputs and longer
+generated inputs. This adds no production type or policy and does not model a
+byte-memory bound. Existing dynamic replay/stop tests remain separate. Extend the
+existing stash_sequences fuzz target with byte-selected limit/route/take inputs,
+checking exact delivery/refusal/take partitions and original senders. This
+replaces its ineffective byte-length-only variation; use the pinned fuzz shell
+and a private corpus, without changing production or adding another target.
+
+The ranked model now passes9 owner cases in debug/release, including16,383
+exhaustive sequence/limit combinations per profile and256 generated sequences
+shorter than128 operations. Four isolated defects (lost refusal, extra slot,
+reversed FIFO and changed sender) each fail both original and ranked oracles in
+both profiles. The strict ranked run freezes837 actual inputs throughout; its
+private variants visibly rebuild in a separate target. An earlier shared-target
+run reused a deliberately broken library and is discarded, preserving its raw
+failure and shrinking seed; fresh actual/private targets resolve that artifact
+mixing without changing production. Whole-value equality avoids an unnecessary
+Debug requirement. This does not prove dynamically eligible replay or heap bytes.
+The pinned release layout probe measures56→72 actor bytes and24→48 send-product
+bytes for the same logical u64 adapter; these are stack-layout costs, not heap or
+latency results. Receipts bind the selected source files, probe and raw output.
+
+Finite admission is committed locally at3248540 after tests a309bbd/e8043e1.
+The production ledger is+398/-225/net173, two added public types and no new
+control-state sums; stash modules1→3, transient route choices3→3. Final focused
+checks pass35 tests per profile, Actors doctests, strict Clippy, formatting,
+rustdoc-import and assertion checks. The unchanged assertion checker required
+moving the oracle iterator's take/count observation before its assertion; no
+transition or custody check was removed. Final byte-driven fuzz completes20,000
+runs per profile with all frozen sources unchanged, sanitizer=none and three
+known missing-sanitizer-symbol warnings per profile. Its corpus evolves between
+profiles; configured max_len512 is not a verified bound on existing seed sizes.
+No deterministic performance or memory-safety claim follows. The pure existing
+initialize/delegate ports allow owned mutable take; Active's deliberate lack of
+DerefMut remains unchanged. Initial unsupported formatting arguments and fuzz
+harness compile attempts are setup failures with no execution credit.
+The prepared migration preview changes exactly23 existing type/constructor
+tokens across ten more test/fuzz/benchmark files, preserving every old oracle
+and adding no production code. It would expand the focused owner batch10→20
+files; the repository's15-file checkpoint requires explicit approval, now
+pending. Broad migration and full-source acceptance have not happened.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
@@ -1384,8 +1430,9 @@ unavailable offline yank checks and eight deny warnings remain explicit;
 a separate online audit against65 dependencies and advisory commit f28da8c5
 (October16,1,329 advisories) returns zero vulnerabilities, empty warnings and
 empty ignores. All14 exact-head GitHub checks pass. The explicit breaking label
-matches the acknowledged API changes. Neither merge nor publication is assumed
-or authorized by this verification; the concrete merge/publication request is pending.
+matches the acknowledged API changes. The user authorized merge/publication;
+PR112 is merged as d9237dd with a tree identical to reviewed d4d39bf. Main CI and
+normal release publication are pending; merging alone is not registry evidence.
 
 #### Timer ownership — DX13/16/25–27
 
