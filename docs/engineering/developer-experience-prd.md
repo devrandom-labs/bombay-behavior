@@ -727,13 +727,13 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX10 | Owning roster/directory/queue/router constructors use Config and explicit recovery. Registry270/150 supplies startup closures and reply-lane policy. All338 library tests pass both compilers/profiles with1013 original assertions;31 resumed caller tests and real examples have source-selected503 proofs. Startupf244566 removes its named plan/alias. | Open: publish the reviewed inference repair, verify registry-only callers/nested locks, audit policy necessity/names and complete costs/full gates. Breaking source costs remain explicit. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
-| DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures. Named replacement and memory costs remain explicit below. | Open: remote/minimal-feature and authoritative Bombay gates, remaining acceptance cuts and breaking registry delivery. Candidate/source/archive proofs do not certify the complete programme. |
+| DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: authoritative Bombay and protected nested gates, remaining acceptance cuts and breaking registry delivery. Candidate/source/archive proofs do not certify the complete programme. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
-| DX19 | Strict124-fixture replay passes both compilers:19 positive/105 negative,29 suites,25 targets and107 outer tests plus the exact parent-invoked child. Compiler/fixture/source/patch controls and two independent reviews pass;ff2aa42 retains the verifier. | Open: remaining renamed/minimal-feature/remote/archive coverage and final programme gates. Earlier failed/incomplete runs remain failures; post-run patch equivalence has separate evidence. |
+| DX19 | Strict124-fixture replay passes both compilers:19 positive/105 negative,29 suites,25 targets and107 outer tests plus the exact parent-invoked child. Canonical child denial now covers both feature configurations without duplicate source; unchanged verifier, compiler/fixture/source/patch controls and two independent reviews pass. | Open: remaining full minimal/renamed/remote/archive coverage and final programme gates. Earlier failed/incomplete runs remain failures; post-run patch equivalence has separate evidence. |
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply corpus, capacity and final-source minimum-compiler/full gates. Admission remains distinct from business completion. |
 | DX21 | Shutdown ingress is inferred at the operation; runners require only capabilities they execute. Root wrapper orders, request replay, natural completion and complete retirement pass focused tests; missing/ambiguous authority remains denied. | Open: generated canonical access, child-derived phases/drain/deadline/forced-retirement corpus and final repository gates. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
@@ -1000,7 +1000,7 @@ formatting, Bombay all-feature/all-target strict Clippy and all-feature docs.
 All2084 inputs remain exact through nine commands; two independent reviews
 confirm case/target sets, fixture modes, six required request regressions and
 absence of warnings. Docs did not deny warnings; none were emitted. This does
-not certify minimum compiler, actual registry, protected nested consumers,
+not certify actual registry, protected nested consumers,
 whole-workspace all-feature runtime or authoritative Bombay Nix gates.
 
 The original optimized matrix still fails one startup before pressure work;
@@ -1016,19 +1016,35 @@ First-runner, Darwin socket-option guard, initial formatting and draft audit
 parser failures receive no gate credit. These controls establish a fixture
 vulnerability and repair, not the hidden historical failure cause.
 
-Minimum feature execution stops at child-denial snapshot drift before later
-stages:1.96 emits oneE0277 where1.99 expects two. The original bare and
-feature-unified child fixtures are byte-identical; current stderr differs only
-by filename. The already reviewed minimum patch removes that same duplicate
-error for the feature-unified twin. The next test-only change will keep one
-existing bare fixture, remove the obsolete feature branch/twin, and project the
-reviewed expectation by filename into the same strict compiler manifest.
-No production API, bound, diagnostic parser, error meaning or fixture source
-will change;124 corpus cases/19 positives/105 denials must remain. Prove both
-compilers under both feature modes and rerun strict verification before
-retention. Expected scope: harness plus compiler metadata/patch, two files
-deleted, zero production/public-type delta. Current passing runs do not close
-the failed minimum gate or the old optimized retry hang.
+The first minimum feature run failed at existing child-denial snapshot drift
+before later stages:1.96 emits oneE0277 where1.99 expects two. The retained
+test-only consolidation4a8b531 keeps the original bare program/canonical stderr exact,
+deletes its byte-identical feature twin, and renames four filename references in
+the already reviewed minimum patch. The unconditional denial runs under both
+feature configurations; production APIs, bounds and diagnostic parsers stay
+unchanged. Its pre-edit law is preserved at
+[cb9ad32](https://github.com/devrandom-labs/bombay-behavior/blob/cb9ad32/docs/engineering/developer-experience-prd.md).
+
+Fresh1.96 feature verification passes seven commands in823.460s:426 exact outer
+tests and20 separate UI fixtures per debug/release profile, both child harnesses
+with five positive/one negative fixture, and all-feature docs. All2080 inputs
+stay exact through execution;397 nonowner records and21 reviewed diagnostic
+transformations remain unchanged. No minimum Clippy was installed or executed;
+docs did not deny warnings and emitted none. Both independent reviews pass.
+
+Final strict replay passes1.99/1.96 in170.998/176.449s:124 unique fixtures
+(19 positive/105 negative),29 suites,25 targets,107 outer passes and the exact
+parent-invoked child ignore. All2080 inputs are conserved through both runs;
+the unchanged verifier checks all source/expectation/corpus controls. Its five
+unit methods pass. Three exact owner-root remaps preserve original trybuild
+arguments;143 fixture compiler invocations per compiler include19 additional
+positive execution builds, not additional fixtures. Both independent audits
+pass. The initial stale-index copy failure occurred before Rust; the failed
+minimum run and a draft audit's omitted mode literal earn no acceptance credit.
+The canonical batch is production/public-types0 and Rust tests0/-16; the
+complete five-path change is+11/-80 including metadata and deleted stderr.
+Source-selected proofs do not establish registry, protected nested or
+authoritative flake acceptance, and do not explain the old optimized retry hang.
 
 Two old oracles were repaired separately from mechanical migration. The service
 test previously sent its alleged inner event to the outer ingress; it now
@@ -1055,11 +1071,11 @@ unchanged. The disjoint key grows8→16:64 named timers retain7184 versus6672byt
 (+512),18 allocations each, total allocation14000 versus13008. Drain retains16,
 full release zero. No full actor/application peak, throughput or latency gain
 is established. Complete Bombay feature Rust delta againstbf1921b is
-production+143/-39/net104, tests+623/-175/net448 across29 Rust files; public
+production+143/-39/net104, tests+623/-191/net432 across31 Rust files; public
 types+0/-0. Four existing ActorExt signatures lose IDs; three private contracts
 own timer key, occurrence proof and destination. There is no new production
 module, lifecycle phase, nested transition authority, duplicated cause, semantic
 flag or structural caller syntax. Disposition:pass against the same composition
-and settlement laws; metadata/docs are separate from Rust counts. Final remote/
-minimal-feature/authoritative runtime gates, remaining acceptance cuts and normal
+and settlement laws; metadata/docs are separate from Rust counts. Protected nested/
+authoritative runtime gates, remaining acceptance cuts and normal
 breaking release remain open.
