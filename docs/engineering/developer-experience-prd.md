@@ -946,6 +946,52 @@ The deliberately interrupted426.907-second stale-binding run is not a pass.
 
 #### Verification, costs and delivery — DX19/25–28
 
+Build-output audit, pre-edit: the actual factory-input owner full check reports
+all ten outputs but its nextest fixup classifier crashes (PID35733); the wrapper
+correctly rejects that nominal exit0 (251.855s). This is a build policy: every
+output scan must finish and propagate enumeration/read/header/search/cleanup
+failure while rejecting forbidden wrapper/RPATH references. No actor law changes.
+Reuse Bombay's already-proven byte-oriented audit and50-control test; replace the
+existing hook implementation without adding a second hook. First run that copied
+test against this owner's exact pinned old hook and require the failed-enumeration
+witness. Expected four files: flake, audit source, existing-style test script and
+this owning record; about91 tooling lines/136 test lines, zero Rust or public type
+changes. All actor control states, subordinate values, transitions, cardinality,
+provenance and ownership stay byte-identical to publishedb8307d1. Recheck source
+hashes and normalized architecture/feature/verification laws; aggregate disposition
+awaits focused controls, integration, inversions and a fresh full eleven-check run.
+No package publication or general Darwin crash root-cause claim follows.
+Scope checkpoint before the next edit: commonArgs does not reach the four
+existing fmt/TOML/audit/deny checks. The same owned audit must be selected for
+all eleven workspace checks; upstream dependency hooks remain separate. First
+assert exact evaluated preFixup source selection for every check, then reuse
+commonArgs.preFixup in those four existing constructors (about four more lines).
+The configuration regression first names exactly those four missing checks;
+all eleven then select the byte-identical store audit. Pinned Crane73b9805
+forwards preFixup through the four constructors to stdenv; no global hook is added.
+The pinned old-hook test fails on enumeration37→0 (2.835s), while50 direct
+controls pass (5.943s). Six copied-source inversions fail for their intended
+status/header laws (matrix7.865s). Normal owner-pinned stdenv fixup accepts the
+healthy output (1.743s) and rejects the exact forbidden wrapper (1.250s). These
+are separate from the new focused Nix derivation and required eleven-check run.
+
+Aggregate disposition: pass for this build-only representation. All323 Rust
+files and all tracked locks match b8307d1. Every actor state/subordinate value,
+transition branch, policy, protocol spelling, creation provenance and custody
+representation is unchanged; zero actor-state or public-type additions/removals.
+Tooling+96/-3/net93; tests+136/-0; four files. The serial scan owns only its
+checked temporary file and exact process statuses; it retains no history and
+registers no second hook. Each temporary file is removed on completed/error paths
+unless cleanup itself fails, whose original failure is reported. Exact four-byte
+headers intentionally fix the old character-read near-NUL/newline classification;
+ELF port tests use mocked patchelf, not real ELF parsing. Original upstream and
+other platforms remain outside any Darwin-root-cause claim. Cross-check actor
+architecture/features/verification and the existing construction/retirement laws.
+Raw sources/results: OWNER-REFERENCES-{COMPLETE,INTEGRATION}-*.json and
+OWNER-REFERENCES-SELECTION-{RED,GREEN}.json. Two independent reviews inspect
+source and raw controls; full-gate and CI receipts remain required for delivery.
+
+
 | Exact source | Executed verification | Scope limit |
 | --- | --- | --- |
 | Bombay3a80848, registry owners98983b4 | All21 fresh native gates in2306.566 seconds;646 optimized tests plus one existing ignored subprocess case; all459 source hashes match. Current/MSRV debug/release packaged correlation/fixed/FIFO/guide journeys;61 production and195 other packaged Rust files match. | Engine and Bombay macros are extracted unpublished packages; not registry-only Bombay publication. No signing/disk waiver. |
