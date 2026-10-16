@@ -799,6 +799,46 @@ not affine job inputs; a closed auditor is not a closed parent-report recipient.
 Keep original-work refusal, parent-report
 closure and affine job input distinct from unrelated delivery failures.
 
+#### Mailbox validation — DX06 pre-edit law
+
+A successful `MailboxCapacity::new(minimum)` must represent a size accepted by
+the selected native mailbox before resource allocation. Refusal returns the
+original minimum through the existing error. This is derived runtime validation
+policy, not an actor-model capacity law. Communication0.1.6 rounds to a power of
+two with floor two and panics unless the result is below2^31; its largest valid
+power is2^30. It exposes no reusable capacity validator or public limit. Bombay
+currently checks zero and integer overflow only. Inspect the actual early client
+path Scope→ExternalActor::establish→mailbox_channel→channel, then reproduce both
+its accepted-invalid value/panic and the desired constructor refusal before
+production edits. No huge valid mailbox may be allocated by a test.
+
+Use a fresh `codex/devx-mailbox-limits` worktree from registry1a8f20b, preserving
+other branches. Selected owners remain Behavior/Actors270, macros150, Address030,
+Communication016 and Timers020 from the unchanged lock; Observe remains the
+workspace module at1a8f20b. Keep the existing
+NonZeroUsize product, error and round-once construction. One private maximum
+may state the selected native limit for validation and truthful error text;
+add no public type, dependency, runtime check after construction or policy flag.
+Expected four Bombay paths: mailbox owner, existing client-capacity tests, usage
+and coordination; approximately12 net production lines. Initial control and
+subordinate sums are zero, one validation decision, one module and two existing
+public types. The stored value and Result alternatives must stay identical.
+Test zero/overflow, the last valid minimum and first invalid rounded minimum,
+then actual existing bounded client/root/child/Entity rejection and retirement.
+Record exact drift, supported compilers, two reviews and required gates before
+retention. The adapter and its ready release heads remain separate.
+
+The pre-edit registry-only matrix at1a8f20b reproduces the typed-refusal failure
+in debug/release: minimum1073741825 is incorrectly accepted as2147483648.
+An independent native Scope external-recipient probe reaches the selected
+primitive's exact ticket-window panic before ring allocation in both profiles;
+these expected-panic baseline controls are historical evidence only. The eight
+supported rounding/boundary inputs pass without mailbox allocation. All bound
+sources and the original Cargo graph remain exact through the six commands;
+receipts are `mailboxes/PREEDIT-{SOURCES,RESULTS}.json`. Production is unchanged
+at this checkpoint. The native small-capacity/retirement matrix and final gates
+must still verify the retained fix.
+
 #### Effects, preparation and worker factories — DX07–11/15
 
 Behavior remains the pure transition owner; Actions carries named communications,
