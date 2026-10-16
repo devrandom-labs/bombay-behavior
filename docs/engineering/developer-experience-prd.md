@@ -735,7 +735,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: authoritative Bombay and protected nested gates, remaining acceptance cuts and breaking registry delivery. Candidate/source/archive proofs do not certify the complete programme. |
-| DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
+| DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction. Owner 5068f6a adds `stash.take()` for original FIFO custody; focused owner/wrapper/independent-Machine tests and real Bombay shutdown pass, with isolated loss/order/sender inversions rejected. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -957,10 +957,10 @@ without another type or queue vocabulary. The existing shutdown `into_inner`
 supports deliberate ownership peeling. Do not add Active unwrapping or a
 second actor interface to reach the stash.
 
-Use isolated `codex/devx-stash-custody` worktrees from owner7644735 and combined
-Bombay1bf7f328. Actual dependencies stay270/270/150, Address030, Communication016,
-Timers020 and workspace Observe. Private764 selection is required only for the
-already-retained owned-timer runtime; keep397 nonowner records exact and do not
+Use isolated `codex/devx-stash-custody` worktrees from owner 7644735 and combined
+Bombay 1bf7f328. Actual dependencies remain Behavior/Actors 0.27.0, macros 0.15.0, Address 0.3.0,
+Communication 0.1.6, Timers 0.2.0 and workspace Observe. Private owner 764 selection is required only for the
+already-retained owned-timer runtime; keep 397 nonowner records exact and do not
 claim published candidate APIs. Before production, a focused real Application
 consumer must fail at the missing method. Its native shutdown journey must
 recover a nonempty held prefix plus unread runtime suffix, exact original
@@ -969,10 +969,10 @@ and terminal Actions. Pure cases cover both shutdown/stash orders, a second
 unrelated existing template, empty/repeated takes and unchanged replay/stop.
 
 Expected owner scope: stash.rs, one focused test, its existing recipe/rustdoc
-and changelog; approximately20 net production lines, one new method and no new
+and changelog; approximately 20 net production lines, one new method and no new
 public type/trait. Bombay adds its native test and coordination only, no
-production. Baseline stash.rs is206 physical lines, one module, two public
-types/two traits and10 qualified public declarations. There is no stored control
+production. Baseline stash.rs is 206 physical lines, one module, two public
+types/two traits and 10 qualified public declarations. There is no stored control
 sum; StashRoute's three transient choices, the inner actor and the original
 FIFO remain the only values needed. `take` uses the stash receiver as its
 context; it takes the held messages, not the wrapped actor or unread runtime
@@ -986,6 +986,58 @@ inversions before retention. Cross-check Behavior layer laws, all four normalize
 atomic documents and existing replay/property/model tests. Bounded retention
 and explicit overflow policy remain required separate work; this recovery API
 does not satisfy them or the full DX14 programme.
+
+Focused result at owner ee9516d: production+17/-0, tests+208/-0,
+docs+21/-1 across four paths; public types/traits+0, one method added. The old
+stash implementation is byte-identical after removing that method's impl.
+Physical stash lines 206→223, public spellings 10→11, modules 1→1, stored control
+states 0→0, route choices 3→3 and selection counts 3/2/1 remain. Every existing
+field, constructor, transition/init/replay body and bound remains unchanged;
+no new state, history, cause, nested authority, semantic flag or caller alias.
+The selected receiver supplies context: one `stash.take()` returns the standard
+VecDeque of original Users, with no additional retained field.
+
+The source-bound pre-edit proof fails only at take: eight owner and two native
+E0599 diagnostics per debug/release configuration. The focused positives pass
+three pure cases in both owner profiles and one native journey on Rust 1.99/1.96
+debug/release. That native case accounts for a nonempty held prefix and unread
+suffix, three original move-only Box allocations, two independently allocated
+senders and every retirement/notification/cleanup lane. A state-responsive
+Machine case proves future outer replay after take, not only empty release.
+Both independent reviews pass after strengthening that oracle. Isolated empty,
+reverse and sender-corruption bodies fail in both profiles (14 intended
+assertion failures; four unaffected Machine control passes). The initial wrong
+import and too-literal diagnostic matcher remain uncredited; the first shared
+build-directory inversion campaign also fails its harness when a release run
+uses the baseline executable path, so only fresh distinct mutant targets earn
+control credit. Do not infer a compiler/model defect from that first campaign.
+The first owner full run at ee9516d fails 10/11 in 220.192s on a generated guide
+link; the source file existed but its rendered relative URL was invalid.
+Docs-only 5068f6a replaces that URL with the immutable source commit. Its full
+pinned Nix invocation passes all 11 native gates in 178.859s (nine built, audit
+and TOML cached): 996 nextest/0skipped,120 doctests/0ignored and 50 reference
+controls. All 833 files and HEAD remain exact/clean; all 11 completion outputs
+have nonnull narHash and the exact evaluated deriver. No reported signing,
+classifier or disk failure; other three architectures are omitted. Do not
+claim a fresh online audit from the cached audit gate.
+
+Existing package preflight at 5068f6a passes in 6.146s with exactly two independent
+consumer workspaces; its four existing dead-code fixture warnings and intended
+incompatible-macro patch warnings remain. Three immutable packaged archives
+contain 248 regular files/224 Rust files matching the committed source and clean
+VCS metadata. The real Bombay 95499e2 journey passes the extracted packages on
+Rust 1.99/1.96 debug/release in 123.988s, preserving 397 nonowner lock records and
+all 2,342 frozen inputs, including tools and archive bytes. Current strict Clippy
+passes in 8.210s; actual workspace formatting passes in 5.014s. These observed
+build times are not a causal compile-performance comparison. Production field
+storage is unchanged; no full runtime heap/latency improvement is claimed.
+Both independent terminal reviews pass. Registry delivery and Linux CI remain
+pending. PR #111 stacks this owner change on PR #110; it is not authorization to
+merge or publish. Actual Bombay adds 205 test and 22 coordination lines across
+two paths and no production code. Receipts live under the existing evidence root's `stash/` directory;
+`PREEDIT-TAKE-TERMINAL-AUDIT`, `FOCUSED-TERMINAL-CHECKPOINT` and
+`POSTLOWERING-DRIFT` and `RETAINED-REVIEW` bind their exact sources, failures and dispositions. These
+are bounded custody proofs, not bounded retention or full-programme acceptance.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
