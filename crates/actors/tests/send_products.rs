@@ -1,31 +1,45 @@
+use std::rc::Rc;
+
 use behavior::{
     Actions, BehaviorActed, Delivery, Inside, InterpreterRequests, MailAddr, MessageProtocol,
-    Never, NoBirths, Own, Recipient, ReportToParent, SendEffects, SendLayer, Step,
+    Never, NoBirths, Own, Recipient, ReportToParent, SendEffects, SendLayer, Step, User,
+    delegate_transition, initialize,
 };
 use behavior_actors::{DeliveryOutcomes, WorkQueueSends};
+
+struct Receipt {
+    number: u8,
+    bytes: Box<[u8]>,
+}
 
 struct Invoice;
 
 #[behavior::behavior(
     addr = MailAddr,
-    message = Never,
+    message = Receipt,
     sends = {
-        receipts: Vec<Delivery<MessageProtocol<MailAddr, Box<[u8]>>>>,
+        receipts: Vec<Delivery<MessageProtocol<MailAddr, Receipt>>>,
     },
 )]
 impl Invoice {
-    fn receive(&mut self, _: MailAddr, message: Never) -> BehaviorActed<Self> {
-        match message {}
+    fn receive(&mut self, from: MailAddr, receipt: Receipt) -> BehaviorActed<Self> {
+        Ok(Actions::cont().with_send(Delivery::new(Recipient::global(from), receipt)))
     }
 }
 
 #[test]
 fn inferred_delivery_and_outcome_insertion_preserves_both_original_prefixes() {
-    let customer = Recipient::<MessageProtocol<MailAddr, Box<[u8]>>>::global(MailAddr(7));
+    let customer = Recipient::<MessageProtocol<MailAddr, Receipt>>::global(MailAddr(7));
     let audit = Recipient::<MessageProtocol<MailAddr, u32>>::global(MailAddr(13));
-    let first = Box::<[u8]>::from([1, 2]);
-    let second = Box::<[u8]>::from([3, 4]);
-    let allocations = [first.as_ptr(), second.as_ptr()];
+    let first = Receipt {
+        number: 1,
+        bytes: Box::from([1, 2]),
+    };
+    let second = Receipt {
+        number: 3,
+        bytes: Box::from([3, 4]),
+    };
+    let allocations = [first.bytes.as_ptr(), second.bytes.as_ptr()];
     let sends = DeliveryOutcomes {
         deliveries: vec![Delivery::new(customer, first)],
         outcomes: vec![Delivery::new(audit, 5)],
@@ -44,8 +58,9 @@ fn inferred_delivery_and_outcome_insertion_preserves_both_original_prefixes() {
         .zip([[1, 2], [3, 4]])
     {
         assert_eq!(delivery.to, customer);
-        assert_eq!(delivery.message.as_ptr(), allocation);
-        assert_eq!(&*delivery.message, &bytes);
+        assert_eq!(delivery.message.bytes.as_ptr(), allocation);
+        assert_eq!(&*delivery.message.bytes, &bytes);
+        assert_eq!(delivery.message.number, bytes[0]);
     }
     assert_eq!(actions.sends.outcomes.len(), 2);
     for (delivery, value) in actions.sends.outcomes.into_iter().zip([5, 11]) {
@@ -56,10 +71,13 @@ fn inferred_delivery_and_outcome_insertion_preserves_both_original_prefixes() {
 
 #[test]
 fn generic_product_insertion_preserves_nested_nominal_actor_lanes() {
-    let customer = Recipient::<MessageProtocol<MailAddr, Box<[u8]>>>::global(MailAddr(7));
+    let customer = Recipient::<MessageProtocol<MailAddr, Receipt>>::global(MailAddr(7));
     let audit = Recipient::<MessageProtocol<MailAddr, u32>>::global(MailAddr(13));
-    let payload = Box::<[u8]>::from([17, 19]);
-    let allocation = payload.as_ptr();
+    let payload = Receipt {
+        number: 17,
+        bytes: Box::from([17, 19]),
+    };
+    let allocation = payload.bytes.as_ptr();
     let assignments = InvoiceSends::empty();
     let sends = WorkQueueSends {
         assignments,
@@ -80,8 +98,9 @@ fn generic_product_insertion_preserves_nested_nominal_actor_lanes() {
         .next()
         .expect("the original payload is in the nominal actor lane");
     assert_eq!(delivery.to, customer);
-    assert_eq!(delivery.message.as_ptr(), allocation);
-    assert_eq!(&*delivery.message, &[17, 19]);
+    assert_eq!(delivery.message.bytes.as_ptr(), allocation);
+    assert_eq!(&*delivery.message.bytes, &[17, 19]);
+    assert_eq!(delivery.message.number, 17);
     assert_eq!(actions.sends.outcomes.len(), 2);
     for (delivery, value) in actions.sends.outcomes.into_iter().zip([23, 29]) {
         assert_eq!(delivery.to, audit);
@@ -182,22 +201,70 @@ fn duplicate_capabilities_keep_distinct_explicit_static_selections() {
 
 #[test]
 fn nominal_actor_insertion_keeps_its_existing_unique_semantic_lane() {
-    let customer = Recipient::<MessageProtocol<MailAddr, Box<[u8]>>>::global(MailAddr(7));
-    let receipt = Box::<[u8]>::from([83, 89]);
-    let allocation = receipt.as_ptr();
-    let sends = InvoiceSends::empty();
-    let actions: Actions<MailAddr, Never, _, NoBirths> =
-        Actions::send(sends).with_send(Delivery::new(customer, receipt));
+    let customer = Recipient::<MessageProtocol<MailAddr, Receipt>>::global(MailAddr(7));
+    let mut invoice = Invoice;
+    let started = initialize(&mut invoice).expect("ordinary actor initialization");
+    assert!(started.sends.receipts.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, Step::Continue);
+    let first = Receipt {
+        number: 83,
+        bytes: Box::from([83, 89]),
+    };
+    let second = Receipt {
+        number: 97,
+        bytes: Box::from([97, 101]),
+    };
+    let allocations = [first.bytes.as_ptr(), second.bytes.as_ptr()];
+    let received = delegate_transition(
+        &mut invoice,
+        User {
+            from: MailAddr(7),
+            message: first,
+        },
+    )
+    .expect("the nominal actor returns the original receipt");
+    let actions = received.with_send(Delivery::new(customer, second));
     assert_eq!(actions.become_, Step::Continue);
     assert!(actions.creates.is_empty());
-    assert_eq!(actions.sends.receipts.len(), 1);
-    let delivery = actions
+    assert_eq!(actions.sends.receipts.len(), 2);
+    for ((delivery, allocation), (number, bytes)) in actions
         .sends
         .receipts
         .into_iter()
-        .next()
-        .expect("one nominal delivery");
-    assert_eq!(delivery.to, customer);
-    assert_eq!(delivery.message.as_ptr(), allocation);
-    assert_eq!(&*delivery.message, &[83, 89]);
+        .zip(allocations)
+        .zip([(83, [83, 89]), (97, [97, 101])])
+    {
+        assert_eq!(delivery.to, customer);
+        assert_eq!(delivery.message.bytes.as_ptr(), allocation);
+        assert_eq!(delivery.message.number, number);
+        assert_eq!(&*delivery.message.bytes, &bytes);
+    }
+}
+
+#[test]
+fn local_product_insertion_requires_no_thread_transfer() {
+    let first = Rc::new([103_u8, 107]);
+    let second = Rc::new([109_u8, 113]);
+    let allocations = [Rc::as_ptr(&first), Rc::as_ptr(&second)];
+    let sends = DeliveryOutcomes {
+        deliveries: vec![first],
+        outcomes: vec![127_u32],
+    };
+    let actions: Actions<MailAddr, Never, _, NoBirths> = Actions::send(sends).with_send(second);
+    assert_eq!(actions.become_, Step::Continue);
+    assert!(actions.creates.is_empty());
+    assert_eq!(actions.sends.outcomes, [127]);
+    assert_eq!(actions.sends.deliveries.len(), 2);
+    for ((receipt, allocation), bytes) in actions
+        .sends
+        .deliveries
+        .into_iter()
+        .zip(allocations)
+        .zip([[103, 107], [109, 113]])
+    {
+        assert_eq!(Rc::as_ptr(&receipt), allocation);
+        assert_eq!(*receipt, bytes);
+        assert_eq!(Rc::strong_count(&receipt), 1);
+    }
 }
