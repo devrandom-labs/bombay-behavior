@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use behavior::{
-    BehaviorBase as _, EventLayer, MailAddr, MessageProtocol, Never, NoSends, Recipient, SendLayer,
+    Actions, BehaviorBase as _, Delivery, EventLayer, MailAddr, MessageProtocol, Never, NoSends, Recipient, SendLayer,
     Step, Stopped, User, UserEvent, delegate_transition, initialize,
 };
 use behavior_actors::{
-    Machine, MessageAdapter, Move, ShutdownRequested, Stash, StashRoute, StashSends, StopOnShutdown,
+    Machine, MessageAdapter, Move, OwnedTimerElapsed, ReceiveTimeout, ShutdownRequested, Stash, StashRoute, StashSends, StashStatus as _, StopOnShutdown,
 };
 
 struct Invoice {
@@ -325,4 +327,93 @@ fn shutdown_inside_a_full_stash_bypasses_its_user_limit() {
     assert_eq!(input.message.receipt.as_ptr(), allocation);
     assert_eq!(*input.message.receipt, [17, 19]);
     assert_eq!(stash.held(), 0);
+}
+
+#[test]
+fn a_timeout_outside_a_full_stash_can_send_to_the_existing_actor_lane() {
+    let paid = Recipient::<MessageProtocol<MailAddr, u8>>::global(MailAddr(29));
+    let refused =
+        Recipient::<MessageProtocol<MailAddr, User<MailAddr, Invoice>>>::global(MailAddr(31));
+    let stash = Stash::new(MessageAdapter::new(paid, number), 1, refused, |_, invoice| {
+        if invoice.number == 0 {
+            StashRoute::Release
+        } else {
+            StashRoute::Stash
+        }
+    });
+    let delay = Duration::from_secs(3);
+    let mut timeout = ReceiveTimeout::new(stash, delay, |stash| {
+        Actions::cont().with_send(Delivery::new(*stash.base().destination(), 99))
+    });
+    let started = initialize(&mut timeout).expect("the timeout initializes around the stash");
+    assert_eq!(started.sends.owned.len(), 1);
+    assert_eq!(started.sends.owned[0].after, delay);
+    assert!(started.sends.inner.actor.is_empty());
+    assert!(started.sends.inner.refusals.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, Step::Continue);
+    let mut generation = started.sends.owned[0].generation;
+    for (from, value) in [(MailAddr(7), 7), (MailAddr(13), 9)] {
+        let receipt = Box::new([value, value + 1]);
+        let allocation = receipt.as_ptr();
+        let actions = delegate_transition(
+            &mut timeout,
+            EventLayer::Inner(User::user(from, Invoice { number: value, receipt })),
+        ).expect("holding and refusal both preserve the outer timeout");
+        assert_eq!(actions.sends.owned.len(), 1);
+        assert_eq!(actions.sends.owned[0].after, delay);
+        assert_ne!(actions.sends.owned[0].generation, generation);
+        generation = actions.sends.owned[0].generation;
+        assert!(actions.sends.inner.actor.is_empty());
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.become_, Step::Continue);
+        if value == 7 {
+            assert!(actions.sends.inner.refusals.is_empty());
+        } else {
+            let mut refusals = actions.sends.inner.refusals;
+            assert_eq!(refusals.len(), 1);
+            let refusal = refusals.pop().expect("one complete original refusal");
+            assert_eq!(refusal.to, refused);
+            assert_eq!(refusal.message.from, from);
+            assert_eq!(refusal.message.message.number, value);
+            assert_eq!(refusal.message.message.receipt.as_ptr(), allocation);
+            assert_eq!(*refusal.message.message.receipt, [value, value + 1]);
+        }
+        assert_eq!(timeout.stashed_messages(), 1);
+    }
+    for expected in [vec![99], vec![]] {
+        let actions = delegate_transition(
+            &mut timeout,
+            EventLayer::Owned(OwnedTimerElapsed::new(generation)),
+        ).expect("only the first matching elapsed may emit a reminder");
+        assert!(actions.sends.owned.is_empty());
+        assert_eq!(actions.sends.inner.actor.len(), expected.len());
+        for (delivery, value) in actions.sends.inner.actor.into_iter().zip(expected) {
+            assert_eq!(delivery.to, paid);
+            assert_eq!(delivery.message, value);
+        }
+        assert!(actions.sends.inner.refusals.is_empty());
+        assert!(actions.creates.is_empty());
+        assert_eq!(actions.become_, Step::Continue);
+        assert_eq!(timeout.stashed_messages(), 1);
+        assert_eq!(timeout.base().destination(), &paid);
+    }
+    let released = delegate_transition(
+        &mut timeout,
+        EventLayer::Inner(User::user(MailAddr(19), Invoice {
+            number: 0,
+            receipt: Box::new([0, 1]),
+        })),
+    ).expect("the reminder leaves the held input available for replay");
+    assert_eq!(released.sends.owned.len(), 1);
+    assert_eq!(released.sends.owned[0].after, delay);
+    assert_eq!(released.sends.inner.actor.len(), 2);
+    for (delivery, value) in released.sends.inner.actor.into_iter().zip([0, 7]) {
+        assert_eq!(delivery.to, paid);
+        assert_eq!(delivery.message, value);
+    }
+    assert!(released.sends.inner.refusals.is_empty());
+    assert!(released.creates.is_empty());
+    assert_eq!(released.become_, Step::Continue);
+    assert_eq!(timeout.stashed_messages(), 0);
 }
