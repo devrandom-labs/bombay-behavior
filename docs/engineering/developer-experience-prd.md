@@ -712,16 +712,16 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. Delivery candidate: [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375). |
+| DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
 | DX04 | ApplicationOutcome joins work, native retirement, notifications and families; consuming completion returns value plus ApplicationRetirement or the original whole report. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection, final-source minimum-compiler/archive/full gates. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: final complete consumer and repository gates. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
-| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104/5b24f03 extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
+| DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 is merged into pending PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy head1d1144a passes ten current native gates,975 tests, four-workspace preflight and all14 fresh GitHub checks; policy source/layouts remain unchanged. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; current startup06a640a passes979 whole-workspace tests and ten native Nix gates without a reported classifier crash, with earlier audit limitations retained below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98/stash99 are merged on main. Repaired startup/pool PR102/3e99ce0 preserves their contracts and passes ten native gates,980 tests,117 doctests and four-workspace preflight; fresh GitHub checks are running. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
@@ -736,7 +736,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
-| DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: latest PR375 head214d5b0 integrates main67a286c and is mergeable. All13 affected native cases pass debug/release; strict lint/format and two integration reviews pass. Exact214d5b0 Nix reports24 successes/exit0 in4708.063s with620 unchanged hashes and772 workspace passes/two parent-invoked child ignores, but four classifier crashes prevent a clean original-run claim. Checked/joined recovery verifies all four exact-output reference properties. Five GitHub checks pass; Nix CI remains pending. The earlier optimized retry hang remains unexplained. |
+| DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: latest PR375 head214d5b0 integrates main67a286c and is mergeable. All13 affected native cases pass debug/release; strict lint/format and two integration reviews pass. Exact214d5b0 Nix reports24 successes/exit0 in4708.063s with620 unchanged hashes and772 workspace passes/two parent-invoked child ignores, but four classifier crashes prevent a clean original-run claim. Checked/joined recovery verifies all four exact-output reference properties. All six exact-head GitHub checks pass; PR375 merged as5e9bcd1. The earlier optimized retry hang remains unexplained. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→99 plus61 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.26.1 have verified tags and206 shipped Rust files. Six pure custody tests and an actual archived-Bombay failure/retirement journey pass both profiles against registry owners, without owner patches. Delivery still selects0.26.0/macros0.14.2; its earlier207-source proof remains scoped to that graph. | Open: policy/other owner publication, final programme consumers/features/renaming, delivery documentation and repository gates. No local patch or old-source pass certifies the final release. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
@@ -1194,6 +1194,36 @@ named scheduling, TimedEvent, lease generation and LocalTimers contracts.
 Disposition: reopen; do not retain the removed production candidate. Supervision
 and pool caller types now have user priority. Full candidate patch/source hashes
 and both pre-edit witnesses remain under the existing external evidence root.
+
+Timer panic custody prerequisite (pre-edit): current merged Bombay5e9bcd1
+selects registry Core/Actors0.26.0, macros0.14.2, Address0.3.0,
+Communication0.1.6 and Timers0.2.0, without patches. Both native schedule
+interpreters remove the request before open InjectEvent conversion. Derived
+D-RETIRE-1/affine custody law: until a receipt or complete rejection exists,
+the original request remains in outside interpretation custody. A panic must
+return the completed accepted prefix, interrupted original, untouched suffix,
+independent lanes, original actor and independent work/cleanup/notifications.
+Desired ordinary Application syntax and named scheduling ports do not change.
+First add native active-turn regressions for both absolute and relative
+scheduling; no initialization-panic substitute. Reuse the existing request
+Copy contract, ActionItem outside custody, TimerQueue, Driver panic guard and
+ActorRetirement; add no ownership traits or runtime registry. Expected change:
+one production file, about+6/-2 lines; one focused test and this coordination;
+zero public types, bounds, signatures, visibility or resolved dependencies changed.
+The focused fixture uses the existing owner SendProduct derive for two named
+lanes through a test-only dependency on the already locked macros0.14.2;
+no handwritten routing or settlement algebra is introduced.
+Before checkpoint: one LocalTimers queue; TimerError3 alternatives; two
+InterpretItem bodies, no independent actor control state or subordinate engine.
+Both real active-turn regressions fail at their pending-original assertions in
+pinned1.99 debug/release (5.551/8.895s); all preceding custody/receipt checks
+pass. Two oracle reviews remove a vacuous cause check and strengthen the
+independent accepted receipt. This proves schedule-value custody, not opaque
+panic-cause identity or prefix queue delivery. Earlier fixture import/product
+compile failures are retained without RED credit. Bombay production remains
+unchanged; user prioritizes Behavior delivery before this bounded runtime fix.
+Evidence: TIMER-CUSTODY-RED-DEBUG-V4 and TIMER-CUSTODY-RED-RELEASE.
+Automatic identity, wrapper migration and complete DX13 acceptance remain open.
 
 #### Exact termination decoration — DX09 (pre-edit)
 
@@ -3305,9 +3335,9 @@ printed FAILED summaries reconcile two deliberate unknown-role children and
 eight Driver inverses, beside eight actor KILL markers. Four classifier PIDs
 86626/51237/71495/4945 crash during fixup; no fifth occurs. Their exact outputs
 have checked/joined supplementary reference scans and controls, not a clean
-original-run claim. Both completed-log reviews pass these limits. Five GitHub
-checks pass and Nix CI remains pending. No old-source acceptance, PR375 merge,
-waiver of the earlier retry hang or broad remote-product acceptance is inferred.
+original-run claim. Both completed-log reviews pass these limits. All six exact-head GitHub
+checks pass; PR375 merged as5e9bcd1. No old-source acceptance, waiver of the
+earlier retry hang or broad remote-product acceptance is inferred.
 
 Darwin audit recovery is a separate current-output reference check, not a clean
 original run or permanent crash fix. Eighteen deterministic controls show that
@@ -3323,3 +3353,43 @@ contain no recognized ELF/script headers; compressed contents are not expanded.
 Artifacts: audit-status-isolated-kdnsw_s8, audit-recovery-06d-rzsozb5a and
 audit-recovery-pool-t8_bmjvk, audit-recovery-pr375-o_urp8np and
 audit-recovery-pr375-build-noscwhl5. No Nix pin, hook or check is weakened.
+
+Current owner PR repair: user prioritizes Behavior delivery before more Bombay
+work. Mainf6106f8 contains policy98 and stash99. PR104 merged into PR102, not
+main: a1772ab exactly equals tested5b24f03; policy squashb3eb68b exactly equals
+1d1144a. Pre-edit law is conservation of the already-proven construction-time
+stash denial, complete named completion inference, startup/reply custody and
+all executable assertions. New feature worktrees preserve remote history.
+The29 apparent PR102 conflicts are squash-ancestry artifacts: repair3e99ce0
+adds only main's two exact stash files to a1772ab (+10 production lines,
++57 test lines, zero new API). One queue-release test is imported; actor states,
+subordinate alternatives, transition branches/modules and domain authority
+remain unchanged. Original stash policy/normalized actor documents and current
+startup/pool laws are cross-checked; no repeated cause, arrival-history state,
+semantic flag, structural caller requirement or new mechanism. Disposition: pass
+for integration, not whole-programme acceptance.
+
+PR100 repair2243858 merges3e99ce0 normally. Nine feature files equal9948bdd;
+diagnostic rustdoc follows main's public path while retaining E0277. Every
+other3e99ce0 file is conserved. No new production shape, bound, default, state,
+dependency or policy is invented. Both repairs pass two independent full-tree
+reviews. An initial diagnostic byte-equality guard wrongly omitted the inherited
+public path change; it fails and supplies no conservation credit. V2 and the
+independent comparison prove the exact transformation; no production workaround.
+
+Exact-head pinned native Nix gates pass ten checks each:3e99ce0 in79.621s with
+980 nextest/117 doctests,2243858 in82.831s with987/118; no skipped tests, ignored
+doctests or reported classifier crash. All823/826 tracked hashes survive.
+Actual four-workspace package preflights pass8.261/7.970s (four existing fixture
+dead-code warnings each; second also has an ignored Nix SQLite-busy diagnostic).
+External contracts pass22/29 tests in each debug/release profile, with all11
+static denials each. Sandbox100 audit emits60 missing yank-index errors;
+separate online audit passes1329 advisories/65 dependencies on both identical
+root locks. No cached unavailable lookup is described as successful.
+Both repairs are pushed by normal fast-forward to their existing PR branches;
+GitHub reports both mergeable, with fresh exact-head checks running. PR100
+includes102 and should merge afterward; the inherited breaking batch uses the
+explicit semver-breaking audit class. Publication and final downstream adoption
+remain separate. Evidence: {REPLIES,ITEMS}-MAIN-REPAIR source/provenance and
+native/preflight/external receipts under the existing evidence root. No old
+head CI pass or local archive label establishes registry delivery.
