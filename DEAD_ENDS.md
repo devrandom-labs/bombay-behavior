@@ -722,3 +722,32 @@ are independent operations. Preserve ordinary inferred exact construction and
 select logical routing separately per query. The initial supervisor patch and
 hashes are preserved externally; remove its production representation before
 renewed lowering. FIFO's one-customer route family is a separate responsibility.
+
+
+### Filtering accepted reply receipts through a borrowed unit pattern
+
+The first mixed-reply custody correction matches Accepted(()) while its existing
+public obligation is only Delivery<P>:ActionItem. Its Accepted projection is
+opaque there; both supported consumers fail E0308. Do not add an equality bound
+or discard Accepted(_) blindly: ActionItem already owns retain_accepted, and the
+plain Vec implementation preserves any receipt it returns. The borrowed-filter
+candidate is archived externally and delivery_route.rs restored to HEAD before
+renewed lowering. Reuse that exact owned receipt-retention law with ordinary
+filter_map, preserving every other row and order; no new API or bound is needed.
+Disposition: reopen the borrowed-filter representation. Native custody and owner
+rejection REDs remain the authority, not the compiler's suggested extra bound.
+
+
+### Storing an anonymous startup future as the ordinary plan
+
+Direct Future→StartupPlan adaptation compiles and preserves its Result payloads,
+but stores suspension state before initialization has authorized startup. In the
+matched actual1.99 optimized channel/worker/Ready/Rejection witness, the named
+plan occupies16bytes and the anonymous future32bytes (inline pools256each;
+not whole heap usage). The user prioritizes resident memory. Remove this blanket
+implementation and retain only the deferred FnOnce→Future startup path: the same
+measurement gives16bytes for both named and closure plans. The closure also
+constructs its future only when existing start authority is exercised. No wrapper,
+second constructor or competing blanket Future path is needed. The Future source
+and positive receipts remain external alternative evidence, not current API.
+No universal layout improvement or native panic/cancellation custody follows.

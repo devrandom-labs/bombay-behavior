@@ -721,13 +721,13 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published Behavior/Actors0.24.0 preserves uniquely selected semantic send lanes through wrappers, complete Actions and static denials; Bombay selects its successor0.26.0. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy headbc7718c passes owner/package/archive proofs with unchanged actor layouts. Isolated reply refinement removes three ordinary aliases and unused reply hosts; six native cases pass debug/release, with independent supervisor query choices. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy head186266e passes owner/package/archive proofs with unchanged actor layouts. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests and979 whole-workspace tests pass; the native Nix invocation exits0 with an audit-subprocess limitation recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: merge/publication authorization, registry adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
-| DX16 | Startup/provenance and complete source/interpretation custody remain. Draft PR100 head9948bdd supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. | Open: owner delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
+| DX16 | Startup/provenance and complete source/interpretation custody remain. Draft PR100 head9948bdd supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. Draft PR101 head184354b independently fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. | Open: owner delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
 | DX19 | Strict supported-compiler replay checks exact fixture names/modes, coverage and unchanged sources. Native owner denials add missing-interpreter/wrong-owner cases; damaged-expectation, empty-success and added-source controls reject. | Open: remaining diagnostic/renamed/minimal-feature corpus, owner diagnostic publication and final archive gates. Node/client denials keep their separate caller checks. |
@@ -2832,8 +2832,8 @@ Focused evidence on the corrected independent model (pinned Nix):
   and both selector orders compile (3.620seconds). Missing selected Status or
   Capability hosts each fail three E0277 diagnostics (0.856/0.845seconds). Correct
   protocol control compiles; identical wrong-protocol input fails E0277, and its
-  rustdoc denial runs exactly one case. Logical runtime rejection custody remains
-  unproved; these host probes are compile witnesses only.
+  rustdoc denial runs exactly one case. The host probes are compile witnesses only; the separate native rejection
+  proof below supplies bounded runtime custody evidence.
 - The real replacement example executes original startup, business Stop,
   replacement startup and orderly retirement; cleanup/notifications succeed
   (1.196seconds). It retains the existing ManagedWorker alias in worker.rs.
@@ -2843,7 +2843,7 @@ Focused evidence on the corrected independent model (pinned Nix):
   In the copied mains, pool90→90 and supervisor99→96 lines include Config adoption;
   reply aliases1/2→0/0 and reply host rows1/2→0/0. The worker alias remains open.
 
-Current full physical ledger: production+1302/-395/net907 across15 source files
+Static capability checkpoint before custody/startup: production+1302/-395/net907 across15 source files
 including replies.rs; focused owner tests+8/-3/net5 across2files; public types+4/-0
 (ReplyRoutes, ExactReplies, MixedReplies, FifoBuilder). This is net-positive
 capability code, not code reduction. The recorded2026-10-09 expanded budget applies.
@@ -2893,9 +2893,216 @@ are0.519/1.280seconds owner and4.653/20.841native; they include cache effects.
 These repeat executions establish final source binding, not additional laws.
 
 Status: focused capability proof; whole-programme acceptance remains Open.
-Logical failure custody, all original owner consumers, portable
-native fixtures, minimum-compiler matrix, complete exact settlements, comparable
-compile costs, package/archive proof and both full repository gates are still
-owed before delivery. Do not call this published or merge the prototype. Timer
+All original owner consumers, portable native fixtures, complete exact
+settlements, comparable compile costs, package/archive proof for the reply API
+and both full repository gates remain owed before its delivery. The bounded
+logical failure and minimum-compiler evidence is recorded below. Do not call this published or merge the prototype. Timer
 ownership and the separate worker-factory alias/associated-type question remain
 separate open work; no placeholder or arbitrary bound may hide them.
+
+
+Reply custody (DX16/20/25), derived ownership law recorded before lowering:
+the Driver drops Exhausted custody; mixed ReplyDeliveries must retain exactly
+what the existing Vec law retains. Original rejected, untouched and corrupt rows
+stay in authored order; accepted receipts use ActionItem::retain_accepted.
+prepare_source owns idempotent classification and finish_source delegates.
+This adds no type, trait, bound, public operation or actor state. The borrowed
+unit-pattern candidate is rejected in DEAD_ENDS.md; the owner port, not compiler
+suggestions, supplies receipt retention.
+
+The pre-edit native journey reaches an actual Ready proxy, sends Status to an
+unbound logical recipient, then shuts down through the same mailbox. Normal
+termination/FailuresFound still loses the required retained row (3.446seconds).
+The exhaustive oracle owns the UnknownAddress request/snapshot/actual proxy,
+Stop, Work cleanup, notifications and joined proxy/worker custody. Six owner
+regressions check non-Clone invoice allocations, exact Vec control, both mixed
+routes, accepted-unit exhaustion, interleaved residual order and original/
+offering/completed/empty phases with repeated finishing. Original source fails
+four with two controls passing. Both ownership/oracle and adversarial/vacuity
+reviews pass. A consuming extraction caught inside assert was moved to a prior
+let; no production law changed.
+
+Custody drift:31 enums retain146 alternatives;293 matches,714→715 arms,
+31→32 if,2loop/2while/0question marks. The added choice selects existing
+Retained/Exhausted source custody, never another actor authority. FIFO5/roster5,
+all subordinate owned products, provenance and initialization remain unchanged.
+No history, repeated cause, false cardinality, flag, inferred provenance or
+ordinary structural path appears. Cross-check source settlement, Driver disposal,
+DeliveryRoute, creation and lifecycle laws. Disposition: pass for bounded custody.
+Earlier715-source results remain bound in source-custody-{sources,results}.json;
+subsequent startup and migration have separate final bindings below.
+
+Independent correction on origin/main98983b4: draft PR101/184354b contains only
+production+42/-9/net33 and347 test lines, public API0. All970 nextest tests pass
+(38.030seconds), native Nix exits0 for all ten checks (62.202seconds), packaged
+archive consumer passes (7.800seconds), four-workspace release preflight passes
+(6.338seconds), and all14 exact-head GitHub checks pass. Authorization for merge/
+publication is pending. Unchanged Bombay6c5c18a (all85 Rust source files identical,
+all59 registry selections/checksums conserved) proves both genuinely hosted
+logical Status/Capability UnknownAddress failures with original recipients and
+payloads beside complete normal retirement. Locked debug/release pass
+(10.323/24.958seconds); identical consumer on98983b4 fails rows1 versus3
+(7.502seconds). No exact per-action row partition, independent proxy-to-child
+identity correspondence, native closed-recipient or new panic/cancellation law
+is claimed. These original-owner gates do not certify the larger prototype.
+
+Latest-main integration remains open: Bombay mainc249044 adds provider result
+conservation tests; isolated merge5548924 compiles red on old execute_with/
+three-part outcome syntax and allocator-owner imports. Its Nix selector names a
+removed external module. Reuse private session capture and complete existing
+ApplicationOutcome::into_parts; keep allocation sampling in its isolated allocator
+owner with the same concrete receipts. Preserve all observations. No public SDK
+surface, new bound, global allocator or transport escape is justified. The later
+40fbb61 pure regression commit does not certify the combined full remote gates.
+
+Startup authoring (DX10/11/17), derived static adaptation recorded before lowering:
+WorkerSubmission::with_startup(worker, move || async move { ... }) infers both
+composed worker and startup Result without aliases, a Startup struct or repeated
+associated declarations. The existing StartupPlan equation is Send FnOnce()->Work,
+with Work a Send future returning Result<Send Ready,Send Rejection>. Invoke the
+original closure once at start; return its original future without polling.
+Original successful/rejected values and returned-future disposal keep ownership.
+Reuse WorkerSubmission, StartWorker, initialization permits, proxy/pool state and
+native startup tasks; no new state, type, operation, dependency or runtime port.
+Named nonclosure plans retain their port; qualifying closures cannot separately
+implement StartupPlan. Migration guidance documents that coherence restriction.
+
+Before production, four owner cases and the actual factory fail missing
+StartupPlan. The direct Future candidate was removed (DEAD_ENDS.md). Final
+constructor-count cases fail17 E0277 against that candidate; the real closure
+factory likewise fails. Calling plan() during submission construction is forbidden.
+Matched optimized1.99 storage is16bytes named plan,32anonymous future,16deferred
+closure; all inline pools256bytes. This supports deferred construction without the
+measured suspension-state increase, not universal layout, heap or latency gains.
+The actual initial/recovery factory shares its existing notification sender and
+returns real SendError<Role> instead of the older example's panic. Notification
+inside startup precedes committed readiness, so its consumer queries until Ready.
+This is a deliberate failure-policy improvement, not identical failure semantics.
+
+Four focused tests observe construction0→1 at start, body entry0→1 only at await,
+complete non-Clone success/rejection Box identity, and once-only disposal of
+unpolled/Pending returned futures. The counter is body entry, not every poll.
+Both independent reviews pass. Disposal of an uninvoked closure and native panic/
+cancellation/rejection custody remain outside these positive journeys. Production
+runs start inside the native task and receives panic through Tokio JoinError;
+the explicit catch_unwind(plan.start()) source inspected earlier is cfg(test).
+No original-grant/permit panic custody is inferred from it.
+
+Initial closure proof passes16 owner tests1.95 debug/release and7 actual native
+journeys1.99 plus minimum1.96 in both profiles. Four native cases adopt startup
+closures (two FIFO, two worker layouts), three controls remain byte-identical;
+all original supervisor/FIFO assertions remain. An obsolete Pool spelling in a
+test-only signature was removed by inlining its unchanged complete retirement
+oracle, not by adding a generic premise. Their positive paths do not execute new
+SendError/RecvError failures. Frozen730-source closure proof, names, denials,
+commands and log hashes are in closure-{sources,results}.json; final migration
+binding is below. None of these timings is a comparable compile-cost benchmark.
+
+Startup drift:worker/mod.rs+32/-0 (16implementation/import,16rustdoc), public
+named symbols0; no new actor branch or control sum. Worker StopKind2,
+WorkerCreationRejection8 and WorkerCreationOutcome2 keep every original product.
+FIFO5/roster5 and all prior static-capability checkpoint counts above remain.
+No new match, if, phase, cause, history, flag, nested authority, widened capability
+or ordinary structural syntax appears. Cross-check initialization/StartWorker,
+worker preparation, FIFO, roster/proxy creation and retirement. Disposition: pass
+for focused startup authoring/ownership; final failure/cost acceptance stays open.
+
+Further caller simplification needs no owner change: proxy birth/replacement
+already constructs StopOnShutdown<W> and targets that exact outer layer at Here.
+Owned shutdown is consumed, not delegated to W. A copied main with raw Worker
+still completes startup, replacement and clean retirement (7.677seconds), without
+worker/startup aliases. Printed output is not a complete custody oracle; a normal-
+retirement differential remains owed before that simplification's migration.
+The older two Stash/shutdown worker layouts stop by business Stop/Release before
+supervisor shutdown. They prove Stash work and forwarding, not genuine execution
+of the inner shutdown policy. Do not retain redundant shutdown to count orders.
+
+Composition (DX10/11/17), existing Bombay policy law recorded before tests:
+compose Stash and OneShot in both fluent orders without naming the worker type.
+Closed business state rejects an original invoice; Stash instead retains two
+non-Clone invoices. Use the actual authored ScheduleAfter id/generation for one
+reminder while both remain held; duplicate elapsed input emits nothing. Open
+changes current business state, then releases original FIFO envelopes with exact
+allocations, contents, origins and balances13→42. Stop returns empty effects and
+termination. Observe all Actions lanes and current base state after every turn.
+Reuse ActorExt, Activate and existing products; add no production symbol, bound,
+forwarding method, structural path or interpreter capability. The common equation
+has two actual wrapper substitutions. This proves pure effects, not native clock
+acceptance, joint startup or nonempty inner initialization.
+
+Both reviews pass after the independent destination oracle uses original
+MailAddr59. Raw rejection plus both orders pass against real Bombay's registry
+0.26.0 dependencies in debug/release (13.820/33.352seconds). Final lint-only edits
+merge identical route arms and explain the complete trace's length; both reviews
+remain valid. Final debug/release pass (1.161/1.187seconds), strict Clippy/format
+pass (0.787/0.631seconds). Isolated copied owner inversions drop timer Actions or
+reverse Stash FIFO: each fails both orders with the raw control passing. All702
+copied source hashes restore exactly; a preserved-mtime restoration first reused
+the mutant artifact and stayed red, then forced recompilation passes all3.
+Bombay40fbb61 retains the266-line public regression and compact coordination record.
+Drift:production/public API0; fixture Closed | Open(balance), normal Reminder |
+Paid(original invoice,origin,balance) | Rejected(original invoice,origin). Every
+field is a current business value or original obligation. No historical state,
+repeated cause, false cardinality, nested authority or structural caller syntax.
+Cross-check OneShot lease/init and Stash release/replay laws. Disposition: pass
+for this pure composition; stronger native/failure obligations remain separate.
+
+Proven-syntax migration changes no production law. Explicit advanced runtime
+fixtures select their real existing mixed reply contracts; ordinary constructors
+remain inferred exact endpoints. The first proxy ingress migration passes56 tests
+(3.466seconds), supervisor fixtures99 (3.667seconds), FIFO94 (5.078seconds).
+Both review passes reverse every migrated source to HEAD after removing only
+recorded family indexes/imports, selectors/build calls, formatting and one unused
+local mut. All assertions, requests, refusal matches, affine operations, model
+transitions and exhaustive branches remain. Tests inside cfg(test) modules get
+the same changes; their production prefix is byte-identical. Cascading ownership
+diagnostics are not repaired. One initially misclassified worker-custody case
+really sends to a logical customer later in the same test: its logical opt-in
+preserves that original route instead of adding a host or forging an endpoint.
+No new bound, placeholder, callback, compatibility spelling or capability is added.
+
+Final owner workspace nextest passes979 tests,0skipped (40.616seconds). Final
+native Nix invocation exits0 for all ten selected checks (158.508seconds), including
+979 optimized tests; other architectures are not certified. External interpreter
+contract passes19tests including7existing compile denials (20.450seconds), packaged
+archive consumer passes (6.147seconds), and every fuzz binary compiles
+(12.747seconds). Instrumented mixed FIFO and supervisor-correlation smoke runs
+complete1000inputs each (29.059/10.685seconds), not a long fuzz campaign or an
+exact-family corpus. Generated corpora are archived outside the source tree;
+original tracked seeds remain byte-exact.
+
+The final Nix run exposes a real tooling limitation: Darwin's background temporary-
+path audit classifier segfaults although Nix exits0; source inspection shows its
+status is not joined. The Rust build/tests still complete. Both copied header
+classifiers and the exact audit routine pass independently on the actual output
+archive (1.864/0.826seconds); this narrows the issue, not its root cause. Initial
+sandbox advisory audit also cannot query registry yanks. No signing or disk failure
+occurs;18GiB remains free. These warnings are recorded, not treated as completed
+validation of the failed audit subprocess or a waiver of future gates.
+
+Final migration binding freezes732 source/manifest/context files, changing19
+existing test/benchmark files from the closure binding. All hashes remain equal
+through7native startup/custody journeys plus3pure policy tests in current1.99
+and minimum1.96 debug/release:10pass per profile (25.452/105.239/20.562/114.269seconds).
+This remains an actual runtime archive with the five proved naming/startup adapters
+and three owner path patches, not registry or real latest-main acceptance.
+migration-{sources,native-results}.json bind commands, exact names and log hashes.
+
+Final physical ledger relative to186266e: production+1376/-404/net972 in17files;
+tests/benchmark+1156/-196/net960 in24files; documentation+22/-5/net17 in2files.
+One source file contains both production and test changes, so42 distinct files.
+Counting whole src paths gives+1550/-528/net1022 in18files:the extra50lines are
+cfg(test) changes, not new production. Public types+4/-0 and public spellings+10/-0
+remain as the static capability checkpoint. The2026-10-09 expanded budget applies.
+Migration adds no state, alternative, branch, authority or public spelling; this
+is net-positive capability work, not code reduction. Complete original-value
+failure coverage, registry delivery, latest-main remote integration, comparable
+costs, remaining catalogue paths and both repository acceptance gates remain open.
+
+Delivery checkpoint: owner branch codex/devx-replies is clean at422e840 and
+pushed as draft PR102, stacked on PR98/186266e. Commits a46cfbe (byte-identical
+PR101 custody),1a22a9a (startup plus rustdoc/migration guidance) and422e840
+(reply inference plus original consumer migration) preserve all732 frozen hashes.
+Post-commit evaluation matches the exact ten gated Nix derivations. The owner
+results binding is migration-owner-results.json. GitHub checks have not yet
+reported for this stacked draft; this is neither merge nor publication approval.
