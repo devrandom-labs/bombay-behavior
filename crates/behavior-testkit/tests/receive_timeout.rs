@@ -4,7 +4,8 @@ use core::task::Poll;
 use std::time::Duration;
 
 use behavior_actors::{
-    Activate, ScheduleAfter, ScheduleAt, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
+    Activate, OwnedScheduleAfter, OwnedScheduleAt, OwnedTimerElapsed, OwnedTimerScheduled,
+    TimerGeneration,
 };
 use behavior_core::EventLayer;
 use behavior_core::{
@@ -104,12 +105,7 @@ fn on_timeout(
 #[tokio::test]
 async fn initialization_and_successful_user_turns_arm_after_preserving_actions() {
     let after = Duration::from_secs(5);
-    let behavior = behavior_actors::ReceiveTimeout::new(
-        Subject::default(),
-        behavior_actors::TimerId(0),
-        after,
-        on_timeout,
-    );
+    let behavior = behavior_actors::ReceiveTimeout::new(Subject::default(), after, on_timeout);
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -117,10 +113,10 @@ async fn initialization_and_successful_user_turns_arm_after_preserving_actions()
     assert!(initial.sends.inner.is_empty());
     assert!(initial.creates.is_empty());
     assert_eq!(initial.become_, Step::Continue);
-    assert_eq!(initial.sends.owned.len(), 1);
-    assert_eq!(initial.sends.owned[0].id, TimerId(0));
-    assert_eq!(initial.sends.owned[0].generation, TimerGeneration(0));
-    assert_eq!(initial.sends.owned[0].after, after);
+    assert_eq!(
+        initial.sends.owned.as_slice(),
+        [OwnedScheduleAfter::new(TimerGeneration(0), after)]
+    );
 
     let first = behavior
         .transition(EventLayer::Inner(User::user(MailAddr(1), 1)))
@@ -141,7 +137,6 @@ async fn initialization_and_successful_user_turns_arm_after_preserving_actions()
 async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     let behavior = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -149,19 +144,17 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     let mut behavior = initialized.behavior;
 
     let stale = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(1),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            1,
+        ))))
         .unwrap();
     assert!(stale.sends.inner.is_empty());
     assert!(stale.sends.owned.is_empty());
 
     let fired = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert_eq!(fired.sends.inner[0].message, 99);
     assert_one_child_birth(&fired.creates);
@@ -169,10 +162,9 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
     assert!(fired.sends.owned.is_empty());
 
     let duplicate = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(duplicate.sends.inner.is_empty());
     assert!(duplicate.sends.owned.is_empty());
@@ -187,7 +179,6 @@ async fn matching_delivery_consumes_once_and_reaction_preserves_full_actions() {
 async fn errors_and_terminal_user_turns_do_not_rearm() {
     let failing = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -196,16 +187,14 @@ async fn errors_and_terminal_user_turns_do_not_rearm() {
     let failed = failing.transition(EventLayer::Inner(User::user(MailAddr(1), 7)));
     assert!(matches!(failed, Err(Failed)));
     let still_live = failing
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert_eq!(still_live.sends.inner[0].message, 99);
 
     let terminal = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -220,16 +209,16 @@ async fn errors_and_terminal_user_turns_do_not_rearm() {
     assert_one_child_birth(&stopped.creates);
 
     let formerly_live = terminal
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(formerly_live.sends.inner.is_empty());
     assert!(formerly_live.sends.owned.is_empty());
 }
 
-fn inner_at(_inner: &mut SubjectBehavior) -> behavior_core::Become {
+fn inner_at(inner: &mut SubjectBehavior) -> behavior_core::Become {
+    inner.accepted.push(88);
     Step::Continue
 }
 
@@ -241,21 +230,21 @@ fn outer_timeout(
     MailAddr,
     Never,
     behavior_core::SendLayer<
-        behavior_core::InterpreterRequests<behavior_actors::ScheduleAt>,
+        behavior_core::InterpreterRequests<behavior_actors::OwnedScheduleAt>,
         <SubjectBehavior as Behavior>::Sends,
     >,
     RetirementBirths<ChildBehavior>,
 > {
-    Actions::cont()
+    Actions::cont().with_send(Delivery::new(Recipient::global(MailAddr(91)), 98))
 }
 
 type TimerCompositionEvent =
-    behavior_actors::TimedEvent<behavior_actors::TimedEvent<User<MailAddr, u8>>>;
+    EventLayer<OwnedTimerElapsed, EventLayer<OwnedTimerElapsed, User<MailAddr, u8>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum TimerScheduleAcceptance {
-    Absolute(ScheduleAt),
-    Relative(ScheduleAfter),
+    Absolute(OwnedScheduleAt),
+    Relative(OwnedScheduleAfter),
 }
 
 struct TimerCompositionRuntime {
@@ -306,14 +295,16 @@ impl
     }
 }
 
-impl InterpretItem<ScheduleAt, TimerCompositionEvent, Inside<Here>> for TimerCompositionRuntime {
+impl InterpretItem<OwnedScheduleAt, TimerCompositionEvent, Inside<Here>>
+    for TimerCompositionRuntime
+{
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<ScheduleAt>,
-        received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+        input: &'a mut Option<OwnedScheduleAt>,
+        received: &'a mut Option<<OwnedScheduleAt as ActionItem>::Reply>,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        ScheduleAt: 'a,
+        OwnedScheduleAt: 'a,
     {
         async move {
             if received.is_some() {
@@ -326,7 +317,7 @@ impl InterpretItem<ScheduleAt, TimerCompositionEvent, Inside<Here>> for TimerCom
                 async move {
                     self.accepted_schedules
                         .push(TimerScheduleAcceptance::Absolute(schedule));
-                    ItemSettlement::Accepted(TimerScheduled {
+                    ItemSettlement::Accepted(OwnedTimerScheduled {
                         id: schedule.id,
                         generation: schedule.generation,
                     })
@@ -345,14 +336,14 @@ impl InterpretItem<ScheduleAt, TimerCompositionEvent, Inside<Here>> for TimerCom
     }
 }
 
-impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerCompositionRuntime {
+impl InterpretItem<OwnedScheduleAfter, TimerCompositionEvent, Here> for TimerCompositionRuntime {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<ScheduleAfter>,
-        received: &'a mut Option<<ScheduleAfter as ActionItem>::Reply>,
+        input: &'a mut Option<OwnedScheduleAfter>,
+        received: &'a mut Option<<OwnedScheduleAfter as ActionItem>::Reply>,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        ScheduleAfter: 'a,
+        OwnedScheduleAfter: 'a,
     {
         async move {
             if received.is_some() {
@@ -365,7 +356,7 @@ impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerComposit
                 async move {
                     self.accepted_schedules
                         .push(TimerScheduleAcceptance::Relative(schedule));
-                    ItemSettlement::Accepted(TimerScheduled {
+                    ItemSettlement::Accepted(OwnedTimerScheduled {
                         id: schedule.id,
                         generation: schedule.generation,
                     })
@@ -388,18 +379,14 @@ impl InterpretItem<ScheduleAfter, TimerCompositionEvent, Here> for TimerComposit
 async fn nested_timer_service_events_never_reset_receive_inactivity() {
     let due = std::time::Instant::now() + Duration::from_secs(2);
     let behavior = behavior_actors::ReceiveTimeout::new(
-        behavior_actors::Deadline::new(
-            Subject::default(),
-            behavior_actors::TimerId(0),
-            Some(due),
-            inner_at,
-        ),
-        behavior_actors::TimerId(1),
+        behavior_actors::Deadline::new(Subject::default(), Some(due), inner_at),
         Duration::from_secs(1),
         outer_timeout,
     );
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
+    assert!(initial.creates.is_empty());
+    assert_eq!(initial.become_, Step::Continue);
     let mut behavior = initialized.behavior;
     let mut runtime = TimerCompositionRuntime {
         accepted_deliveries: Vec::new(),
@@ -422,13 +409,11 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert_eq!(
         runtime.accepted_schedules,
         [
-            TimerScheduleAcceptance::Absolute(behavior_actors::ScheduleAt::new(
-                TimerId(0),
+            TimerScheduleAcceptance::Absolute(behavior_actors::OwnedScheduleAt::new(
                 TimerGeneration(0),
                 due,
             )),
-            TimerScheduleAcceptance::Relative(behavior_actors::ScheduleAfter::new(
-                TimerId(1),
+            TimerScheduleAcceptance::Relative(behavior_actors::OwnedScheduleAfter::new(
                 TimerGeneration(0),
                 Duration::from_secs(1),
             )),
@@ -436,11 +421,16 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     );
 
     let accepted = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Inner(EventLayer::Owned(
+            OwnedTimerElapsed::new(TimerGeneration(0)),
+        )))
         .unwrap();
+    assert_eq!(behavior.base().accepted, [88]);
+    assert!(accepted.sends.owned.is_empty());
+    assert!(accepted.sends.inner.owned.is_empty());
+    assert!(accepted.sends.inner.inner.is_empty());
+    assert!(accepted.creates.is_empty());
+    assert_eq!(accepted.become_, Step::Continue);
     let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(accepted.sends));
         <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
@@ -458,11 +448,16 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert_eq!(runtime.accepted_schedules.len(), 2);
 
     let stale = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Inner(EventLayer::Owned(
+            OwnedTimerElapsed::new(TimerGeneration(0)),
+        )))
         .unwrap();
+    assert_eq!(behavior.base().accepted, [88]);
+    assert!(stale.sends.owned.is_empty());
+    assert!(stale.sends.inner.owned.is_empty());
+    assert!(stale.sends.inner.inner.is_empty());
+    assert!(stale.creates.is_empty());
+    assert_eq!(stale.become_, Step::Continue);
     let interpreted = {
         let mut progress = Some(InterpretationProgress::Original(stale.sends));
         <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(
@@ -480,12 +475,43 @@ async fn nested_timer_service_events_never_reset_receive_inactivity() {
     assert_eq!(runtime.accepted_schedules.len(), 2);
 
     let outer = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(1),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert_eq!(outer.become_, Step::Continue);
+    assert!(outer.sends.owned.is_empty());
+    assert!(outer.sends.inner.owned.is_empty());
+    assert_eq!(outer.sends.inner.inner.len(), 1);
+    assert_eq!(outer.sends.inner.inner[0].message, 98);
+    assert_eq!(outer.sends.inner.inner[0].to.address(), MailAddr(91));
+    assert!(outer.creates.is_empty());
+    assert_eq!(behavior.base().accepted, [88]);
+    let mut progress = Some(InterpretationProgress::Original(outer.sends));
+    <_ as InterpretSends<_, TimerCompositionEvent, Here>>::interpret(&mut progress, &mut runtime)
+        .await;
+    assert!(matches!(
+        progress,
+        Some(InterpretationProgress::Completed(Interpretation::Complete(
+            _
+        )))
+    ));
+    assert_eq!(runtime.accepted_schedules.len(), 2);
+    assert_eq!(runtime.accepted_deliveries.len(), 1);
+    assert_eq!(runtime.accepted_deliveries[0].message, 98);
+    assert_eq!(runtime.accepted_deliveries[0].to.address(), MailAddr(91));
+
+    let duplicate = behavior
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
+        .unwrap();
+    assert!(duplicate.sends.owned.is_empty());
+    assert!(duplicate.sends.inner.owned.is_empty());
+    assert!(duplicate.sends.inner.inner.is_empty());
+    assert!(duplicate.creates.is_empty());
+    assert_eq!(duplicate.become_, Step::Continue);
+    assert_eq!(behavior.base().accepted, [88]);
 }
 
 #[tokio::test]
@@ -493,7 +519,6 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let mut model = InactivityModel::new();
     let behavior = behavior_actors::ReceiveTimeout::new(
         Subject::default(),
-        behavior_actors::TimerId(0),
         Duration::from_secs(1),
         on_timeout,
     );
@@ -520,20 +545,18 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     assert_eq!(stale_admission, None);
     assert_eq!(model.no_activity(), Some(1));
     let stale = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(stale.sends.inner.is_empty());
 
     let current_admission = model.notification(1);
     assert_eq!(current_admission, Some(1));
     let timeout = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(1),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            1,
+        ))))
         .unwrap();
     assert_eq!(timeout.sends.inner[0].message, 99);
     assert!(timeout.sends.owned.is_empty());
@@ -541,10 +564,9 @@ async fn accepted_stale_timeout_error_and_terminal_turns_match_independent_model
     let duplicate_admission = model.notification(1);
     assert_eq!(duplicate_admission, None);
     let duplicate = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(1),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            1,
+        ))))
         .unwrap();
     assert!(duplicate.sends.inner.is_empty());
 
@@ -607,12 +629,8 @@ fn stopped_at_reaction(_inner: &mut StopsAtInitialization) -> behavior_core::Bec
 #[tokio::test]
 async fn terminal_initialization_consumes_absolute_timer_state() {
     let due = std::time::Instant::now() + Duration::from_secs(1);
-    let behavior = behavior_actors::Deadline::new(
-        StopsAtInitialization,
-        TimerId(0),
-        Some(due),
-        stopped_at_reaction,
-    );
+    let behavior =
+        behavior_actors::Deadline::new(StopsAtInitialization, Some(due), stopped_at_reaction);
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
@@ -620,10 +638,9 @@ async fn terminal_initialization_consumes_absolute_timer_state() {
     assert!(initial.sends.owned.is_empty());
 
     let after_stop = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert_eq!(after_stop.become_, Step::Continue);
 }
