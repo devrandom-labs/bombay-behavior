@@ -144,6 +144,8 @@ async fn fifo_unavailable_diagnostic_preserves_exact_receipt_startup_and_prior_s
                 diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
             },
         )
+        .logical_replies()
+        .build()
         .unwrap_or_else(|_| panic!("valid role declarations construct FIFO"));
         let initialized = declared.initialize().unwrap();
         let mut pool = initialized.behavior;

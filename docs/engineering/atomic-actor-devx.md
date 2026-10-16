@@ -17,7 +17,7 @@ Their distinct ownership laws remain separate.
 | Stable service across replacement | `proxy::StableProxy::new`; `immediate` selects a no-work startup plan |
 | Fixed roster supervision | `supervisor::roster::new(factory, roles, roster::Config { … }).build()` |
 | Dynamic membership supervision | `supervisor::directory::new(directory::Config { … })` |
-| FIFO worker distribution | `pool::queue::new(factory, roles, queue::Config { … })` |
+| FIFO worker distribution | `pool::queue::new(factory, roles, queue::Config { … }).build()` |
 | Key-affine worker distribution | `pool::router::new(factory, roles, selector, router::Config { … })` |
 | Worker definition and readiness | `worker::WorkerSubmission::immediate` or `with_startup` |
 | Assignment worker authoring | `pool::pool_worker`, `Assignment::payload`, `Assignment::complete` |
@@ -45,6 +45,13 @@ the closure; the existing initialization-authorized startup operation calls it
 once. Do not invoke it while constructing the submission. Named `StartupPlan`
 implementations remain available when a separate domain plan is useful.
 A closure covered by this implementation cannot also implement the trait itself.
+
+Supervisor and FIFO replies use exact established recipients by default.
+Older applications using logical reply addresses select `logical_status()` and
+`logical_capabilities()` independently on the supervisor builder, or
+`logical_replies()` on the FIFO builder, before `build()`. Host only protocols
+whose logical replies the application actually uses. Exact customers need no
+logical reply namespace or structural reply-type alias.
 
 ## Ownership obligations
 

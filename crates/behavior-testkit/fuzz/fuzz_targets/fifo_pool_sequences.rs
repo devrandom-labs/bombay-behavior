@@ -10,6 +10,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 use std::time::Instant;
 
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::queue;
@@ -82,7 +83,7 @@ enum Role {
 struct SearchWorker;
 
 type SearchPool =
-    Active<FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16>>;
+    Active<FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16, MixedReplies>>;
 
 impl Protocol for SearchWorker {
     type Addr = RuntimeAddress;
@@ -148,7 +149,7 @@ fn ready_pool() -> (SearchPool, CreationId) {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    )
+    ).logical_replies().build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
     let initialized = pool
         .initialize()

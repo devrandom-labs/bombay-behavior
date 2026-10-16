@@ -1,6 +1,9 @@
 //! Complete construction inputs and rejection for an ordered supervisor roster.
 
 use core::convert::Infallible;
+use core::marker::PhantomData;
+
+use crate::composition::replies::{ExactReplies, MixedReplies, ReplyRoutes};
 
 use behavior::{Behavior, BehaviorAddr, CreationSequence, EndpointAddress};
 
@@ -44,11 +47,20 @@ pub struct Config<Source, DiagnosticRoute> {
 }
 
 /// Inferred construction value that owns every required supervisor input.
-pub struct FixedBuilder<Factory, Role, Source, DiagnosticRoute, LifecycleRoute> {
+pub struct FixedBuilder<
+    Factory,
+    Role,
+    Source,
+    DiagnosticRoute,
+    LifecycleRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> {
     factory: Factory,
     roles: OrderedRoles<Role>,
     config: Config<Source, DiagnosticRoute>,
     lifecycle: Option<LifecycleRoute>,
+    replies: PhantomData<fn() -> (StatusReplies, CapabilityReplies)>,
 }
 
 /// Complete construction custody returned when one worker cannot be prepared.
@@ -61,6 +73,8 @@ pub struct FixedConstructionRejected<
     Source,
     DiagnosticRoute,
     LifecycleRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
 > {
     /// Complete initial-worker rejection.
     pub workers: InitialWorkerRejection<Factory, Role, Worker, Plan, Rejection>,
@@ -68,6 +82,7 @@ pub struct FixedConstructionRejected<
     pub config: Config<Source, DiagnosticRoute>,
     /// Optional lifecycle route; absence means autonomous operation.
     pub lifecycle: Option<LifecycleRoute>,
+    replies: PhantomData<fn() -> (StatusReplies, CapabilityReplies)>,
 }
 
 /// Begin the sole fixed-supervisor construction path with every required policy.
@@ -76,35 +91,69 @@ pub fn new<Factory, Role, Source, DiagnosticRoute>(
     factory: Factory,
     roles: OrderedRoles<Role>,
     config: Config<Source, DiagnosticRoute>,
-) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Infallible> {
+) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Infallible, ExactReplies, ExactReplies> {
     FixedBuilder {
         factory,
         roles,
         config,
         lifecycle: None,
+        replies: PhantomData,
     }
 }
 
-impl<Factory, Role, Source, DiagnosticRoute>
-    FixedBuilder<Factory, Role, Source, DiagnosticRoute, Infallible>
+impl<
+    Factory,
+    Role,
+    Source,
+    DiagnosticRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+>
+    FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        Infallible,
+        StatusReplies,
+        CapabilityReplies,
+    >
 {
     /// Publish lifecycle events through one typed route.
     #[must_use]
     pub fn publish_lifecycle<Route>(
         self,
         route: Route,
-    ) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Route> {
+    ) -> FixedBuilder<Factory, Role, Source, DiagnosticRoute, Route, StatusReplies, CapabilityReplies>
+    {
         FixedBuilder {
             factory: self.factory,
             roles: self.roles,
             config: self.config,
             lifecycle: Some(route),
+            replies: PhantomData,
         }
     }
 }
 
-impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
-    FixedBuilder<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
+impl<
+    Factory,
+    Role,
+    Source,
+    DiagnosticRoute,
+    LifecycleRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+>
+    FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        StatusReplies,
+        CapabilityReplies,
+    >
 {
     /// Prepare every initial worker in declaration order or return all custody.
     /// The factory returns `WorkerSubmission` directly when preparation cannot
@@ -113,7 +162,16 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
     pub fn build<Worker, Plan, Preparation>(
         self,
     ) -> Result<
-        FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>,
+        FixedSupervisor<
+            Role,
+            Worker,
+            Plan,
+            Source,
+            DiagnosticRoute,
+            LifecycleRoute,
+            StatusReplies,
+            CapabilityReplies,
+        >,
         FixedConstructionRejected<
             Factory,
             Role,
@@ -123,6 +181,8 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
             Source,
             DiagnosticRoute,
             LifecycleRoute,
+            StatusReplies,
+            CapabilityReplies,
         >,
     >
     where
@@ -140,6 +200,7 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
             roles,
             config,
             lifecycle,
+            replies,
         } = self;
         let prepared = match prepare_initial_workers(factory, roles) {
             Ok(prepared) => prepared,
@@ -148,6 +209,7 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
                     workers,
                     config,
                     lifecycle,
+                    replies,
                 });
             }
         };
@@ -167,6 +229,77 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute>
             actor_drain,
             diagnostics,
             lifecycle,
+            replies,
         })
+    }
+}
+
+impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute, CapabilityReplies: ReplyRoutes>
+    FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        ExactReplies,
+        CapabilityReplies,
+    >
+{
+    /// Allow logical addresses as well as exact endpoints for status replies.
+    /// Logical delivery requires the interpreter to host this reply protocol.
+    #[must_use]
+    pub fn logical_status(
+        self,
+    ) -> FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        MixedReplies,
+        CapabilityReplies,
+    > {
+        FixedBuilder {
+            factory: self.factory,
+            roles: self.roles,
+            config: self.config,
+            lifecycle: self.lifecycle,
+            replies: PhantomData,
+        }
+    }
+}
+
+impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute, StatusReplies: ReplyRoutes>
+    FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        StatusReplies,
+        ExactReplies,
+    >
+{
+    /// Allow logical addresses as well as exact endpoints for capability replies.
+    /// Logical delivery requires the interpreter to host this reply protocol.
+    #[must_use]
+    pub fn logical_capabilities(
+        self,
+    ) -> FixedBuilder<
+        Factory,
+        Role,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        StatusReplies,
+        MixedReplies,
+    > {
+        FixedBuilder {
+            factory: self.factory,
+            roles: self.roles,
+            config: self.config,
+            lifecycle: self.lifecycle,
+            replies: PhantomData,
+        }
     }
 }

@@ -1,5 +1,7 @@
 //! Direct workers with one bounded admission-order backlog.
 
+use crate::composition::replies::ReplyRoutes;
+
 use core::{num::NonZeroUsize, ops::ControlFlow};
 use std::collections::BTreeMap;
 use std::mem;
@@ -16,7 +18,7 @@ use thiserror::Error;
 use crate::templates::drain::{ForcedRetirementCause, ShutdownDeadline};
 use crate::{
     DeliveryRoute, DiagnosticAction, DiagnosticDisposition, DiagnosticRoute,
-    EstablishedShutdownResolved, ObserveChild, ReplyRoute, ScheduleAfter, ShutdownEstablished,
+    EstablishedShutdownResolved, ObserveChild, ScheduleAfter, ShutdownEstablished,
     ShutdownRequested, StopOnShutdown,
 };
 
@@ -34,7 +36,7 @@ mod job;
 mod protocol;
 mod requests;
 
-pub use config::{Config, FifoConstructionRejected, new};
+pub use config::{Config, FifoBuilder, FifoConstructionRejected, new};
 pub use event::FifoEvent;
 pub use protocol::{
     AdmissionRejection, AssignedReturnReason, FifoCommand, FifoDiagnostic, FifoOutcome,
@@ -65,14 +67,14 @@ use crate::templates::worker::{WorkerPreparationExpectation, WorkerStartupOutcom
 use job::QueuedJob;
 use protocol::FifoDiagnosticCause;
 
-type FifoActions<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult> = Actions<
+type FifoActions<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies> = Actions<
     BehaviorAddr<W>,
     Never,
     FifoRequests<
         InterpreterRequests<ObserveChild<<W as Behavior>::Protocol, ChildHead>>,
         InterpreterRequests<InitializeWorker<W, P>>,
         InterpreterRequests<StartWorker<W, P>>,
-        <CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult> as DeliveryRoute>::Sends,
+        <CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies> as DeliveryRoute>::Sends,
         SourceActions<AssignWorker<<W as Behavior>::Protocol, Job>>,
         SourceActions<PrepareWorkers<Source, Role, W, P>>,
         SourceActions<ScheduleAfter>,
@@ -80,17 +82,17 @@ type FifoActions<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult> = Actio
         InterpreterRequests<
             DiagnosticAction<
                 DiagnosticRoute,
-                FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>,
+                FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>,
             >,
         >,
     >,
     Births<StopOnShutdown<W>>,
 >;
 
-type CustomerRoute<A, Role, Job, WorkerResult> =
-    ReplyRoute<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>;
+type CustomerRoute<A, Role, Job, WorkerResult, Replies> =
+    <Replies as ReplyRoutes>::Route<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>;
 
-struct FifoOperating<Role, W, P, Job, WorkerResult>
+struct FifoOperating<Role, W, P, Job, WorkerResult, Replies: ReplyRoutes>
 where
     W: Behavior,
     BehaviorAddr<W>: EndpointAddress,
@@ -102,17 +104,21 @@ where
             P,
             Job,
             WorkerResult,
-            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
         >,
     >,
     backlog: BTreeMap<
         AdmissionOrdinal,
-        QueuedJob<RoleName<Role>, Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
+        QueuedJob<
+            RoleName<Role>,
+            Job,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+        >,
     >,
     cursor: usize,
 }
 
-enum FifoDispatch<Role, W, Job, WorkerResult>
+enum FifoDispatch<Role, W, Job, WorkerResult, Replies: ReplyRoutes>
 where
     W: Behavior,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -120,14 +126,23 @@ where
 {
     Assigned(AssignWorker<W::Protocol, Job>),
     WorkerUnavailable(
-        QueuedJob<RoleName<Role>, Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
+        QueuedJob<
+            RoleName<Role>,
+            Job,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+        >,
     ),
     CorrelationUnavailable(
-        QueuedJob<RoleName<Role>, Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
+        QueuedJob<
+            RoleName<Role>,
+            Job,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+        >,
     ),
 }
 
-impl<Role, W, P, Job, WorkerResult> FifoOperating<Role, W, P, Job, WorkerResult>
+impl<Role, W, P, Job, WorkerResult, Replies: ReplyRoutes>
+    FifoOperating<Role, W, P, Job, WorkerResult, Replies>
 where
     W: Behavior + BehaviorBase,
     W::Protocol: Protocol<Msg = Assignment<Job>>,
@@ -187,9 +202,9 @@ where
         queued: QueuedJob<
             RoleName<Role>,
             Job,
-            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
         >,
-    ) -> FifoDispatch<Role, W, Job, WorkerResult> {
+    ) -> FifoDispatch<Role, W, Job, WorkerResult, Replies> {
         let Some(position) = self.available_position() else {
             return FifoDispatch::WorkerUnavailable(queued);
         };
@@ -338,8 +353,8 @@ where
     }
 }
 
-impl<Role, W, P, Source, Diagnostics, Job, WorkerResult>
-    FifoPool<Role, W, P, Source, Diagnostics, Job, WorkerResult>
+impl<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies: ReplyRoutes>
+    FifoPool<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>
 where
     Role: Send + Sync,
     W: Behavior + BehaviorBase + Send,
@@ -347,7 +362,8 @@ where
     W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
-    Diagnostics: DiagnosticRoute<FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>> + Clone,
+    Diagnostics:
+        DiagnosticRoute<FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>> + Clone,
     BehaviorAddr<W>: EndpointAddress,
     <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
     StopOnShutdown<W>:
@@ -358,15 +374,18 @@ where
 {
     fn accept_submission(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         submission: SubmissionId,
         payload: Job,
-        customer: CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>,
+        customer: CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
     ) -> (
-        FifoOperating<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
-    ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
+    )
+    where
+        CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>: Clone,
+    {
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         match operating.recoverable_position(&self.recovery) {
             Some(_) => {}
@@ -458,8 +477,8 @@ where
 
     fn fill_fifo(
         &mut self,
-        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         loop {
             match operating.available_position() {
@@ -508,8 +527,8 @@ where
 
     fn return_unrecoverable_jobs(
         &self,
-        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         if operating.recoverable_position(&self.recovery).is_some() {
             return;
@@ -538,7 +557,7 @@ where
         previous: crate::worker::WorkerAttempt,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
         source: Source,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
         Member<
             Role,
@@ -546,9 +565,9 @@ where
             P,
             Job,
             WorkerResult,
-            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
         >,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let (ticket, request) = PrepareWorkers::new(source, role.clone(), Vec::new());
         actions.sends.worker_preparations.send(request);
@@ -568,11 +587,11 @@ where
 
     fn prepare_next_waiting(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
-        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        FifoOperating<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let Some(position) = operating.waiting_recovery_position() else {
             return (operating, actions);
@@ -612,7 +631,7 @@ where
 
     fn reject_replacement(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
@@ -621,10 +640,10 @@ where
         submission: WorkerSubmission<W, P>,
         returned_source: Option<Source>,
         error: WorkerReplacementError,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         actions
             .sends
@@ -644,7 +663,7 @@ where
 
     fn reject_preparation(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
@@ -653,14 +672,14 @@ where
         source: Source,
         error: WorkerPreparationError<Source::WorkerRejection, Source::SourceRejection>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let (returned_source, error) = match self.recovery.restore_source(source) {
             Ok(()) => (None, error),
             Err(source) => (Some(source), WorkerPreparationError::SourceStateCorrupt),
         };
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         actions
             .sends
@@ -679,14 +698,14 @@ where
 
     fn retire_role_after_error(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
-        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         operating.members.insert(
             position,
@@ -709,7 +728,7 @@ where
 
     fn return_source_after_failed_replacement(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
@@ -719,8 +738,8 @@ where
         submission: WorkerSubmission<W, P>,
         error: WorkerReplacementError,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let (returned_source, error) = match self.recovery.restore_source(source) {
             Ok(()) => (None, error),
@@ -742,16 +761,16 @@ where
 
     fn recover_worker(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
         previous: crate::worker::WorkerAttempt,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let stop = stop_kind(&stopped.outcome);
         match self.recovery.decide(stop) {
@@ -806,16 +825,16 @@ where
 
     fn continue_after_pre_ready_stop(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
         previous: crate::worker::WorkerAttempt,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
-        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let (state, mut actions) = self.recover_worker(
             operating, position, role, recoveries, previous, stopped, actions,
@@ -831,7 +850,7 @@ where
 
     fn continue_after_returned_startup(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
@@ -841,10 +860,10 @@ where
         returned_attempt: crate::templates::worker::WorkerStartupGrant<W, P>,
         outcome: WorkerStartupOutcome<W, P>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         actions
             .sends
@@ -864,15 +883,15 @@ where
 
     fn accept_worker_preparation_start(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         ),
     >
@@ -917,15 +936,15 @@ where
 
     fn accept_worker_preparation_return(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         input: WorkerPreparation<Source, Role, W, P>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             WorkerPreparation<Source, Role, W, P>,
         ),
     >
@@ -1015,8 +1034,16 @@ where
                     ));
                 }
                 self.restarts = proposal.accept();
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 match release {
                     WorkerReplacementRelease::Now(creation) => {
                         let prepared = PreparedWorker { role, submission };
@@ -1074,15 +1101,15 @@ where
 
     fn accept_restart_schedule(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         input: behavior::ActionItemResult<ScheduleAfter>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             behavior::ActionItemResult<ScheduleAfter>,
         ),
     > {
@@ -1153,15 +1180,15 @@ where
 
     fn accept_restart_timer(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         elapsed: crate::TimerElapsed,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             crate::TimerElapsed,
         ),
     > {
@@ -1222,7 +1249,7 @@ where
         let (member, worker, observation) =
             Member::begin_replacement(prepared, recoveries, previous.creation(), creation);
         operating.members.insert(position, member);
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         actions.creates.extend([worker]);
         actions
@@ -1234,15 +1261,15 @@ where
 
     fn accept_assignment_receipt(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         receipt: AssignmentReceipt,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             AssignmentReceipt,
         ),
     > {
@@ -1327,16 +1354,16 @@ where
 
     fn accept_completion(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         child: behavior::CreationId,
         completion: Completion<WorkerResult>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             ChildReport<Completion<WorkerResult>>,
         ),
     > {
@@ -1407,16 +1434,16 @@ where
 
     fn request_worker_shutdown(
         &self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
         current: direct_worker::CurrentWorker<W>,
         shutdown: crate::ShutdownId,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        FifoOperating<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         actions
             .sends
@@ -1438,12 +1465,12 @@ where
 
     fn reject_assignment_delivery(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         item: AssignWorker<W::Protocol, Job>,
         reason: behavior::ExactDeliveryReason,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let receipt = item.receipt();
         let Some(position) = operating.assignment_receipt_position(&receipt) else {
@@ -1533,8 +1560,16 @@ where
                         assigned_role: Some(role.clone()),
                     },
                 );
-                let actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 match stopped {
                     None => {
                         let (mut operating, mut actions) = self.request_worker_shutdown(
@@ -1560,8 +1595,16 @@ where
                 completion,
                 stopped,
             } => {
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.customer_outcomes =
                     customer.customer.deliver(FifoOutcome::returned_assigned(
                         customer.id,
@@ -1620,15 +1663,15 @@ where
 
     fn accept_worker_stop(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             crate::ChildStopped<BehaviorAddr<W>>,
         ),
     > {
@@ -1699,8 +1742,16 @@ where
                 Ok((PoolState::Operating(operating), Actions::cont()))
             }
             WorkerPhase::WaitingForStartup { permit, startup } => {
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(FifoDiagnostic::new(
                         FifoDiagnosticCause::UnusedStartup {
@@ -1876,7 +1927,7 @@ where
 
     fn finish_worker_shutdown(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
@@ -1884,10 +1935,10 @@ where
         shutdown: EstablishedShutdownResolved<W::Protocol>,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         match shutdown {
             EstablishedShutdownResolved::Accepted { .. } => {}
@@ -1915,15 +1966,15 @@ where
 
     fn accept_worker_shutdown(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         shutdown: EstablishedShutdownResolved<W::Protocol>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             EstablishedShutdownResolved<W::Protocol>,
         ),
     > {
@@ -1988,19 +2039,22 @@ where
 
     fn complete_assignment(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
         current: direct_worker::CurrentWorker<W>,
-        customer: CustomerJob<Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
+        customer: CustomerJob<
+            Job,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+        >,
         result: WorkerResult,
         stopped: Option<crate::ChildStopped<BehaviorAddr<W>>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         actions.sends.customer_outcomes =
             customer
@@ -2036,19 +2090,22 @@ where
 
     fn interrupt_assignment(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         position: usize,
         role: RoleName<Role>,
         recoveries: crate::templates::restart::RecoveryCount,
         current: direct_worker::CurrentWorker<W>,
-        customer: CustomerJob<Job, CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult>>,
+        customer: CustomerJob<
+            Job,
+            CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+        >,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
         late_completion: Option<Completion<WorkerResult>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         if let Some(completion) = late_completion {
             let input = FifoEvent::WorkerCompleted(ChildReport::new(
@@ -2095,8 +2152,8 @@ where
 
     fn authorize_waiting(
         &mut self,
-        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let occupied = operating
             .members
@@ -2150,15 +2207,15 @@ where
 
     fn accept_initialization(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         mut input: crate::worker::WorkerInitializationReport<W, P>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             crate::worker::WorkerInitializationReport<W, P>,
         ),
     > {
@@ -2238,6 +2295,7 @@ where
                         Diagnostics,
                         Job,
                         WorkerResult,
+                        Replies,
                     > = Actions::cont();
                     actions.sends.diagnostics.append(InterpreterRequests::one(
                         self.diagnostics.action(FifoDiagnostic::new(
@@ -2267,6 +2325,7 @@ where
                         Diagnostics,
                         Job,
                         WorkerResult,
+                        Replies,
                     > = Actions::cont();
                     actions.sends.diagnostics.append(InterpreterRequests::one(
                         self.diagnostics.action(FifoDiagnostic::new(
@@ -2297,6 +2356,7 @@ where
                         Diagnostics,
                         Job,
                         WorkerResult,
+                        Replies,
                     > = Actions::cont();
                     actions.sends.diagnostics.append(InterpreterRequests::one(
                         self.diagnostics.action(FifoDiagnostic::new(
@@ -2355,15 +2415,15 @@ where
 
     fn accept_startup(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         mut input: crate::worker::WorkerStartup<W, P>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             crate::worker::WorkerStartup<W, P>,
         ),
     > {
@@ -2442,6 +2502,7 @@ where
                         Diagnostics,
                         Job,
                         WorkerResult,
+                        Replies,
                     > = Actions::cont();
                     actions.sends.diagnostics.append(InterpreterRequests::one(
                         self.diagnostics.action(FifoDiagnostic::new(
@@ -2495,6 +2556,7 @@ where
                                 Diagnostics,
                                 Job,
                                 WorkerResult,
+                                Replies,
                             > = Actions::cont();
                             actions.sends.diagnostics.append(InterpreterRequests::one(
                                 self.diagnostics.action(FifoDiagnostic::new(
@@ -2533,6 +2595,7 @@ where
                                 Diagnostics,
                                 Job,
                                 WorkerResult,
+                                Replies,
                             > = Actions::cont();
                             actions.sends.diagnostics.append(InterpreterRequests::one(
                                 self.diagnostics.action(FifoDiagnostic::new(
@@ -2612,6 +2675,7 @@ where
                                 Diagnostics,
                                 Job,
                                 WorkerResult,
+                                Replies,
                             > = Actions::cont();
                             actions.sends.diagnostics.append(InterpreterRequests::one(
                                 self.diagnostics.action(FifoDiagnostic::new(
@@ -2673,11 +2737,11 @@ where
 
     fn reject_creation_batch(
         &self,
-        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult>,
+        operating: &mut FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
         rejection: CreationBatchRejection,
     ) -> Result<
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
     > {
         let Some(positions) = operating.creation_positions(
@@ -2689,7 +2753,7 @@ where
         };
         let mut returned: BTreeMap<_, _> = positions.into_iter().zip(creations).collect();
         let mut members = Vec::with_capacity(operating.members.len());
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         for (position, member) in operating.members.drain(..).enumerate() {
             let Some(creation) = returned.remove(&position) else {
@@ -2741,19 +2805,19 @@ where
 
     fn accept_creations(
         &mut self,
-        mut operating: FifoOperating<Role, W, P, Job, WorkerResult>,
+        mut operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
         workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
     ) -> Result<
         (
-            PoolState<Role, W, P, Job, WorkerResult>,
-            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+            PoolState<Role, W, P, Job, WorkerResult, Replies>,
+            FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
         ),
         (
-            FifoOperating<Role, W, P, Job, WorkerResult>,
+            FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
             CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
         ),
     > {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         let mut failure = None;
         match workers.into_settlement() {
@@ -2862,11 +2926,11 @@ where
 
     fn begin_shutdown(
         &mut self,
-        operating: FifoOperating<Role, W, P, Job, WorkerResult>,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        operating: FifoOperating<Role, W, P, Job, WorkerResult, Replies>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let FifoOperating {
             members,
@@ -2991,7 +3055,7 @@ where
     fn retain_drained_worker(
         &self,
         worker: WorkerDeparture<Role, W, P>,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let WorkerDeparture {
             role,
@@ -3044,7 +3108,7 @@ where
         &mut self,
         custody: WorkerCustody<Role, W, P>,
         workers: &mut Vec<RetiringWorker<Role, W, P>>,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> Option<ForcedRetirementCause> {
         match custody {
             WorkerCustody::Running {
@@ -3117,7 +3181,7 @@ where
         role: RoleName<Role>,
         replacement: direct_worker::PendingWorkerReplacement<W, P>,
         error: WorkerReplacementError,
-        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        actions: &mut FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let direct_worker::PendingWorkerReplacement {
             previous,
@@ -3146,8 +3210,8 @@ where
         creations: Creations<CreateChild<BehaviorAddr<W>, StopOnShutdown<W>>>,
         rejection: CreationBatchRejection,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let positions = direct_worker::ordered_creation_positions(
             members.iter().map(RetiringWorker::expected_creation),
@@ -3163,7 +3227,7 @@ where
         };
         let mut returned: BTreeMap<_, _> = positions.into_iter().zip(creations).collect();
         let mut draining = Vec::with_capacity(members.len());
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         let mut forced = None;
         for (position, member) in members.drain(..).enumerate() {
@@ -3213,8 +3277,8 @@ where
         deadline: ShutdownDeadline,
         workers: CreationsSettled<BehaviorAddr<W>, StopOnShutdown<W>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let settlements = match workers.into_settlement() {
             CreationSettlement::Rejected {
@@ -3258,7 +3322,7 @@ where
         };
         let mut returned: BTreeMap<_, _> = positions.into_iter().zip(settlements).collect();
         let mut draining = Vec::with_capacity(members.len());
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         let mut forced = None;
         for (position, member) in members.into_iter().enumerate() {
@@ -3306,8 +3370,8 @@ where
         deadline: ShutdownDeadline,
         input: crate::worker::WorkerInitializationReport<W, P>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match direct_worker::accept_worker_initialization(members, input) {
             RetiringWorkerInitialization::Returned { workers, report } => self.diagnose(
@@ -3323,8 +3387,16 @@ where
                 role,
                 startup,
             } => {
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(FifoDiagnostic::new(
                         FifoDiagnosticCause::UnusedStartup {
@@ -3348,8 +3420,8 @@ where
         deadline: ShutdownDeadline,
         input: crate::worker::WorkerStartup<W, P>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match direct_worker::accept_worker_startup(members, input) {
             RetiringWorkerStartup::Started { workers } => {
@@ -3362,8 +3434,16 @@ where
                 startup,
                 outcome,
             } => {
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(FifoDiagnostic::new(
                         FifoDiagnosticCause::WorkerStartupReturned {
@@ -3392,8 +3472,8 @@ where
         deadline: ShutdownDeadline,
         input: behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     )
     where
         Role: Eq,
@@ -3416,8 +3496,16 @@ where
                     Ok(()) => (None, error),
                     Err(source) => (Some(source), WorkerPreparationError::SourceStateCorrupt),
                 };
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.diagnostics.append(InterpreterRequests::one(
                     self.diagnostics.action(FifoDiagnostic::new(
                         FifoDiagnosticCause::WorkerPreparationFailed {
@@ -3447,8 +3535,8 @@ where
         deadline: ShutdownDeadline,
         input: WorkerPreparation<Source, Role, W, P>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     )
     where
         Role: Eq,
@@ -3466,7 +3554,7 @@ where
                     );
                 }
             };
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         let diagnostic = match accepted {
             WorkerRecoveryPreparation::Ready(direct_worker::PreparedReplacement {
@@ -3521,10 +3609,10 @@ where
         &self,
         members: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
-        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match deadline {
             ShutdownDeadline::NotScheduled(settlement) => {
@@ -3567,8 +3655,8 @@ where
         deadline: ShutdownDeadline,
         stopped: crate::ChildStopped<BehaviorAddr<W>>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match direct_worker::accept_worker_exit(members, stopped) {
             Ok(ControlFlow::Continue(members)) => {
@@ -3592,8 +3680,8 @@ where
         deadline: ShutdownDeadline,
         settled: EstablishedShutdownResolved<W::Protocol>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match direct_worker::accept_worker_shutdown(members, settled) {
             Ok(ControlFlow::Continue(members)) => {
@@ -3617,8 +3705,8 @@ where
         mut deadline: ShutdownDeadline,
         settled: behavior::ActionItemResult<ScheduleAfter>,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         let replacement = members.iter().position(|member| match &member.state {
             direct_worker::RetirementStatus::AwaitingRestartSchedule { timer, .. } => {
@@ -3673,8 +3761,8 @@ where
         mut deadline: ShutdownDeadline,
         elapsed: crate::TimerElapsed,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
         match deadline.accept_elapsed(elapsed) {
             Ok(()) => self.continue_draining(members, deadline, Actions::cont()),
@@ -3687,7 +3775,7 @@ where
 
     fn diagnose(
         &self,
-        state: PoolState<Role, W, P, Job, WorkerResult>,
+        state: PoolState<Role, W, P, Job, WorkerResult, Replies>,
         input: FifoEvent<
             Role,
             W,
@@ -3696,12 +3784,13 @@ where
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
             WorkerPreparation<Source, Role, W, P>,
+            Replies,
         >,
     ) -> (
-        PoolState<Role, W, P, Job, WorkerResult>,
-        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult>,
+        PoolState<Role, W, P, Job, WorkerResult, Replies>,
+        FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>,
     ) {
-        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
+        let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies> =
             Actions::cont();
         actions.sends.diagnostics = InterpreterRequests::one(
             self.diagnostics
@@ -3711,8 +3800,8 @@ where
     }
 }
 
-impl<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult> BehaviorBase
-    for FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult>
+impl<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies: ReplyRoutes> BehaviorBase
+    for FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies>
 where
     Role: Send + Sync,
     W: Behavior + Send,
@@ -3730,13 +3819,13 @@ where
     }
 }
 
-enum PoolState<Role, W, P, Job, WorkerResult>
+enum PoolState<Role, W, P, Job, WorkerResult, Replies: ReplyRoutes>
 where
     W: Behavior,
     BehaviorAddr<W>: EndpointAddress,
 {
     Constructed(Vec<PreparedWorker<Role, W, P>>),
-    Operating(FifoOperating<Role, W, P, Job, WorkerResult>),
+    Operating(FifoOperating<Role, W, P, Job, WorkerResult, Replies>),
     Draining {
         members: Vec<RetiringWorker<Role, W, P>>,
         deadline: ShutdownDeadline,
@@ -3767,7 +3856,8 @@ pub enum FifoError {
     WorkerCreationsExhausted,
 }
 
-impl<Role, W, P, Job, WorkerResult> PoolState<Role, W, P, Job, WorkerResult>
+impl<Role, W, P, Job, WorkerResult, Replies: ReplyRoutes>
+    PoolState<Role, W, P, Job, WorkerResult, Replies>
 where
     W: Behavior + BehaviorBase,
     P: StartupPlan,
@@ -3827,12 +3917,12 @@ where
 }
 
 /// A direct-worker FIFO pool with one bounded global backlog.
-pub struct FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult>
+pub struct FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies: ReplyRoutes>
 where
     W: Behavior,
     BehaviorAddr<W>: EndpointAddress,
 {
-    state: PoolState<Role, W, P, Job, WorkerResult>,
+    state: PoolState<Role, W, P, Job, WorkerResult, Replies>,
     startup: StartupLimit,
     recovery: PoolRecoveryState<Source>,
     restarts: crate::templates::restart::RestartBudget,
@@ -3847,8 +3937,8 @@ where
     next_restart_timer: u64,
 }
 
-impl<Role, W, P, Source, Diagnostics, Job, WorkerResult> Behavior
-    for FifoPool<Role, W, P, Source, Diagnostics, Job, WorkerResult>
+impl<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies: ReplyRoutes> Behavior
+    for FifoPool<Role, W, P, Source, Diagnostics, Job, WorkerResult, Replies>
 where
     Role: Eq + Send + Sync,
     W: Behavior + BehaviorBase + Send,
@@ -3856,7 +3946,8 @@ where
     W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
     P: StartupPlan,
     Source: WorkerSource<Role, W, P>,
-    Diagnostics: DiagnosticRoute<FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>> + Clone,
+    Diagnostics:
+        DiagnosticRoute<FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>> + Clone,
     BehaviorAddr<W>: EndpointAddress,
     <BehaviorAddr<W> as Address>::Nonce: Send,
     <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
@@ -3865,9 +3956,25 @@ where
     <StopOnShutdown<W> as Behavior>::Event: InjectEvent<ShutdownRequested, Here>,
     Job: Clone + Send,
     WorkerResult: Send,
+    CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>: Clone,
+    <CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies> as DeliveryRoute>::Sends:
+        behavior::SendsFor<
+                FifoEvent<
+                    Role,
+                    W,
+                    P,
+                    Job,
+                    WorkerResult,
+                    behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
+                    WorkerPreparation<Source, Role, W, P>,
+                    Replies,
+                >,
+            >,
 {
-    type Protocol =
-        MessageProtocol<BehaviorAddr<W>, FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult>>;
+    type Protocol = MessageProtocol<
+        BehaviorAddr<W>,
+        FifoCommand<BehaviorAddr<W>, Role, Job, WorkerResult, Replies>,
+    >;
     type Event = FifoEvent<
         Role,
         W,
@@ -3876,18 +3983,22 @@ where
         WorkerResult,
         behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
         WorkerPreparation<Source, Role, W, P>,
+        Replies,
     >;
     type Sends = FifoRequests<
         InterpreterRequests<ObserveChild<W::Protocol, ChildHead>>,
         InterpreterRequests<InitializeWorker<W, P>>,
         InterpreterRequests<StartWorker<W, P>>,
-        <CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult> as DeliveryRoute>::Sends,
+        <CustomerRoute<BehaviorAddr<W>, Role, Job, WorkerResult, Replies> as DeliveryRoute>::Sends,
         SourceActions<AssignWorker<W::Protocol, Job>>,
         SourceActions<PrepareWorkers<Source, Role, W, P>>,
         SourceActions<ScheduleAfter>,
         InterpreterRequests<ShutdownEstablished<StopOnShutdown<W>, Here>>,
         InterpreterRequests<
-            DiagnosticAction<Diagnostics, FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>>,
+            DiagnosticAction<
+                Diagnostics,
+                FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>,
+            >,
         >,
     >;
     type Ph = Never;
@@ -4061,8 +4172,16 @@ where
                     ..
                 }),
             ) => {
-                let mut actions: FifoActions<Role, W, P, Source, Diagnostics, Job, WorkerResult> =
-                    Actions::cont();
+                let mut actions: FifoActions<
+                    Role,
+                    W,
+                    P,
+                    Source,
+                    Diagnostics,
+                    Job,
+                    WorkerResult,
+                    Replies,
+                > = Actions::cont();
                 actions.sends.customer_outcomes = customer.deliver(FifoOutcome::rejected(
                     submission,
                     payload,

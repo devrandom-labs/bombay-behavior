@@ -264,6 +264,8 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("infallible worker declaration"));
     let initialized = pool
         .initialize()

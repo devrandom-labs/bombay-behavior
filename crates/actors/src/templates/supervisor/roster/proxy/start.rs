@@ -1,5 +1,7 @@
 //! Fixed-roster proxy birth, authorization, and owner-input settlement.
 
+use crate::composition::replies::ReplyRoutes;
+
 use core::ops::ControlFlow;
 use std::collections::VecDeque;
 
@@ -87,14 +89,27 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_births<PreparationStart, PreparationReturn>(
+    pub(in super::super) fn accept_births<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         proxies: CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
     ) -> Result<
         Self,
         (
             Self,
-            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+            FixedSupervisorError<
+                Role,
+                Worker,
+                Plan,
+                PreparationStart,
+                PreparationReturn,
+                StatusReplies,
+                CapabilityReplies,
+            >,
         ),
     > {
         match self {
@@ -170,14 +185,27 @@ where
         }
     }
 
-    pub(in super::super) fn authorize<PreparationStart, PreparationReturn>(
+    pub(in super::super) fn authorize<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         maximum: usize,
     ) -> Result<
         (Self, Vec<ProxyOperation<behavior::Here, Worker, Plan>>),
         (
             Self,
-            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+            FixedSupervisorError<
+                Role,
+                Worker,
+                Plan,
+                PreparationStart,
+                PreparationReturn,
+                StatusReplies,
+                CapabilityReplies,
+            >,
         ),
     > {
         match self {
@@ -228,14 +256,27 @@ where
         }
     }
 
-    pub(in super::super) fn accept_operation<PreparationStart, PreparationReturn>(
+    pub(in super::super) fn accept_operation<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         settlement: ProxyInputResult<behavior::Here, Worker, Plan>,
     ) -> Result<
         (Self, Option<RoleName<Role>>),
         (
             Self,
-            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+            FixedSupervisorError<
+                Role,
+                Worker,
+                Plan,
+                PreparationStart,
+                PreparationReturn,
+                StatusReplies,
+                CapabilityReplies,
+            >,
         ),
     > {
         match self {

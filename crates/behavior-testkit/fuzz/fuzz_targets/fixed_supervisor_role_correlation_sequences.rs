@@ -15,6 +15,7 @@ use core::ops::ControlFlow;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::DiagnosticAction;
 use behavior_actors::proxy::{ProxyControl, ProxyInputReceipt, ProxyOutcome, StableProxy};
 use behavior_actors::supervisor::roster::{
@@ -132,11 +133,11 @@ fn begin_recovery(
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut member: ReadyMember,
     successor: u8,
@@ -236,11 +237,11 @@ fn assert_capabilities(
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     recoveries: &BTreeMap<Role, PendingRecovery>,
 ) {
@@ -307,11 +308,11 @@ fn return_receipt(
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut recovery: PendingRecovery,
 ) -> PendingRecovery {
@@ -342,11 +343,11 @@ fn return_report(
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut recovery: PendingRecovery,
 ) -> PendingRecovery {
@@ -376,11 +377,11 @@ fn return_cross_report(
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     source_proxy: CreationId,
     mut recovery: PendingRecovery,

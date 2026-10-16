@@ -1,5 +1,8 @@
 //! Complete construction inputs and rejection for a FIFO worker pool.
 
+use core::marker::PhantomData;
+
+use crate::composition::replies::{ExactReplies, MixedReplies, ReplyRoutes};
 use behavior::{Behavior, BehaviorAddr, EndpointAddress};
 
 use super::{AcceptedJobSequence, AssignmentSequence, FifoPool, PoolState, ShutdownSequence};
@@ -50,61 +53,139 @@ pub struct Config<Source, DiagnosticRoute> {
 }
 
 /// Complete custody when initial worker preparation rejects.
-pub struct FifoConstructionRejected<Factory, Role, W, P, Rejection, Source, DiagnosticRoute> {
+pub struct FifoConstructionRejected<
+    Factory,
+    Role,
+    W,
+    P,
+    Rejection,
+    Source,
+    DiagnosticRoute,
+    Replies,
+> {
     /// Complete initial-worker rejection.
     pub workers: InitialWorkerRejection<Factory, Role, W, P, Rejection>,
     /// Complete named choices, unchanged from construction.
     pub config: Config<Source, DiagnosticRoute>,
+    replies: PhantomData<fn() -> Replies>,
 }
 
-/// Construct one FIFO pool after preparing every declared worker in order.
-/// The factory may return `WorkerSubmission` directly or a fallible `Result`.
-/// Rejection returns the original factory, prepared prefix, role, refusal and
-/// untouched suffix together with every construction policy.
-pub fn new<Factory, Role, W, P, Preparation, Source, DiagnosticRoute, Job, WorkerResult>(
+/// Own the complete pool inputs until ordered worker preparation is requested.
+///
+/// Construction performs no work. The selected reply family fixes the eventual
+/// command and send capabilities without a caller-supplied route marker.
+pub struct FifoBuilder<Factory, Role, Source, DiagnosticRoute, Replies> {
     factory: Factory,
     roles: OrderedRoles<Role>,
     config: Config<Source, DiagnosticRoute>,
-) -> Result<
-    FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult>,
-    FifoConstructionRejected<Factory, Role, W, P, Preparation::Rejection, Source, DiagnosticRoute>,
->
-where
-    Factory: FnMut(&Role) -> Preparation,
-    Preparation: InitialWorkerPreparation<Worker = W, Plan = P>,
-    Role: Eq,
-    W: Behavior,
-    W::Protocol: behavior::Protocol<Msg = Assignment<Job>>,
-    W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
-    BehaviorAddr<W>: EndpointAddress,
+    replies: PhantomData<fn() -> Replies>,
+}
+
+/// Begin pool construction with named policies and exact customer replies.
+#[must_use]
+pub fn new<Factory, Role, Source, DiagnosticRoute>(
+    factory: Factory,
+    roles: OrderedRoles<Role>,
+    config: Config<Source, DiagnosticRoute>,
+) -> FifoBuilder<Factory, Role, Source, DiagnosticRoute, ExactReplies> {
+    FifoBuilder {
+        factory,
+        roles,
+        config,
+        replies: PhantomData,
+    }
+}
+
+impl<Factory, Role, Source, DiagnosticRoute>
+    FifoBuilder<Factory, Role, Source, DiagnosticRoute, ExactReplies>
 {
-    let prepared = match prepare_initial_workers(factory, roles) {
-        Ok(prepared) => prepared,
-        Err(workers) => {
-            return Err(FifoConstructionRejected { workers, config });
+    /// Accept logical customers as well as exact endpoints.
+    ///
+    /// This changes the concrete command and send types. Interpreters must
+    /// provide the corresponding logical protocol namespace.
+    #[must_use]
+    pub fn logical_replies(
+        self,
+    ) -> FifoBuilder<Factory, Role, Source, DiagnosticRoute, MixedReplies> {
+        FifoBuilder {
+            factory: self.factory,
+            roles: self.roles,
+            config: self.config,
+            replies: PhantomData,
         }
-    };
-    let Config {
-        startup,
-        recovery,
-        backlog,
-        interruption,
-        shutdown: actor_drain,
-        diagnostics,
-    } = config;
-    Ok(FifoPool {
-        state: PoolState::Constructed(prepared),
-        startup,
-        recovery: recovery.into(),
-        restarts: crate::templates::restart::RestartBudget::empty(),
-        backlog,
-        interruption,
-        actor_drain,
-        diagnostics,
-        creations: behavior::CreationSequence::new(),
-        jobs: AcceptedJobSequence::new(),
-        assignments: AssignmentSequence::new(),
-        shutdowns: ShutdownSequence::new(),
-        next_restart_timer: 1,
-    })
+    }
+}
+
+impl<Factory, Role, Source, DiagnosticRoute, Replies: ReplyRoutes>
+    FifoBuilder<Factory, Role, Source, DiagnosticRoute, Replies>
+{
+    /// Prepare every worker in declaration order or return complete custody.
+    ///
+    /// The factory may return `WorkerSubmission` directly or a fallible
+    /// `Result`. Rejection preserves the factory, prepared prefix, rejected
+    /// role and reason, untouched suffix, policies and reply capability choice.
+    pub fn build<W, P, Preparation, Job, WorkerResult>(
+        self,
+    ) -> Result<
+        FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies>,
+        FifoConstructionRejected<
+            Factory,
+            Role,
+            W,
+            P,
+            Preparation::Rejection,
+            Source,
+            DiagnosticRoute,
+            Replies,
+        >,
+    >
+    where
+        Factory: FnMut(&Role) -> Preparation,
+        Preparation: InitialWorkerPreparation<Worker = W, Plan = P>,
+        Role: Eq,
+        W: Behavior,
+        W::Protocol: behavior::Protocol<Msg = Assignment<Job>>,
+        W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
+        BehaviorAddr<W>: EndpointAddress,
+    {
+        let Self {
+            factory,
+            roles,
+            config,
+            replies: _,
+        } = self;
+        let prepared = match prepare_initial_workers(factory, roles) {
+            Ok(prepared) => prepared,
+            Err(workers) => {
+                return Err(FifoConstructionRejected {
+                    workers,
+                    config,
+                    replies: PhantomData,
+                });
+            }
+        };
+        let Config {
+            startup,
+            recovery,
+            backlog,
+            interruption,
+            shutdown: actor_drain,
+            diagnostics,
+        } = config;
+        Ok(FifoPool {
+            state: PoolState::Constructed(prepared),
+            startup,
+            recovery: recovery.into(),
+            restarts: crate::templates::restart::RestartBudget::empty(),
+            backlog,
+            interruption,
+            actor_drain,
+            diagnostics,
+            creations: behavior::CreationSequence::new(),
+            jobs: AcceptedJobSequence::new(),
+            assignments: AssignmentSequence::new(),
+            shutdowns: ShutdownSequence::new(),
+            next_restart_timer: 1,
+        })
+    }
 }

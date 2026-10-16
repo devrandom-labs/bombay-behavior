@@ -57,6 +57,8 @@ fn canonical_fifo_worker_and_constructor_need_no_structural_types() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
 
     let initialized = pool

@@ -1,11 +1,13 @@
 //! FIFO submission, assignment, completion, and customer outcomes.
 
+use crate::composition::replies::ReplyRoutes;
+
 use std::sync::Arc;
 
 use behavior::{Address, BehaviorAddr, EndpointAddress, MessageProtocol};
 
+use crate::ChildStopped;
 use crate::templates::roster::RoleName;
-use crate::{ChildStopped, ReplyRoute};
 
 use super::{FifoEvent, PrepareWorkers};
 use crate::templates::pool::worker::{
@@ -280,7 +282,7 @@ impl<Role, Job, WorkerResult> FifoOutcome<Role, Job, WorkerResult> {
 }
 
 /// Application commands accepted by one FIFO pool.
-pub enum FifoCommand<A, Role, Job, WorkerResult>
+pub enum FifoCommand<A, Role, Job, WorkerResult, Replies: ReplyRoutes>
 where
     A: Address + EndpointAddress,
 {
@@ -291,13 +293,14 @@ where
         /// Payload retained by the pool while accepted.
         payload: Job,
         /// Temporary typed customer capability.
-        customer: ReplyRoute<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>,
+        customer: Replies::Route<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>,
     },
     /// Close admission and retire the complete owned actor graph.
     Shutdown,
 }
 
-impl<A, Role, Job, WorkerResult> FifoCommand<A, Role, Job, WorkerResult>
+impl<A, Role, Job, WorkerResult, Replies: ReplyRoutes>
+    FifoCommand<A, Role, Job, WorkerResult, Replies>
 where
     A: Address + EndpointAddress,
 {
@@ -305,7 +308,7 @@ where
     #[must_use]
     pub fn submit<Route>(submission: SubmissionId, payload: Job, customer: Route) -> Self
     where
-        Route: Into<ReplyRoute<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>>,
+        Route: Into<Replies::Route<MessageProtocol<A, FifoOutcome<Role, Job, WorkerResult>>>>,
     {
         Self::Submit {
             submission,
@@ -325,7 +328,7 @@ where
     dead_code,
     reason = "diagnostic disposition transfers complete affine values to their next owner"
 )]
-pub(super) enum FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult>
+pub(super) enum FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
 where
     Role: Send + Sync,
     W: behavior::Behavior + Send,
@@ -345,6 +348,7 @@ where
             WorkerResult,
             behavior::ActionItemResult<PrepareWorkers<Source, Role, W, P>>,
             WorkerPreparation<Source, Role, W, P>,
+            Replies,
         >,
     ),
     WorkerCreationRejected {
@@ -406,7 +410,7 @@ where
 /// worker or source rejection with [`Self::into_worker_rejection`] or
 /// [`Self::into_source_rejection`]. Each projection retains
 /// shared role ownership and returns every other complete diagnostic unchanged.
-pub struct FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>
+pub struct FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
 where
     Role: Send + Sync,
     W: behavior::Behavior + Send,
@@ -417,10 +421,11 @@ where
     <BehaviorAddr<W> as EndpointAddress>::Established<W::Protocol>: Send,
     Job: Send,
 {
-    cause: FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult>,
+    cause: FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult, Replies>,
 }
 
-impl<Role, W, P, Source, Job, WorkerResult> FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>
+impl<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes>
+    FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>
 where
     Role: Send + Sync,
     W: behavior::Behavior + Send,
@@ -432,7 +437,7 @@ where
     Job: Send,
 {
     pub(super) const fn new(
-        cause: FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult>,
+        cause: FifoDiagnosticCause<Role, W, P, Source, Job, WorkerResult, Replies>,
     ) -> Self {
         Self { cause }
     }
@@ -511,8 +516,8 @@ where
     }
 }
 
-impl<Role, W, P, Source, Job, WorkerResult> core::fmt::Debug
-    for FifoDiagnostic<Role, W, P, Source, Job, WorkerResult>
+impl<Role, W, P, Source, Job, WorkerResult, Replies: ReplyRoutes> core::fmt::Debug
+    for FifoDiagnostic<Role, W, P, Source, Job, WorkerResult, Replies>
 where
     Role: Send + Sync,
     W: behavior::Behavior + Send,
@@ -535,6 +540,7 @@ mod live_startup_correlation {
     use super::super::requests::FifoRequests;
     use super::super::{FifoEvent, FifoOperating, FifoPool, PoolState};
     use super::{FifoDiagnostic, FifoDiagnosticCause};
+    use crate::composition::replies::MixedReplies;
     use crate::lifecycle::ActorDrainPolicy;
     use crate::pool::{BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery};
     use crate::templates::pool::ShutdownSequence;
@@ -593,27 +599,34 @@ mod live_startup_correlation {
                     },
                 }),
             };
-            let pool: FifoPool<u64, StartupWorker, ImmediateStartup, Never, Infallible, u8, u16> =
-                FifoPool {
-                    state: PoolState::Operating(FifoOperating {
-                        members: vec![member],
-                        backlog: BTreeMap::new(),
-                        cursor: 0,
-                    }),
-                    startup: StartupLimit::new(1).expect("one actual startup slot"),
-                    recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole)
-                        .into(),
-                    restarts: RestartBudget::empty(),
-                    backlog: BacklogCapacity::new(2),
-                    interruption: Interruption::Fail,
-                    actor_drain: ActorDrainPolicy::WaitForActorGraph,
-                    diagnostics: DiagnosticDisposition::terminate(),
-                    creations: CreationSequence::new(),
-                    jobs: AcceptedJobSequence::new(),
-                    assignments: AssignmentSequence::new(),
-                    shutdowns: ShutdownSequence::new(),
-                    next_restart_timer: 1,
-                };
+            let pool: FifoPool<
+                u64,
+                StartupWorker,
+                ImmediateStartup,
+                Never,
+                Infallible,
+                u8,
+                u16,
+                MixedReplies,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                startup: StartupLimit::new(1).expect("one actual startup slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
             let mut pool = Active { behavior: pool };
             let mut returned = input;
             for _ in 0..2 {
@@ -736,27 +749,34 @@ mod live_startup_correlation {
                     },
                 }),
             };
-            let pool: FifoPool<u64, StartupWorker, ImmediateStartup, Never, Infallible, u8, u16> =
-                FifoPool {
-                    state: PoolState::Operating(FifoOperating {
-                        members: vec![member],
-                        backlog: BTreeMap::new(),
-                        cursor: 0,
-                    }),
-                    startup: StartupLimit::new(1).expect("one actual startup slot"),
-                    recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole)
-                        .into(),
-                    restarts: RestartBudget::empty(),
-                    backlog: BacklogCapacity::new(2),
-                    interruption: Interruption::Fail,
-                    actor_drain: ActorDrainPolicy::WaitForActorGraph,
-                    diagnostics: DiagnosticDisposition::terminate(),
-                    creations: CreationSequence::new(),
-                    jobs: AcceptedJobSequence::new(),
-                    assignments: AssignmentSequence::new(),
-                    shutdowns: ShutdownSequence::new(),
-                    next_restart_timer: 1,
-                };
+            let pool: FifoPool<
+                u64,
+                StartupWorker,
+                ImmediateStartup,
+                Never,
+                Infallible,
+                u8,
+                u16,
+                MixedReplies,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                startup: StartupLimit::new(1).expect("one actual startup slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
             let mut pool = Active { behavior: pool };
             let mut returned = input;
             for _ in 0..2 {
@@ -883,27 +903,34 @@ mod live_startup_correlation {
                     },
                 }),
             };
-            let pool: FifoPool<u64, StartupWorker, ImmediateStartup, Never, Infallible, u8, u16> =
-                FifoPool {
-                    state: PoolState::Operating(FifoOperating {
-                        members: vec![member],
-                        backlog: BTreeMap::new(),
-                        cursor: 0,
-                    }),
-                    startup: StartupLimit::new(1).expect("one actual startup slot"),
-                    recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole)
-                        .into(),
-                    restarts: RestartBudget::empty(),
-                    backlog: BacklogCapacity::new(2),
-                    interruption: Interruption::Fail,
-                    actor_drain: ActorDrainPolicy::WaitForActorGraph,
-                    diagnostics: DiagnosticDisposition::terminate(),
-                    creations: CreationSequence::new(),
-                    jobs: AcceptedJobSequence::new(),
-                    assignments: AssignmentSequence::new(),
-                    shutdowns: ShutdownSequence::new(),
-                    next_restart_timer: 1,
-                };
+            let pool: FifoPool<
+                u64,
+                StartupWorker,
+                ImmediateStartup,
+                Never,
+                Infallible,
+                u8,
+                u16,
+                MixedReplies,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                startup: StartupLimit::new(1).expect("one actual startup slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
             let mut pool = Active { behavior: pool };
             let mut returned = input;
             for _ in 0..2 {
@@ -1026,27 +1053,34 @@ mod live_startup_correlation {
                     },
                 }),
             };
-            let pool: FifoPool<u64, StartupWorker, ImmediateStartup, Never, Infallible, u8, u16> =
-                FifoPool {
-                    state: PoolState::Operating(FifoOperating {
-                        members: vec![member],
-                        backlog: BTreeMap::new(),
-                        cursor: 0,
-                    }),
-                    startup: StartupLimit::new(1).expect("one actual startup slot"),
-                    recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole)
-                        .into(),
-                    restarts: RestartBudget::empty(),
-                    backlog: BacklogCapacity::new(2),
-                    interruption: Interruption::Fail,
-                    actor_drain: ActorDrainPolicy::WaitForActorGraph,
-                    diagnostics: DiagnosticDisposition::terminate(),
-                    creations: CreationSequence::new(),
-                    jobs: AcceptedJobSequence::new(),
-                    assignments: AssignmentSequence::new(),
-                    shutdowns: ShutdownSequence::new(),
-                    next_restart_timer: 1,
-                };
+            let pool: FifoPool<
+                u64,
+                StartupWorker,
+                ImmediateStartup,
+                Never,
+                Infallible,
+                u8,
+                u16,
+                MixedReplies,
+            > = FifoPool {
+                state: PoolState::Operating(FifoOperating {
+                    members: vec![member],
+                    backlog: BTreeMap::new(),
+                    cursor: 0,
+                }),
+                startup: StartupLimit::new(1).expect("one actual startup slot"),
+                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+                restarts: RestartBudget::empty(),
+                backlog: BacklogCapacity::new(2),
+                interruption: Interruption::Fail,
+                actor_drain: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+                creations: CreationSequence::new(),
+                jobs: AcceptedJobSequence::new(),
+                assignments: AssignmentSequence::new(),
+                shutdowns: ShutdownSequence::new(),
+                next_restart_timer: 1,
+            };
             let mut pool = Active { behavior: pool };
             let mut returned = input;
             for _ in 0..2 {
@@ -1160,26 +1194,34 @@ mod live_startup_correlation {
                 },
             }),
         };
-        let pool: FifoPool<u64, StartupWorker, ImmediateStartup, Never, Infallible, u8, u16> =
-            FifoPool {
-                state: PoolState::Operating(FifoOperating {
-                    members: vec![member],
-                    backlog: BTreeMap::new(),
-                    cursor: 0,
-                }),
-                startup: StartupLimit::new(1).expect("one actual startup slot"),
-                recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
-                restarts: RestartBudget::empty(),
-                backlog: BacklogCapacity::new(2),
-                interruption: Interruption::Fail,
-                actor_drain: ActorDrainPolicy::WaitForActorGraph,
-                diagnostics: DiagnosticDisposition::terminate(),
-                creations: CreationSequence::new(),
-                jobs: AcceptedJobSequence::new(),
-                assignments: AssignmentSequence::new(),
-                shutdowns: ShutdownSequence::new(),
-                next_restart_timer: 1,
-            };
+        let pool: FifoPool<
+            u64,
+            StartupWorker,
+            ImmediateStartup,
+            Never,
+            Infallible,
+            u8,
+            u16,
+            MixedReplies,
+        > = FifoPool {
+            state: PoolState::Operating(FifoOperating {
+                members: vec![member],
+                backlog: BTreeMap::new(),
+                cursor: 0,
+            }),
+            startup: StartupLimit::new(1).expect("one actual startup slot"),
+            recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole).into(),
+            restarts: RestartBudget::empty(),
+            backlog: BacklogCapacity::new(2),
+            interruption: Interruption::Fail,
+            actor_drain: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+            creations: CreationSequence::new(),
+            jobs: AcceptedJobSequence::new(),
+            assignments: AssignmentSequence::new(),
+            shutdowns: ShutdownSequence::new(),
+            next_restart_timer: 1,
+        };
         let mut pool = Active { behavior: pool };
 
         let inputs = [
@@ -1264,6 +1306,7 @@ mod creation_custody;
 #[cfg(test)]
 mod rejection_custody {
     use super::{FifoDiagnostic, FifoDiagnosticCause};
+    use crate::composition::replies::MixedReplies;
     use crate::templates::pool::worker::WorkerPreparationError;
     use crate::templates::pool::worker::startup_pool_correlation::StartupWorker;
     use crate::templates::roster::RoleName;
@@ -1298,16 +1341,21 @@ mod rejection_custody {
         let original_attempt = previous.clone();
         let at = Instant::now();
         let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
-        let diagnostic =
-            FifoDiagnostic::<_, StartupWorker, ImmediateStartup, WorkerWorkshop, u8, u16>::new(
-                FifoDiagnosticCause::WorkerPreparationFailed {
-                    role,
-                    previous,
-                    stopped,
-                    returned_source: Some(source),
-                    error: WorkerPreparationError::WorkerRejected(reason),
-                },
-            );
+        let diagnostic = FifoDiagnostic::<
+            _,
+            StartupWorker,
+            ImmediateStartup,
+            WorkerWorkshop,
+            u8,
+            u16,
+            MixedReplies,
+        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
+            role,
+            previous,
+            stopped,
+            returned_source: Some(source),
+            error: WorkerPreparationError::WorkerRejected(reason),
+        });
         let diagnostic = match diagnostic.into_source_rejection() {
             Err(original) => original,
             Ok(_) => panic!("the other rejection category cannot be accepted"),
@@ -1344,16 +1392,21 @@ mod rejection_custody {
         let original_attempt = previous.clone();
         let at = Instant::now();
         let stopped = ChildStopped::new(creation, Ok(Exit::Normal), at);
-        let diagnostic =
-            FifoDiagnostic::<_, StartupWorker, ImmediateStartup, WorkerWorkshop, u8, u16>::new(
-                FifoDiagnosticCause::WorkerPreparationFailed {
-                    role,
-                    previous,
-                    stopped,
-                    returned_source: Some(source),
-                    error: WorkerPreparationError::SourceRejected(reason),
-                },
-            );
+        let diagnostic = FifoDiagnostic::<
+            _,
+            StartupWorker,
+            ImmediateStartup,
+            WorkerWorkshop,
+            u8,
+            u16,
+            MixedReplies,
+        >::new(FifoDiagnosticCause::WorkerPreparationFailed {
+            role,
+            previous,
+            stopped,
+            returned_source: Some(source),
+            error: WorkerPreparationError::SourceRejected(reason),
+        });
         let diagnostic = match diagnostic.into_worker_rejection() {
             Err(original) => original,
             Ok(_) => panic!("the other rejection category cannot be accepted"),

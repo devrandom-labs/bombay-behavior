@@ -5,6 +5,7 @@ use behavior::{
     ActionItemResult, ChildReport, CreationId, ItemSettlement, MessageProtocol, Never, Recipient,
     SettledItem, Step,
 };
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::pool::queue::{
     AdmissionRejection, FifoCommand, FifoEvent, FifoOutcomeKind, FifoPool,
 };
@@ -252,7 +253,9 @@ enum DeliveryCustody {
 }
 
 struct PoolWitness {
-    pool: Active<FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16>>,
+    pool: Active<
+        FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16, MixedReplies>,
+    >,
     worker: CreationId,
     delivery: DeliveryCustody,
 }

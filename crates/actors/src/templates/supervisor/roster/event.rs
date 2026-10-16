@@ -1,5 +1,7 @@
 //! Closed FixedSupervisor application and child-runtime inputs.
 
+use crate::composition::replies::ReplyRoutes;
+
 use behavior::{
     ActionItemResult, Behavior, BehaviorAddr, Births, ChildReport, CreationsSettled,
     EndpointAddress, EventIngress, InjectEvent, RecoverEvent, User, UserEvent,
@@ -14,14 +16,32 @@ use super::{FixedCommand, PrepareWorkers, StartupPlan, WorkerPreparation, Worker
 
 /// Closed application and child-runtime input sum for one fixed supervisor.
 #[doc(hidden)]
-pub enum FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
-where
+pub enum FixedSupervisorEvent<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> where
     Worker: Behavior,
     Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    Command(User<BehaviorAddr<Worker>, FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol>>),
+    Command(
+        User<
+            BehaviorAddr<Worker>,
+            FixedCommand<
+                BehaviorAddr<Worker>,
+                Role,
+                Worker::Protocol,
+                StatusReplies,
+                CapabilityReplies,
+            >,
+        >,
+    ),
     ProxyCreationsSettled(CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>),
     ProxyInputSettled(ProxyInputResult<behavior::Here, Worker, Plan>),
     ProxyReported(ChildReport<ProxyOutcome<Worker, Plan>>),
@@ -33,9 +53,24 @@ where
     RestartElapsed(TimerElapsed),
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    EventIngress<ScheduleAfter, ActionItemResult<ScheduleAfter>>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> EventIngress<ScheduleAfter, ActionItemResult<ScheduleAfter>>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -47,9 +82,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<TimerElapsed, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<TimerElapsed, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -61,9 +111,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    RecoverEvent<TimerElapsed, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> RecoverEvent<TimerElapsed, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -78,9 +143,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyOutcome<Worker, Plan>>>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyOutcome<Worker, Plan>>>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -92,9 +172,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyDiagnostic<Worker, Plan>>>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> EventIngress<Births<StableProxy<Worker, Plan>>, ChildReport<ProxyDiagnostic<Worker, Plan>>>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -106,9 +201,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -120,9 +230,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    RecoverEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> RecoverEvent<ChildReport<ProxyDiagnostic<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -137,9 +262,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -151,9 +291,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    RecoverEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> RecoverEvent<ChildReport<ProxyOutcome<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -168,9 +323,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    EventIngress<behavior::Here, ProxyInputResult<behavior::Here, Worker, Plan>>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> EventIngress<behavior::Here, ProxyInputResult<behavior::Here, Worker, Plan>>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -182,9 +352,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<ProxyInputResult<behavior::Here, Worker, Plan>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<ProxyInputResult<behavior::Here, Worker, Plan>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -196,7 +381,7 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Source>
+impl<Role, Worker, Plan, Source, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
     EventIngress<
         PrepareWorkers<Source, Role, Worker, Plan>,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
@@ -207,6 +392,8 @@ impl<Role, Worker, Plan, Source>
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
         WorkerPreparation<Source, Role, Worker, Plan>,
+        StatusReplies,
+        CapabilityReplies,
     >
 where
     Role: Send + Sync,
@@ -221,7 +408,7 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Source>
+impl<Role, Worker, Plan, Source, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
     InjectEvent<WorkerPreparation<Source, Role, Worker, Plan>, behavior::Here>
     for FixedSupervisorEvent<
         Role,
@@ -229,6 +416,8 @@ impl<Role, Worker, Plan, Source>
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
         WorkerPreparation<Source, Role, Worker, Plan>,
+        StatusReplies,
+        CapabilityReplies,
     >
 where
     Role: Send + Sync,
@@ -243,7 +432,7 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Source>
+impl<Role, Worker, Plan, Source, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
     RecoverEvent<WorkerPreparation<Source, Role, Worker, Plan>, behavior::Here>
     for FixedSupervisorEvent<
         Role,
@@ -251,6 +440,8 @@ impl<Role, Worker, Plan, Source>
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
         WorkerPreparation<Source, Role, Worker, Plan>,
+        StatusReplies,
+        CapabilityReplies,
     >
 where
     Role: Send + Sync,
@@ -268,8 +459,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn> UserEvent
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> UserEvent
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -277,7 +484,13 @@ where
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
     type Addr = BehaviorAddr<Worker>;
-    type Message = FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol>;
+    type Message = FixedCommand<
+        BehaviorAddr<Worker>,
+        Role,
+        Worker::Protocol,
+        StatusReplies,
+        CapabilityReplies,
+    >;
 
     fn user(from: Self::Addr, message: Self::Message) -> Self {
         Self::Command(User::new(from, message))
@@ -291,11 +504,28 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+>
     EventIngress<
         Births<StableProxy<Worker, Plan>>,
         CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>,
-    > for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+    >
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -307,9 +537,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -321,9 +566,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    RecoverEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> RecoverEvent<CreationsSettled<BehaviorAddr<Worker>, StableProxy<Worker, Plan>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -340,9 +600,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    InjectEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> InjectEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -354,9 +629,24 @@ where
     }
 }
 
-impl<Role, Worker, Plan, PreparationStart, PreparationReturn>
-    RecoverEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
-    for FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>
+impl<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> RecoverEvent<ChildStopped<BehaviorAddr<Worker>>, behavior::Here>
+    for FixedSupervisorEvent<
+        Role,
+        Worker,
+        Plan,
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Worker: Behavior,
     Plan: StartupPlan,

@@ -32,6 +32,7 @@ use behavior::{
     InterpreterRequests, ItemSettlement, LogicalHostRequirements, MessageProtocol, Never,
     NoBirthProtocols, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::queue;
@@ -76,7 +77,8 @@ mod retirement;
 
 #[test]
 fn fifo_pool_projects_its_customer_host_from_real_behavior_sends() {
-    type Pool = FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16>;
+    type Pool =
+        FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16, MixedReplies>;
     type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>;
     type Expected = BirthProtocol<Customer, NoBirthProtocols>;
 
@@ -282,7 +284,9 @@ struct ReadySearchPool<Source>
 where
     Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
-    pool: Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
+    pool: Active<
+        FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16, MixedReplies>,
+    >,
     workers: Vec<CreationId>,
 }
 
@@ -327,6 +331,8 @@ where
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -368,7 +374,7 @@ where
 fn pending_search_activation<P>(
     startup: P,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16, MixedReplies>>,
     CreationId,
     StartWorker<SearchWorker, P>,
 )
@@ -382,7 +388,7 @@ fn pending_search_activation_with_drain<P>(
     startup: P,
     actor_drain: ActorDrainPolicy,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16, MixedReplies>>,
     CreationId,
     StartWorker<SearchWorker, P>,
 )
@@ -410,6 +416,8 @@ where
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -446,7 +454,9 @@ where
 async fn pool_awaiting_worker_preparation<Source>(
     source: Source,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
+    Active<
+        FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16, MixedReplies>,
+    >,
     PrepareWorkers<Source, Role, SearchWorker, ImmediateStartup>,
 )
 where
@@ -511,7 +521,9 @@ where
 }
 
 fn stop_search_worker<Source>(
-    pool: &mut Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
+    pool: &mut Active<
+        FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16, MixedReplies>,
+    >,
     worker: CreationId,
 ) -> PrepareWorkers<Source, Role, SearchWorker, ImmediateStartup>
 where
@@ -527,7 +539,7 @@ where
 }
 
 fn assert_search_pool_unavailable<P, Source>(
-    pool: &mut Active<FifoPool<Role, SearchWorker, P, Source, Infallible, u8, u16>>,
+    pool: &mut Active<FifoPool<Role, SearchWorker, P, Source, Infallible, u8, u16, MixedReplies>>,
     submission: u64,
 ) where
     P: StartupPlan,
@@ -560,7 +572,18 @@ fn assert_search_pool_unavailable<P, Source>(
 }
 
 async fn scheduling_search_replacement() -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
+    Active<
+        FifoPool<
+            Role,
+            SearchWorker,
+            ImmediateStartup,
+            SearchSource,
+            Infallible,
+            u8,
+            u16,
+            MixedReplies,
+        >,
+    >,
     ScheduleAfter,
 ) {
     scheduling_search_replacement_with_drain(ActorDrainPolicy::WaitForActorGraph).await
@@ -569,7 +592,18 @@ async fn scheduling_search_replacement() -> (
 async fn scheduling_search_replacement_with_drain(
     actor_drain: ActorDrainPolicy,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
+    Active<
+        FifoPool<
+            Role,
+            SearchWorker,
+            ImmediateStartup,
+            SearchSource,
+            Infallible,
+            u8,
+            u16,
+            MixedReplies,
+        >,
+    >,
     ScheduleAfter,
 ) {
     let roles = OrderedRoles::new(Role::Search, [])
@@ -617,7 +651,18 @@ async fn scheduling_search_replacement_with_drain(
 }
 
 async fn draining_search_restart_schedule() -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
+    Active<
+        FifoPool<
+            Role,
+            SearchWorker,
+            ImmediateStartup,
+            SearchSource,
+            Infallible,
+            u8,
+            u16,
+            MixedReplies,
+        >,
+    >,
     ScheduleAfter,
 ) {
     let (mut pool, schedule) = scheduling_search_replacement().await;
@@ -632,7 +677,7 @@ async fn draining_search_restart_schedule() -> (
 fn pending_creation_with_deadline(
     activation_drops: Arc<AtomicUsize>,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, HeldActivation, Never, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, HeldActivation, Never, Infallible, u8, u16, MixedReplies>>,
     ScheduleAfter,
 ) {
     let roles = OrderedRoles::new(Role::Search, [])
@@ -659,6 +704,8 @@ fn pending_creation_with_deadline(
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -696,6 +743,8 @@ fn canonical_fifo_domain_surface_exists_without_structural_types() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -704,7 +753,7 @@ fn canonical_fifo_domain_surface_exists_without_structural_types() {
     let _pool = initialized.behavior;
     let _: Option<JobId> = None;
     let _: Option<SubmissionId> = None;
-    let _: Option<FifoCommand<RuntimeAddr, Role, u8, u16>> = None;
+    let _: Option<FifoCommand<RuntimeAddr, Role, u8, u16, MixedReplies>> = None;
     let _: Option<FifoOutcome<Role, u8, u16>> = None;
 }
 
@@ -726,7 +775,7 @@ fn construction_rejection_returns_the_worker_roster() {
     .unwrap_or_else(|_| panic!("worker roles are unique"));
     let startup = StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid"));
 
-    let mut rejection = match queue::new(
+    let rejection = match queue::new(
         move |role: &WorkerRole| {
             factory_calls.borrow_mut().push(*role);
             match role {
@@ -745,7 +794,10 @@ fn construction_rejection_returns_the_worker_roster() {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    ) {
+    )
+    .logical_replies()
+    .build()
+    {
         Ok(_) => panic!("index worker preparation must reject"),
         Err(rejection) => rejection,
     };
@@ -783,6 +835,8 @@ fn initialization_stop_completes_drain_without_a_second_stop_observation() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -1367,6 +1421,8 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -1512,6 +1568,8 @@ async fn orderly_retirement_releases_role_history_before_the_pool_is_dropped() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -1996,6 +2054,8 @@ async fn stop_before_creation_settlement_never_advertises_the_worker() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2050,6 +2110,8 @@ async fn stop_during_initialization_is_retained_once_until_initialization_return
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2109,6 +2171,8 @@ async fn stop_while_waiting_for_activation_retires_the_exact_role() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2177,6 +2241,8 @@ async fn stop_before_activation_start_releases_capacity_only_after_start_returns
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2249,6 +2315,8 @@ async fn stop_before_activation_start_remains_owned_until_late_readiness() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2316,6 +2384,8 @@ async fn initialization_reported_stop_retires_without_a_separate_stop_input() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2376,6 +2446,8 @@ async fn initialization_rejection_after_stop_retires_without_losing_the_plan() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2441,6 +2513,8 @@ async fn activation_rejection_after_stop_never_restores_worker_eligibility() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2514,6 +2588,8 @@ async fn permanent_pre_ready_stop_requests_replacement_only_after_initialization
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2564,6 +2640,8 @@ async fn foreign_stop_during_initialization_cannot_retire_the_worker() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2633,6 +2711,8 @@ async fn initialization_failure_stops_the_worker_before_permanent_recovery() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2711,6 +2791,8 @@ async fn activation_failure_releases_capacity_but_waits_for_worker_exit() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2800,6 +2882,8 @@ async fn activation_start_rejection_stops_the_installed_worker() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -2872,6 +2956,8 @@ async fn delivery_and_completion_orders_complete_once() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -3081,6 +3167,8 @@ async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -3244,6 +3332,8 @@ async fn rejected_quarantine_shutdown_waits_for_worker_exit() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -4554,6 +4644,8 @@ async fn worker_exit_waits_for_delivery_then_retries_the_same_job() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
@@ -4684,6 +4776,8 @@ async fn worker_exit_after_delivery_returns_the_job_under_fail_policy() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
     let initialized = pool
