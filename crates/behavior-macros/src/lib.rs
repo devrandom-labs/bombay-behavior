@@ -995,11 +995,54 @@ fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
         &settled_fields,
         &behavior,
     );
-    Ok(quote!(#send_contract #settlement_contract))
+    let send_inputs =
+        field_names
+            .iter()
+            .zip(&field_types)
+            .enumerate()
+            .map(|(index, (field, field_ty))| {
+                let mut insertion_generics = generics.clone();
+                insertion_generics.params.push(parse_quote!(__BombayInput));
+                insertion_generics
+                    .params
+                    .push(parse_quote!(__BombaySendPath));
+                insertion_generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(
+                        #field_ty: #behavior::SendInput<__BombayInput, __BombaySendPath>
+                    ));
+                let (insertion_impl, _, insertion_where) = insertion_generics.split_for_impl();
+                // Disjoint existing witnesses identify a field without changing the
+                // field's own semantic lane or choosing between duplicate inputs.
+                let path = (0..index).fold(
+                    quote!((#behavior::Own, __BombaySendPath)),
+                    |path, _| quote!(#behavior::Inside<#path>),
+                );
+                quote! {
+                    impl #insertion_impl #behavior::SendInput<__BombayInput, #path>
+                        for #name #type_generics #insertion_where
+                    {
+                        fn emit(&mut self, input: __BombayInput) {
+                            <#field_ty as #behavior::SendInput<
+                                __BombayInput,
+                                __BombaySendPath,
+                            >>::emit(&mut self.#field, input);
+                        }
+                    }
+                }
+            });
+    Ok(quote!(#send_contract #settlement_contract #(#send_inputs)*))
 }
 
 /// Derive the ordered send and settlement contracts for a named generic
 /// product whose fields are its lane type parameters.
+///
+/// Each field also forwards its existing typed SendInput capability. Unique
+/// inputs infer their lane through nested products and wrappers; duplicate
+/// capabilities remain ambiguous. Insertion moves one original input into one
+/// lane, retaining all other fields and their ordering. Nominal actor products
+/// keep their separately generated semantic lane contracts.
 #[proc_macro_derive(SendProduct)]
 pub fn derive_send_product(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

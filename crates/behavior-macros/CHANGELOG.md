@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Generic `SendProduct` derives preserve inferred `with_send` insertion through
+  nested fields and wrappers. Repeated or aliased request capabilities still
+  require explicit selection; absent capabilities remain unavailable. No
+  payload `Clone` or thread-transfer bound is added. Nominal actor lane tags,
+  interpretation order and complete settlement custody are unchanged.
+  Remove manual `SendInput` implementations that overlap the new generated
+  field witnesses.
+
 ## [0.15.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.14.2...bombay-behavior-macros-v0.15.0) - 2026-10-16
 
 ### Breaking
