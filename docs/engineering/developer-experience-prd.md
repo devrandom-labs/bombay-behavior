@@ -824,6 +824,36 @@ Positive closure counts prove construction/body entry, not every poll, arbitrary
 uninvoked disposal or every panic/cancel/reject cut. Startup notice precedes
 committed Ready; that notice alone cannot justify a one-query readiness promise.
 
+#### Protocol adapters — DX17 pre-edit law
+
+The current `MessageAdapter` is a logical-only alias for the existing
+route-polymorphic `MessageAdapterWithRoute`. The desired single spelling is
+`MessageAdapter::new(destination, map)` for both logical and established
+recipients, inferred from the actual destination. This is derived API
+composition policy, not a new actor-model effect. A successful input invokes
+the same mapper once, emits the existing exact route-specific delivery and
+continues; initialization stays empty, births remain impossible, and native
+rejection/retirement retain the complete original payload and capabilities.
+
+Before owner edits, write the focused Bombay consumer using an actual early
+established endpoint, a non-Clone boxed input, genuine wrapper policy and joined
+retirement. Require its short constructor to fail on the current owner, and
+retain a `MessageAdapterWithRoute` control proving the same downstream journey
+already works. Compare logical and exact routes, failure custody and affected
+wrapper orders before migrating other callers. Reuse DeliveryRoute, both
+existing delivery products, the unchanged pure transition and native delivery
+interpreter; add no route lookup, bound, capability or forwarding wrapper.
+
+Expected owner scope: the adapter and its two export owners, two existing test
+targets, usage/changelog and the focused downstream witness; approximately
+zero added/five removed production lines and zero added/one removed public
+type alias. Retire the specialized alias and rename its existing concrete
+owner. Pre-edit aggregate: one immutable destination plus mapper, no control
+or subordinate state sum, no transition branch; two public adapter spellings.
+The same values, behavior phases and route alternatives must survive, with
+one public spelling. Full before/after measurements and both source reviews
+are required before retention. PR107/108/109 keep their reviewed heads.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
