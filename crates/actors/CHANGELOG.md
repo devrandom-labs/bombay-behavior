@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.26.1...bombay-behavior-actors-v0.27.0) - 2026-10-16
+
+### Fixed
+
+- *(stash)* reject fallible actors at construction ([#99](https://github.com/devrandom-labs/bombay-behavior/pull/99))
+
+### Other
+
+- Simplify custom interpreter request declarations ([#100](https://github.com/devrandom-labs/bombay-behavior/pull/100))
+- Infer startup and replies for supervision and pools ([#102](https://github.com/devrandom-labs/bombay-behavior/pull/102))
+- Name actor policies and group modules by owner ([#98](https://github.com/devrandom-labs/bombay-behavior/pull/98))
+
 ## [0.26.1](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.26.0...bombay-behavior-actors-v0.26.1) - 2026-10-16
 
 ### Fixed
