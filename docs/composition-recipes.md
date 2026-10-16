@@ -49,7 +49,7 @@ Callers compose at the value level; Rust infers the full nested type:
 ```rust,ignore
 let behavior = domain
     .layer(|inner| Stash::new(inner, |_, message| admission(message)))
-    .layer(|inner| ReceiveTimeout::new(inner, timer, idle, on_idle))
+    .layer(|inner| ReceiveTimeout::new(inner, idle, on_idle))
     .layer(StopOnShutdown::new);
 ```
 
@@ -58,6 +58,28 @@ still owns and documents its event routing, initialization order, sends
 product, failure, and terminal decision. Reordering layers can therefore
 change the program and must be chosen from those laws, not from type
 convenience.
+
+### Timer ownership
+
+`OneShot`, `Periodic`, `Deadline` and `ReceiveTimeout` select their own event
+occurrence. Their constructors take the inner actor, duration or deadline, and
+reaction; they no longer take `TimerId`. Adding or reordering wrappers requires
+no timer-name coordination. Initialization still emits explicit requests, inner
+first. Receive inactivity advances only after successful continuing user input;
+service events never renew it. A consumed generation cannot fire twice.
+
+Migration: remove the timer ID argument from those four constructors. Custom
+interpreters use `OwnedScheduleAt`/`OwnedScheduleAfter`, return
+`OwnedTimerScheduled`, and inject `OwnedTimerElapsed` at the request's ingress.
+The old `ScheduleAt`, `ScheduleAfter`, `TimerScheduled`, `TimerElapsed` and
+`TimedEvent` remain the named protocols: equal names replace actor-wide, even
+across event ports. Named domain services retain that contract. Rejection keeps
+the complete request and reason; an earlier accepted effect is not rolled back.
+
+Executable witnesses: [wrapper orders](../crates/actors/tests/wrapped_send_requests.rs),
+[deadline and inactivity](../crates/actors/tests/deadline_requests.rs),
+[request custody](../crates/actors/tests/timer_requests.rs) and
+[independent inactivity observations](../crates/behavior-testkit/tests/receive_timeout.rs).
 
 ### Actor-to-actor topology
 
