@@ -1411,6 +1411,15 @@ original source scope. Current comparable compiler, service, remote, latency,
 heap and retention measurements remain with DX06/26; lexical/source counts are
 review diagnostics, not semantic or performance proof.
 
+Next bounded measurement (production/dependency/API edits: zero): one pure stash,
+64 move-only messages with 512-byte allocations, limits0/1/8/64 and explicit
+unlimited control. Measure heap while all held and refused originals coexist,
+after deliberate refusal disposal, after take, and after all custody is dropped.
+Use existing dhat0.3.3, exact original-allocation/sender/FIFO/effect oracles,
+an empty-input control and repeated optimized runs on both supported compilers.
+This measures retention placement, not equivalent acceptance policy, whole-process
+RSS, mailbox bounds or runtime throughput; no performance threshold is invented.
+
 Expanded programme budget (2026-10-09) and one topology declaration (2026-10-11)
 are authorized. Release permission remains PR-specific; completed earlier
 publications grant none for a later candidate. Networking/durability/identity/
