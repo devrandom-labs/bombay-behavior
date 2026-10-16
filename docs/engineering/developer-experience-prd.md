@@ -727,7 +727,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: merge/publication authorization, registry adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
-| DX16 | Startup/provenance and complete source/interpretation custody remain. Draft PR100 head9948bdd supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. Draft PR101 head184354b independently fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. | Open: owner delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
+| DX16 | Startup/provenance and complete source/interpretation custody remain. Draft PR100 head9948bdd supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; normal release verification is pending. | Open: owner delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
 | DX19 | Strict supported-compiler replay checks exact fixture names/modes, coverage and unchanged sources. Native owner denials add missing-interpreter/wrong-owner cases; damaged-expectation, empty-success and added-source controls reject. | Open: remaining diagnostic/renamed/minimal-feature corpus, owner diagnostic publication and final archive gates. Node/client denials keep their separate caller checks. |
@@ -3161,3 +3161,53 @@ all399/324 neighbors and every Rust file equals cd77c8b. Capacity observation
 reserves no slot or authority; Consumer preserves the original across notification
 panic. All24 native gates are running on this combined revision; old0.1.5 proof
 is not its acceptance. No merge/publication authorization is inferred.
+
+Pool completion composition (DX08/10/11/16), before experiment: a worker may
+consume its actual Assignment and emit both its parent Completion and an ordinary
+typed domain Delivery in one named Actions product. This is derived explicit-
+effect composition, not another pool policy. Current CompletesAssignments is
+sealed and recognizes only the fixed completion batch and nested SendLayer;
+ordinary facade-generated named products have no recognized case. Inspect
+queue/router construction, all capability uses, completion interpretation and
+both worker/facade macros before any owner edit.
+
+Desired caller uses the existing actor facade, named completion/notification
+lanes and queue::new(factory, roles, config).build(), with inferred result and
+no worker alias, route index, fake host, macro extension or manual capability
+implementation. First write an actual external consumer compile witness plus
+an unchanged completion-only control; preserve denial for a worker with no
+completion lane. Reuse the existing SendInput protocol capability if its full
+equation proves equivalent; remove the competing sealed completion vocabulary
+only after inference, wrapper orders, rejection and retirement are proven.
+Do not propagate a constructor-only occurrence proof into actor control state
+or runtime generics. A compiler request for another port or arbitrary bound
+reopens the model. Initial experiment is test-only, production/API/state delta0;
+no catalogue migration or owner change is authorized by a green syntax probe.
+
+The corrected external RED on422e840 has exactly one E0277 at pool construction;
+both authored sends already compile. The original completion-only worker builds
+and its construction test executes; a worker without completion remains denied.
+`worker-effects/baseline-results.json` binds these three commands to frozen
+sources; this is construction evidence only, with no native/affine claim. Two
+independent reviews confirm this limit. All11 existing completion premises are
+declarative; neither pool uses the trait to emit or interpret a completion.
+The actual parent interpreter already returns the original report on closure.
+
+Candidate ledger before owner edits: retain one transition authority each,
+FIFO and Keyed states Constructed/Operating/Draining/Stopped/ForcedRetirement
+(5/5). Ownership equation remains Assignment<Job> -> parent Completion<Result>
+plus independent domain Delivery; constructor rejection returns its existing
+complete factory/prefix/role/reason/suffix/configuration product. Replace only
+constructor eligibility with the existing SendInput<ReportToParent<Completion<R>>,
+Path> proof and R:Send; infer Path at construction and do not store or propagate
+it. Remove the sealed representation trait and the nine repeated non-constructor
+premises. Expected eight production files, net-negative lines, no added public
+type/trait/state/module, one removed exported trait, two constructor-local generic
+parameters. No new effect/interpreter or transition is proposed. All subordinate
+alternatives/current values and branch bodies must be byte-conserved; source
+measurements and residue/complete composition checks precede any retention.
+The recorded2026-10-09 expanded budget applies. A new diagnostic requiring a
+runtime path, public worker marker or erased capability falsifies this candidate;
+remove it rather than repair callers. Native FIFO/Keyed completion, missing-lane
+denials, genuine wrapper orders, independent rejection custody and retirement
+remain required before retention or catalogue migration.
