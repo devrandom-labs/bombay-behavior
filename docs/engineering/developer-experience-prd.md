@@ -3211,3 +3211,35 @@ runtime path, public worker marker or erased capability falsifies this candidate
 remove it rather than repair callers. Native FIFO/Keyed completion, missing-lane
 denials, genuine wrapper orders, independent rejection custody and retirement
 remain required before retention or catalogue migration.
+
+The unretained candidate at codex/devx-worker-effects is exactly+17/-67 over
+eight production files, with no executable branch/body changes (two source
+reviews). FIFO/Keyed keep their five control alternatives and all subordinate
+current values; no state, module, effect product, interpreter or public type is
+added. Four actual archived-runtime journeys pass on Rust1.99: plain FIFO,
+Keyed and exercised OneShot/Periodic in both orders. They retain root/customer
+and worker/audit sender identity, correlated jobs, both produced Box allocations,
+auditor capability, cleanup, notifications and joined children. Job input is u64;
+this is not affine job-input evidence. Keyed still names its two domain reply
+protocols/hosts. The old runtime archive retains its five proven syntax adapters;
+these passes do not certify combined-main06d6fd2.
+
+Two reviews exposed resettable progress timeouts and an empty-row false positive;
+absolute deadlines and the actual Driver push_front/first Stop law now guard
+them. Original FIFO retirement assertions remain unchanged. Native control
+attempts1/2 have no acceptance credit: copied package identities reused a binary,
+nearby-line attribution was too broad, then the guard assumed two panic headers.
+Attempt3 uses distinct package identities, fresh-build identity, exact failed
+test/summary/panic/assertion spans and frozen owner/runtime/fixture hashes.
+Report rejection, independent controls, compiler/profile proofs, retained CI
+fixtures, aggregate measurements and final gates remain required before retaining
+this candidate; no catalogue migration has begun.
+
+Authorized release PR103 selects Behavior/Actors0.26.1 and retains macros0.14.2.
+Its reviewed head c00bd78 fixes only the three stale isolated lock versions
+(25/31/36 other packages unchanged) and explains the aligned core changelog.
+Four-workspace/archive preflight passes in10.199s; all ten native Nix checks pass
+in320.242s with970 tests/zero skips and unchanged frozen inputs. Sandbox audit
+still cannot query yanks; separate online audit passes in3.227s against1329
+advisories/65 dependencies. Exact-head GitHub checks and normal publication
+remain pending. No release of the other owner PRs is implied.
