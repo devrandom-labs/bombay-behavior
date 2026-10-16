@@ -147,8 +147,8 @@ For standalone families, use the owning `supervisor::roster::new`,
 `proxy::StableProxy::new` constructors. Policy-heavy constructors take their
 owning `Config`; automatic recovery takes the owning `RecoveryPolicy`. These
 consume real choices into existing actor storage. No parallel builder or
-same-actor extension method is selected for a standalone actor. Keep `MessageAdapterWithRoute::new` for the
-standalone protocol hop, with its concrete destination determining routing.
+same-actor extension method is selected for a standalone actor. Use `MessageAdapter::new(destination, map)` for the standalone protocol hop,
+with its concrete destination determining routing.
 Progressive disclosure is the caller contract: start with familiar actor,
 message, queue, worker and supervisor terms, inferred types and explicit real
 policy choices. Each lower layer exposes additional control over the same
@@ -731,7 +731,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
-| DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
+| DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
 | DX19 | Strict124-fixture replay passes both compilers:19 positive/105 negative,29 suites,25 targets and107 outer tests plus the exact parent-invoked child. Canonical child denial now covers both feature configurations without duplicate source; unchanged verifier, compiler/fixture/source/patch controls and two independent reviews pass. | Open: remaining full minimal/renamed/remote/archive coverage and final programme gates. Earlier failed/incomplete runs remain failures; post-run patch equivalence has separate evidence. |
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply corpus, capacity and final-source minimum-compiler/full gates. Admission remains distinct from business completion. |
@@ -824,54 +824,66 @@ Positive closure counts prove construction/body entry, not every poll, arbitrary
 uninvoked disposal or every panic/cancel/reject cut. Startup notice precedes
 committed Ready; that notice alone cannot justify a one-query readiness promise.
 
-#### Protocol adapters — DX17 pre-edit law
+#### Protocol adapters — DX17
 
-The current `MessageAdapter` is a logical-only alias for the existing
-route-polymorphic `MessageAdapterWithRoute`. The desired single spelling is
-`MessageAdapter::new(destination, map)` for both logical and established
-recipients, inferred from the actual destination. This is derived API
-composition policy, not a new actor-model effect. A successful input invokes
-the same mapper once, emits the existing exact route-specific delivery and
-continues; initialization stays empty, births remain impossible, and native
-rejection/retirement retain the complete original payload and capabilities.
+Use `MessageAdapter::new(destination, map)` for logical, established and mixed
+reply destinations. This derived API composition policy renames the existing
+route-aware owner and deletes its logical-only alias; it adds no actor effect,
+route lookup, bound, wrapper or capability. The mapper, destination, empty
+initialization, NoBirths, Continue decision and interpreter remain unchanged.
+Rejection owns the mapped message and original destination; unread original
+inputs remain in retirement. A mapper cannot reconstruct an input it consumed.
+Explicit logical types become `MessageAdapter<Input, Recipient<Protocol>>`.
 
-Before owner edits, write the focused Bombay consumer using an actual early
-established endpoint, a non-Clone boxed input, genuine wrapper policy and joined
-retirement. Require its short constructor to fail on the current owner, and
-retain a `MessageAdapterWithRoute` control proving the same downstream journey
-already works. Compare logical and exact routes, failure custody and affected
-wrapper orders before migrating other callers. Reuse DeliveryRoute, both
-existing delivery products, the unchanged pure transition and native delivery
-interpreter; add no route lookup, bound, capability or forwarding wrapper.
+The pre-edit law/change budget is committed at3e14ad0. At owner6488965 /
+Bombaycf04f14 the short constructor fails with E0308 at both established
+destinations; changing only three adapter identifier tokens makes the same two
+native journeys pass debug/release. All2706 bound inputs stayed unchanged.
+The strengthened oracle independently receives the original mapped allocation,
+accounts for all three original allocations exactly once across rejected mapped
+payments and unread invoices, and checks exact destination/reason/sender/value,
+every native custody field, one empty terminal Stop, cleanup and both
+notifications. Three admissions exceed the verified two-slot mailbox, requiring
+the first input's processing before shutdown. Earlier mistaken test assumptions
+about owned enums, accepted-unit discharge, shutdown and rounded capacity remain
+failed controls. Both independent source/oracle audits pass; raw provenance is
+`adapters/TERMINAL-PREEDIT-{SOURCES,RESULTS}.json`.
 
-Expected owner scope: the adapter and its two export owners, two existing test
-targets, usage/changelog and the focused downstream witness; approximately
-zero added/five removed production lines and zero added/one removed public
-type alias. Retire the specialized alias and rename its existing concrete
-owner. Pre-edit aggregate: one immutable destination plus mapper, no control
-or subordinate state sum, no transition branch; two public adapter spellings.
-The same values, behavior phases and route alternatives must survive, with
-one public spelling. Full before/after measurements and both source reviews
-are required before retention. PR107/108/109 keep their reviewed heads.
+Owner7644735 / [PR110](https://github.com/devrandom-labs/bombay-behavior/pull/110)
+passes all11 fresh aarch64-Darwin Nix gates:993 nextest,120 doctests, zero
+skips/ignores and50 output-reference controls;832 owner inputs and HEAD remain
+exact. A separate online audit reports65 dependencies, zero findings, database
+479c888 of2026-10-16; sandbox yank-lookup failures are not credited as online
+coverage. The two logical unit cases and43 complete integration cases pass
+both profiles. Mixed-route tests prove constructor/dispatch and real interpreter
+trace; `Interpretation::Complete` alone is not receipt-acceptance evidence.
+Existing child-route and wrong-protocol compile denials remain executed.
 
-Pre-edit execution at owner6488965 / Bombaycf04f14: the frozen short-name
-consumer fails with E0308 at the established destination; the identifier-only
-long-name control passes both native cases in debug and release. Receipts:
-`adapters/TERMINAL-PREEDIT-{SOURCES,RESULTS}.json`, fixture SHA
-`3c27eab2b9bea973a928b60f08a6e00f1b4cd41358989f1af98fcaf7f9d7c4dc`.
-All2706 source inputs remain unchanged. The healthy case independently receives
-the original mapped allocation; refusal accounts for all three original
-allocations exactly once across unread invoices and rejected mapped payments,
-including exact destination, reason, sender and value fields. Both require one
-empty terminal Stop settlement and inspect every native custody field, joined
-cleanup and both notifications. Three admitted inputs exceed the verified
-two-slot mailbox, ensuring at least the first was processed before shutdown.
-Earlier controls exposed incorrect test assumptions about owned enum values,
-accepted-unit settlement discharge, explicit shutdown and capacity rounding;
-they establish no production bug. The first strengthened pass omitted the
-terminal-row assertion and is superseded. No owner production edit preceded
-this result; both independent source/oracle reviews pass. Route differentials,
-wrapper orders, complete gates and registry delivery remain required.
+The retained native pair passes Rust1.99/1.96 debug/release, with strict current
+Clippy and formatting. The original Clippy run failed six style checks; narrow
+item-local long-test expectations and four equivalent borrowed empty-slice
+assertions preserve all actions and oracles. A fresh matrix binds those final
+spellings;2082 inputs remain exact. Eleven unchanged Engine inventory checks
+also pass each compiler/profile on the separately recorded pre-lint source;
+these44 checks are not native custody journeys. Actual extracted7644735 archives
+match all223 shipped Rust files and247 regular archive members. Both native
+cases pass all four configurations, each freshly compiling all three extracted
+owners and Bombay;2332 inputs remain exact. Both independent audits pass for
+each source/receipt scope. Sources/results: `adapters/FINAL-V2-*`, `ARCHIVE-*`
+and `results/ADAPTER-7644735-FULL-NIX.*`. None establishes registry delivery.
+
+Owner delta across eight files: production+10/-17/net-7; tests+46/-5/net41;
+public types+0/-1 (one alias removed, existing concrete owner renamed).
+Three existing production modules remain; control/subordinate states and
+transition branches stay zero; the only owned values remain destination plus
+mapper. No arrival history, repeated cause, semantic flag, nested authority or
+structural caller path is added. Existing composition/lifecycle/normalized
+atomic laws remain unchanged; source/model checkpoint:pass. Two existing
+integration targets migrate only names/type indices. The actual Bombay witness
+adds340 test lines and one inventory constant update, with no production change.
+Native tests exercise shutdown decoration only, not arbitrary wrapper orders.
+PR107/108/109 retain their reviewed heads. Exact-head CI, normal publication,
+registry adoption and the broader DX17 catalogue/bounds audit remain open.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
