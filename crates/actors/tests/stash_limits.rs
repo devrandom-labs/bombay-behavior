@@ -598,7 +598,8 @@ fn finite_stash_matches_ranked_admission(limit: usize, inputs: &[(u8, u64)]) {
                 assert_eq!(delivery.message.message.receipt.as_ptr(), allocation);
                 assert_eq!(*delivery.message.message.receipt, [choice, number]);
             }
-            assert_eq!(stash.held(), selected.iter().take(limit).count());
+            let expected_held = selected.iter().take(limit).count();
+            assert_eq!(stash.held(), expected_held);
             assert_eq!(stash.base().destination(), &paid);
         }
     }
