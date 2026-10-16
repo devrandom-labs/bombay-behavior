@@ -854,6 +854,25 @@ The same values, behavior phases and route alternatives must survive, with
 one public spelling. Full before/after measurements and both source reviews
 are required before retention. PR107/108/109 keep their reviewed heads.
 
+Pre-edit execution at owner6488965 / Bombaycf04f14: the frozen short-name
+consumer fails with E0308 at the established destination; the identifier-only
+long-name control passes both native cases in debug and release. Receipts:
+`adapters/TERMINAL-PREEDIT-{SOURCES,RESULTS}.json`, fixture SHA
+`3c27eab2b9bea973a928b60f08a6e00f1b4cd41358989f1af98fcaf7f9d7c4dc`.
+All2706 source inputs remain unchanged. The healthy case independently receives
+the original mapped allocation; refusal accounts for all three original
+allocations exactly once across unread invoices and rejected mapped payments,
+including exact destination, reason, sender and value fields. Both require one
+empty terminal Stop settlement and inspect every native custody field, joined
+cleanup and both notifications. Three admitted inputs exceed the verified
+two-slot mailbox, ensuring at least the first was processed before shutdown.
+Earlier controls exposed incorrect test assumptions about owned enum values,
+accepted-unit settlement discharge, explicit shutdown and capacity rounding;
+they establish no production bug. The first strengthened pass omitted the
+terminal-row assertion and is superseded. No owner production edit preceded
+this result; both independent source/oracle reviews pass. Route differentials,
+wrapper orders, complete gates and registry delivery remain required.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
