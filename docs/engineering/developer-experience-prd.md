@@ -1135,6 +1135,29 @@ reopens this unretained lowering; do not compensate in the callback or migrate
 the catalogue. Any common fix needs a second real product and wrapper order,
 missing/duplicate-lane denials, and unchanged interpreter ordering/custody.
 
+The first finite lowering is reopened and removed: the real outer-timeout
+callback fails only E0277 in both profiles at its unique adapter delivery.
+The saved candidate's five pure and two native journeys remain bounded positive
+evidence, not retention. Common-owner work starts separately at main e42088c6
+in `codex/devx-send-products`. Generic SendProduct must delegate exactly one input
+unchanged to its statically selected field and preserve every other lane. Each
+field forwards the existing arbitrary inner SendInput path, using disjoint
+existing Own/Inside markers solely for static selection; unique inference remains
+canonical and duplicate/aliased capabilities stay ambiguous. Nominal actor sends
+keep their existing semantic lane implementations without extra alternatives.
+No new public type, trait, state, branch, storage or interpreter is proposed.
+Scope: macros/src/lib.rs and its rustdoc/guide/changelog plus one focused actors
+test and compile-denial docs; about35 production lines. Reuse all existing
+SendEffects, SendInput, Actions, named interpretation and settlement machinery.
+Before macro edits, a second real DeliveryOutcomes product with both nonempty
+lanes and nested nominal actor sends must fail, while reverse wrapper placement
+and missing/duplicate input cases specify the limits. Aggregate baseline: no
+control states, no subordinate alternatives, one derive owner; the fix must
+leave all interpretation/custody/initialization ordering code byte-identical.
+This removes per-product caller-side insertion machinery rather than adding a
+parallel constructor or callback adapter. Preserve the original stash regression
+and prove it after integrating the shared fix before further stash lowering.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
