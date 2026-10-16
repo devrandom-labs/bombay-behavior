@@ -7,9 +7,7 @@
 
 use std::time::Duration;
 
-use behavior_actors::{
-    Activate, Machine, Move, StashRoute, TimerElapsed, TimerGeneration, TimerId,
-};
+use behavior_actors::{Activate, Machine, Move, OwnedTimerElapsed, StashRoute, TimerGeneration};
 use behavior_core::EventLayer;
 use behavior_core::{MailAddr, Never, Step, UserEvent};
 use proptest::collection::vec;
@@ -70,7 +68,6 @@ proptest! {
         let due = Instant::now() + Duration::from_secs(1);
         let behavior = behavior_actors::Deadline::new(
             behavior_actors::Stash::new(Machine::new(Vec::new(), Phase::A, on), |_, message| route(message)),
-            behavior_actors::TimerId(0),
             Some(due),
             |_| Step::Continue,
         );
@@ -88,9 +85,7 @@ proptest! {
             // then inert) between user messages.
             if fire_index < fires.len() && fires[fire_index] % 2 == 0 {
                 let actions = runtime
-                    .block_on(async { behavior.transition(EventLayer::Owned(TimerElapsed {
-                        id: TimerId(0),
-                        generation: TimerGeneration(0),})) })
+                    .block_on(async { behavior.transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(0)))) })
                     .unwrap();
                 prop_assert_eq!(actions.become_, Step::Continue, "time lane verdict");
                 fire_index += 1;

@@ -6,7 +6,7 @@
 //! actor wrapper.
 
 use behavior_actors::{
-    Activate, Crash, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
+    Activate, Crash, OwnedTimerElapsed, PeerStopped, StashRoute, TimerGeneration,
     stop_on_abnormal_death,
 };
 use behavior_core::EventLayer;
@@ -70,7 +70,6 @@ fuzz_target!(|bytes: &[u8]| {
             peer,
             stop_on_abnormal_death,
         ),
-        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
@@ -115,10 +114,9 @@ fuzz_target!(|bytes: &[u8]| {
             }
             _ => {
                 let actions = behavior
-                    .transition(EventLayer::Owned(TimerElapsed {
-                        id: TimerId(0),
-                        generation: TimerGeneration(0),
-                    }))
+                    .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+                        0,
+                    ))))
                     .unwrap();
                 assert_eq!(
                     actions.become_,

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use behavior_actors::{Activate, StashRoute, TimerId};
+use behavior_actors::{Activate, StashRoute};
 
 use behavior_core::{
     Actions, Behavior, BehaviorActed, Delivery, MailAddr, Never, NoBirths, Recipient, Step, User,
@@ -73,10 +73,10 @@ where
 
 #[test]
 fn inferred_stack_crosses_one_generic_adapter_layer() {
+    let due = Instant::now();
     let inferred = accepts_closed_behavior(behavior_actors::Deadline::new(
         behavior_actors::Stash::new(Domain, |_, message| deliver(message)),
-        TimerId(4),
-        Some(Instant::now()),
+        Some(due),
         deadline,
     ));
     let initialized = inferred.initialize().unwrap();
@@ -94,7 +94,10 @@ fn inferred_stack_crosses_one_generic_adapter_layer() {
     assert!(creates.is_empty());
     assert!(matches!(become_, Step::Continue));
     let [schedule] = schedules.as_slice() else {
-        panic!("one named absolute schedule lane")
+        panic!("one owned absolute schedule lane")
     };
-    assert_eq!(schedule.id, TimerId(4));
+    assert_eq!(
+        *schedule,
+        behavior_actors::OwnedScheduleAt::new(behavior_actors::TimerGeneration(0), due)
+    );
 }

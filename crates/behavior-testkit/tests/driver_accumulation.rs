@@ -10,8 +10,8 @@ use core::task::Poll;
 use std::time::{Duration, Instant};
 
 use behavior_actors::{
-    Crash, ObservePeer, PeerObservationRejection, PeerStopped, ScheduleAt, StashRoute,
-    TimerElapsed, TimerGeneration, TimerId, TimerScheduled, stop_on_abnormal_death,
+    Crash, ObservePeer, OwnedScheduleAt, OwnedTimerElapsed, OwnedTimerScheduled,
+    PeerObservationRejection, PeerStopped, StashRoute, TimerGeneration, stop_on_abnormal_death,
 };
 
 use behavior_core::{
@@ -85,13 +85,14 @@ impl EchoingApplication {
     }
 }
 
-type FullStackEvent = behavior_actors::TimedEvent<behavior_actors::WatchEvent<User<MailAddr, u64>>>;
+type FullStackEvent =
+    EventLayer<OwnedTimerElapsed, behavior_actors::WatchEvent<User<MailAddr, u64>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 enum FullStackRuntimeEffect {
     EchoDeliveryAccepted(u64),
     PeerObservationAccepted(MailAddr),
-    TimerScheduleAccepted(TimerId),
+    TimerScheduleAccepted(OwnedScheduleAt),
 }
 
 struct FullStackRuntime {
@@ -182,14 +183,14 @@ impl InterpretItem<ObservePeer<MailAddr>, FullStackEvent, Inside<Here>> for Full
     }
 }
 
-impl InterpretItem<ScheduleAt, FullStackEvent, Here> for FullStackRuntime {
+impl InterpretItem<OwnedScheduleAt, FullStackEvent, Here> for FullStackRuntime {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<ScheduleAt>,
-        received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+        input: &'a mut Option<OwnedScheduleAt>,
+        received: &'a mut Option<<OwnedScheduleAt as ActionItem>::Reply>,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        ScheduleAt: 'a,
+        OwnedScheduleAt: 'a,
     {
         async move {
             if received.is_some() {
@@ -201,8 +202,8 @@ impl InterpretItem<ScheduleAt, FullStackEvent, Here> for FullStackRuntime {
             let producer = {
                 async move {
                     self.effects
-                        .push(FullStackRuntimeEffect::TimerScheduleAccepted(schedule.id));
-                    ItemSettlement::Accepted(TimerScheduled {
+                        .push(FullStackRuntimeEffect::TimerScheduleAccepted(schedule));
+                    ItemSettlement::Accepted(OwnedTimerScheduled {
                         id: schedule.id,
                         generation: schedule.generation,
                     })
@@ -279,17 +280,13 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
             peer,
             stop_on_abnormal_death,
         ),
-        TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
     let mut mailbox = Mailbox::new([
         EventLayer::Inner(EventLayer::Inner(User::new(MailAddr(9), 1))),
         EventLayer::Inner(EventLayer::Inner(User::new(MailAddr(9), 5))),
-        EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }),
+        EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(0))),
         EventLayer::Inner(EventLayer::Owned(PeerStopped {
             peer,
             outcome: Err(Crash::Failed),
@@ -324,7 +321,10 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
         [
             FullStackRuntimeEffect::EchoDeliveryAccepted(1),
             FullStackRuntimeEffect::PeerObservationAccepted(peer),
-            FullStackRuntimeEffect::TimerScheduleAccepted(TimerId(0)),
+            FullStackRuntimeEffect::TimerScheduleAccepted(OwnedScheduleAt::new(
+                TimerGeneration(0),
+                due
+            )),
         ]
     );
 }
