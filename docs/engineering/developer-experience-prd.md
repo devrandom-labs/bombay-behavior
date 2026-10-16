@@ -1177,7 +1177,7 @@ missing/ambiguous denials pass in both profiles without snapshot changes.
 These times are observations, not a controlled compile-performance comparison.
 New blanket impls can overlap hand-written field witnesses; migration guidance
 requires removing those duplicates. Interpretation and runtime storage are
-unchanged; no global memory/latency claim follows. Draft PR113 at3389c00 now has all14
+unchanged; no global memory/latency claim follows. PR113 at3389c00 is ready for review and has all14
 current GitHub checks passing after its required breaking classification. The
 superseded minor-classification failure remains in the original run record.
 
@@ -1248,7 +1248,8 @@ harness compile attempts are setup failures with no execution credit.
 The prepared migration preview changes exactly23 existing type/constructor
 tokens across ten more test/fuzz/benchmark files, preserving every old oracle
 and adding no production code. It would expand the focused owner batch10→20
-files; the repository's15-file checkpoint requires explicit approval, now
+files (the whole stack including shared insertion and the reopen record is16→26);
+the repository's15-file checkpoint requires explicit approval, now
 pending. Broad migration and full-source acceptance have not happened.
 
 #### Policy construction and startup — DX10/11/19/24/27
@@ -1431,8 +1432,12 @@ a separate online audit against65 dependencies and advisory commit f28da8c5
 (October16,1,329 advisories) returns zero vulnerabilities, empty warnings and
 empty ignores. All14 exact-head GitHub checks pass. The explicit breaking label
 matches the acknowledged API changes. The user authorized merge/publication;
-PR112 is merged as d9237dd with a tree identical to reviewed d4d39bf. Main CI and
-normal release publication are pending; merging alone is not registry evidence.
+PR112 is merged as d9237dd with a tree identical to reviewed d4d39bf. Main CI passes and
+the normal release workflow38963638341 passed packaging but stopped on a registry
+HTTP500 during its post-upload Core check. Core0.28.0 is confirmed by API/index
+checksum and31 exact packaged Rust files; Actors0.28.0 is still absent. The failed
+job is rerunning on the same verified d9237dd event, preserving its commit gate.
+Full publication and tags remain unverified.
 
 #### Timer ownership — DX13/16/25–27
 
