@@ -11,6 +11,11 @@ restate child positions, wrapper types, settlement products, hosting proofs,
 or runtime retirement bookkeeping. Correctness and usability are joint release
 criteria: a shorter example that drops owned failures fails acceptance.
 
+Judge the ordinary path from a junior developer's perspective: meaningful
+policy names, one clear entry point, and understandable failure recovery.
+Advanced access should let a caller peel one ownership layer at a time without
+requiring that machinery for ordinary application setup.
+
 Selected topology decision (user-authorized 2026-10-11): allow one explicit
 application topology declaration. Derive its structural spaces, occurrence
 products, runner projections and complete recursive retirement types behind the
@@ -929,6 +934,52 @@ PR107/108/109 retain their reviewed heads. Exact-head CI38931592499 passes all11
 jobs through the normal dispatchable workflow;
 PR-only checks still require the eventual main base. Normal publication,
 registry adoption and the broader DX17 catalogue/bounds audit remain open.
+
+#### Stashed-message recovery — DX04/14/17 pre-edit law
+
+A retired stash owns original mailbox inputs, not just a queue length. The
+smallest caller recovery should be `let pending = stash.take_messages();`:
+move every currently held `User` in FIFO order to the caller, leave the stash
+empty, and preserve its inner behavior and routing policy. A second take is
+empty. There is no replay, transition, effect, cloning or new lifecycle
+authority. This is derived ownership access to existing state, not a new
+actor-model operation. Machine's transactional Clone requirements and Stash's
+sealed infallibility/phase restrictions stay unchanged.
+
+Inspect the actual Stash/StopOnShutdown owners, pure initialize/delegate ports,
+Driver retirement, ActorCustody and ApplicationRetirement. The current public
+stash exposes counts only. A two-part `into_parts` would discard its route;
+returning the function pointer as a third tuple element burdens this recovery
+case. Standard `mem::take` of the authoritative VecDeque preserves all owners
+without another type or queue vocabulary. The existing shutdown `into_inner`
+supports deliberate ownership peeling. Do not add Active unwrapping or a
+second actor interface to reach the stash.
+
+Use isolated `codex/devx-stash-custody` worktrees from owner7644735 and combined
+Bombay1bf7f328. Actual dependencies stay270/270/150, Address030, Communication016,
+Timers020 and workspace Observe. Private764 selection is required only for the
+already-retained owned-timer runtime; keep397 nonowner records exact and do not
+claim published candidate APIs. Before production, a focused real Application
+consumer must fail at the missing method. Its native shutdown journey must
+recover a nonempty held prefix plus unread runtime suffix, exact original
+senders and move-only allocations, all retirement fields, cleanup, notifications
+and terminal Actions. Pure cases cover both shutdown/stash orders, a second
+unrelated existing template, empty/repeated takes and unchanged replay/stop.
+
+Expected owner scope: stash.rs, one focused test, its existing recipe/rustdoc
+and changelog; approximately20 net production lines, one new method and no new
+public type/trait. Bombay adds its native test and coordination only, no
+production. Baseline stash.rs is206 physical lines, one module, two public
+types/two traits and10 qualified public declarations. There is no stored control
+sum; StashRoute's three transient choices, the inner actor and the original
+FIFO remain the only values needed. There are three match, two if and one while
+selection keywords. Retained representation must add no state, field, enum,
+selection or generic parameter; only the recovery method changes public access.
+Record measured drift, two independent reviews and source-bound failure
+inversions before retention. Cross-check Behavior layer laws, all four normalized
+atomic documents and existing replay/property/model tests. Bounded retention
+and explicit overflow policy remain required separate work; this recovery API
+does not satisfy them or the full DX14 programme.
 
 #### Policy construction and startup — DX10/11/19/24/27
 
