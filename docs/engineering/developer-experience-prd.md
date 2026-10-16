@@ -727,7 +727,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX10 | Owning roster/directory/queue/router constructors use Config and explicit recovery. Registry270/150 supplies startup closures and reply-lane policy. All338 library tests pass both compilers/profiles with1013 original assertions;31 resumed caller tests and real examples have source-selected503 proofs. Startupf244566 removes its named plan/alias. | Open: publish the reviewed inference repair, verify registry-only callers/nested locks, audit policy necessity/names and complete costs/full gates. Breaking source costs remain explicit. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
-| DX13 | Named/panic-custody PR383/b8c2e6f passes25 native gates against026/142. Four candidate timer wrappers and the copied interpreter pass owner and native compiler/profile matrices, mixed/custom named controls and deliberate failures; bounded memory comparison is recorded below. | Open: remaining cancellation/rejection/exhaustion/static witnesses, current registry delivery, catalogue/docs and full gates. Candidate proofs do not certify the complete programme. Both removed-model falsifiers remain below. |
+| DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. Owner e628018 passes11 native gates,992 nextest/120 doctests; extracted timer packages and migrated Bombay callers pass their supported compiler/profile matrices. Named replacement and bounded memory costs remain explicit below. | Open: final runtime/static/catalogue checks, remaining acceptance cuts and breaking registry delivery. Candidate/source/archive proofs do not certify the complete programme. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
@@ -945,194 +945,72 @@ missing publication cannot forge completion. Moving its report module did not
 remove callback/associated-type ceremony. Machine Clone and bounded Stash overflow
 remain the separate open changes already specified above.
 
-#### Automatic timer ownership — current experiment, DX13
+#### Timer ownership — DX13/16/25–27
 
-Desired policy: OneShot/Periodic/Deadline/ReceiveTimeout own event occurrence and
-generation; ordinary callers supply no TimerId. Explicit named ScheduleAt/After
-retain shared-name replacement/cancel and custom InjectEvent ports. Reuse the
-existing leases, initialization/settlement products and generation-branded queue;
-retain original target, generation, deadline and every accepted/rejected lane.
-No ID0, fallback counter, registry, generic default, caller marker or structural
-path. Measure queue-key/event/actor memory rather than assuming savings.
+Ordinary OneShot, Periodic, Deadline and ReceiveTimeout constructors now take
+only the inner actor, delay/deadline and reaction. Bombay ActorExt exposes the
+same no-ID operations. Each wrapper owns its exact typed event ingress and
+current generation; reordering does not require caller names or paths. This is
+Bombay composition policy, separate from actor freshness and lifecycle identity.
 
-Two falsifiers remain distinct. Blanket (depth,TimerId) scoping broke equal-name
-replacement. The later target-family lowering privatized four existing named
-LocalTimers calls without law or regression provenance and was removed before
-compiler/runtime acceptance. Neither rejects every shared-family model; that
-representation is unproven. Named method signatures and custom ports remain
-constraints. Reopen from the last retained representation, not the removed code.
+The ownership equation remains `(target,generation,time)` outside conversion
+until exact receipt `(target,generation)` or rejection `(original request,reason)`.
+Four shared timer products have closed TimerId/Here targets without generic
+defaults. Existing root names and TimedEvent remain the named protocols; four
+owned aliases select Here. Reuse the existing OwnedItem custody blanket and
+SourceAction identity. Named absolute/relative methods retain their original
+custom InjectEvent ports and actor-wide replacement law. A private destination
+port shares the settlement algorithm; the queue uses Named(id)/Owned(occurrence),
+with compile-time checked occurrence arithmetic, no registry or counter.
 
-The Named(TimerId)/Owned(position) queue probe passes supported compilers/profiles
-and its collision inverse, proving only disjoint replacement/cancel namespaces.
-A fresh compile-only witness on Bombay1cc0953 and actual registry270/270/150
-removes three IDs from the existing OneShot/OneShot/Periodic journey. It fails
-at all three missing-TimerId sites (plus one inference cascade), preserving all
-400 lock records and625 frozen inputs. Two independent reviews confirm the
-sole test-file change and unchanged named control; no runtime credit follows.
-Its three-notice oracle still does not prove cancellation, rearm, stale/duplicate/
-rejected/exhausted scheduling or inner settlement custody. An eventual runtime
-witness needs a finite watchdog and a genuine explicit named-request control;
-Rust cannot preserve both wrapper-method arities. Actual typed requests, wrappers and interpreter integration,
-including repeated occurrences and reorder/zero/failure/retirement journeys,
-remain required before migration. See retained timer witnesses and DEAD_ENDS.md.
+Inner-first initialization, user-only inactivity renewal, optional deadline,
+current-generation acceptance, replay discharge, stopping/error behavior,
+original rejection, accepted prefixes and independent later effects remain.
+The two-state absolute schedule and four-state relative lease are unchanged
+apart from deleting obsolete stored IDs. Their surviving values own only the
+current deadline/generation, checked renewal history and inner behavior.
 
-Timer panic-custody repair preserves an original Copy request outside conversion
-until receipt or complete rejection. Native active-turn absolute/relative cases
-retain accepted-prefix receipt, interrupted original, untouched suffix, actor and
-independent work/cleanup/notifications. This does not prove queue-prefix delivery
-or opaque panic-cause identity. Its b8/026 full-gate proof above is a prerequisite,
-not an implementation of automatic timer ownership.
+Pre-edit no-ID owner and actual registry-consumer witnesses failed at the
+missing arguments and exact owned protocol contracts before lowering. Earlier
+blanket path-scoping broke named replacement; a lowering that silently narrowed
+existing named methods was removed. Initial stale-cache/zero-selector attempts,
+an invalid test fixture, broken rendered links and an E0369 inversion earn no
+runtime or gate credit. Complete prior laws, falsifiers, measurements and
+receipts are preserved in [fe28b7a](https://github.com/devrandom-labs/bombay-behavior/blob/fe28b7a/docs/engineering/developer-experience-prd.md).
+Retained source commits:87aedf1 tests,2e5e863 implementation,5e23384/78ca80a caller
+adoption,7f4f0b3 independent oracles and7b0d013/c8c2104 migration guidance.
 
-The next target-family experiment is not accepted yet. Before production,
-`wrapped_send_requests` fails at all four no-ID owning constructors and the two
-missing owned request/event aliases. It reuses the actual two templates, both
-Shutdown orders, nonempty inner initialization and existing ReportToParent lane;
-complete schedule/report slices and creation/verdict lanes are inspected. The
-next periodic generation must be accepted, not merely emitted. Separate native
-proof and explicit named/custom-port controls precede any catalogue migration.
+| Exact scope | Executed evidence | Limit |
+| --- | --- | --- |
+| Timer-only c8c2104 | All11 aarch64-Darwin Nix gates pass219.061s;832 hashes conserved,992 nextest/0skip,120 doctests/0ignore,50 reference controls; two independent audits. | Prior guide-link failure remains failed; no other platform certification. |
+| Integrated e628018 (includes reviewed PR107/108) | Full Nix0/190.663s: eleven selected checks, nine new builds plus cached audit/TOML; same992/120/50, clean source conserved. Separate online audit0/2.440s,65dependencies/no findings or warnings, database479c888 from10-16. | Offline sandbox yank lookup failures are not online audit successes. Publication remains PR-specific and pending. |
+| Timer-only extracted owners | All223 shipped Rust files match archive-time feature source (145 under src). Four actual Bombay journeys pass1.99/1.96 debug/release:16 executions,878 frozen inputs, fresh three-owner compilation and397 unchanged nonowner records. | Unpublished archives and copied runtime; not the later factory+timer integration or registry delivery. Preflight passes with four existing fixture warnings and the expected unused incompatible macro patch. |
+| Migrated Bombay source + e628 | Six targets pass17 cases each on both supported compilers/profiles:13 native/application plus four pure/type cases;2083 inputs conserved during runs.53 wrapper ID arguments removed; assertions and genuine named controls independently reviewed twice. | Source-selected scratch graph only; actual feature manifest/lock unchanged. Later metadata edits bind three reviewed UI fixture sources without changing any expected stderr; final strict execution remains required. |
+| Independent inactivity fuzz |20000 runs per nightly1.101 debug/release with sanitizer disabled; complete actual notices/targets, schedules, actor state, creations and verdict checked against unchanged InactivityModel. Eight intended assertion failures reject missing/duplicate/future notification and service rearm. | Evolving corpus, not identical comparative trials or sanitizer evidence; errors, terminal turns and exhaustion have separate tests. |
 
-The proposed ownership equation is shared: request `(target,generation,time)`
-remains outside conversion until exact receipt `(target,generation)` or rejection
-`(original request,reason)`; elapsed input returns to that exact typed ingress.
-The closed targets are the existing TimerId (shared named replacement) and Here
-(current wrapper occurrence). This is deliberate Bombay composition policy;
-fresh creation, pure Actions and interpreter-owned clock laws stay unchanged.
-A public timer module would own four generic request/receipt/event families,
-with no generic defaults; existing root names project TimerId and four owned
-aliases project Here. Owned constructors supply their own capability. This adds
-one sealed capability trait and no behavior/state/registry/facade. Reuse the
-existing OwnedItem blanket instead of copying the two manual ActionItem custody
-implementations: their input pair, lifetime, prepare/input/finish and default
-receipt retention equations are identical. SourceAction keeps its exact source. A bound belongs only
-to its actual named or owned interpreter port. TimedEvent remains the existing
-named alias for Lease/Presence/CircuitBreaker; the four ordinary wrappers get
-owned elapsed lanes and delete their stored IDs.
+Two old oracles were repaired separately from mechanical migration. The service
+test previously sent its alleged inner event to the outer ingress; it now
+observes the inner state change, original outer timeout, exact98-to91 notice,
+every action lane and replay. Fuzzing previously changed only local model state
+with a no-op reaction; it now compares actual effects and state. Other retained
+no-op timer callbacks prove construction/noninterference only, not admission.
 
-Expected scope: these eleven existing production files plus one timer protocol
-module; two runtime source files, four wrapper owners, their domain/event/module
-surfaces and focused tests. Expected production delta is net-positive, budgeted
-at no more than250 lines before remeasurement, not described as cleanup. Existing
-named LocalTimers schedule_at<Path>/schedule_after<Path> keep their exact single
-Path parameter and InjectEvent bound, including custom paths. Only new owned
-requests derive the occurrence ordinal; reject unsupported custom owned paths
-statically. A private TimerDestination<Path> owns the two genuine interpretation
-ports: TimerId executes those unchanged named methods for arbitrary valid paths;
-Here executes owned scheduling for finite occurrence paths. One generic
-InterpretItem body preserves the original custody algorithm. Do not strand named
-methods as test-only forwarding facades, add dead-code allowances or copy the
-settlement algorithm. Distinct-path and nominal custom-path named controls must
-reject accidental path-scoped naming. Occurrence ordinals use associated constant
-arithmetic: [constant overflow is a compile error](https://doc.rust-lang.org/reference/const_eval.html),
-including optimized builds; no runtime wrapping counter is introduced.
-The private queue key is an exhaustive Named/Owned sum, with no
-fallback ID, counter, wrapping ordinal or inferred lifecycle provenance. Named
-new/struct-literal/pattern/From syntax receives compatibility witnesses.
+The architecture checkpoint passes within the authorized experiment: baseline
+11 selected production modules/2126 lines/56 arrows/8 enums/56 direct pub
+spellings; retained12/2252/51/9/70. Production+491/-365/net+126, tests+1388/-506/net+882
+across31 changed Rust files in owner plus minimal copied runtime, before broader
+Bombay migration. Counts exclude true test tails and two test-only methods;
+direct pub counts exclude reexports/restricted visibility and are not total API
+counts. The extra enum owns a disjoint replacement namespace, not a lifecycle
+phase. No arrival-history state, duplicated cause, semantic flag, second
+transition authority, caller marker or structural path was added. Existing layer,
+normalized aggregate and runtime settlement laws remain the cross-check.
 
-Baseline checkpoint V2: eleven selected production module files,2126 lines,
-56 match arrows, eight enum declarations and56 direct `pub` declarations (excluding reexports
-and restricted visibility). It
-excludes true test-module tails and the two inline test-only idle/live methods;
-the first truncating counter was rejected. Current states are B × TimerLease
-(NeverIssued/Armed/Idle/Exhausted), or B × OneShotSchedule (Unscheduled/Scheduled);
-TimerAdmission remains Accepted/Ignored and scheduling rejections remain2/3.
-Only current generation/deadline/inner behavior are needed; remove the obsolete
-ID from an owned schedule. No arrival history, repeated cause, semantic boolean
-or second transition authority is justified. Baseline disposition: pass; the
-candidate still needs exact after-counts, both reviews, inverses, supported
-compiler/profile owner+consumer proofs and memory measurements before retention.
-
-The first two-wrapper lowering now executes in an isolated source-selected
-consumer: three native journeys, four direct queue controls and the unchanged
-boxed parent-report custody case pass32 executions across Rust1.99/1.96 and
-debug/release. Two independent reviews verify exact cases, profile-specific
-package cleans, original ownership assertions and1457 conserved inputs. Six
-current-compiler debug/release inversions fail at their intended namespace,
-overflow and readiness assertions, with2706 inputs conserved; compiler errors,
-zero-test selectors and stale-cache attempts earn no credit. Custom nominal
-ports execute named absolute scheduling, not named relative scheduling.
-
-The architecture checkpoint passes for this bounded stage: production+387/-291,
-net+96; twelve selected modules versus eleven; match arrows56→52, enums8→9
-(the disjoint queue key), direct pub declarations56→70. These are lexical counts,
-not model-quality or complete API measures. TimerLease's four states, admission
-alternatives and2/3 scheduling rejections are unchanged. The key owns exact
-replacement namespace; no arrival history, duplicated cause, semantic boolean,
-new lifecycle authority or structural caller syntax was added. The existing
-layer laws and all four normalized actor documents plus runtime settlement
-contracts were cross-checked. Remaining templates and full acceptance stay open.
-
-An isolated DHAT comparison of the actual private queues, on both supported
-compilers in optimized builds, observes368 live bytes/four allocations for three
-independent timer ingresses before and after. Owned elapsed events are16 versus
-24 bytes in that event sum; requests24 versus32, receipts8 versus16; queue
-storage remains120. The key grows8→16 bytes:64 explicit named timers retain
-7184 versus6672 bytes (+512), with18 allocations in both and14000 versus13008
-total allocated bytes. Both scenarios drain to16 bytes and release to zero.
-Instrumentation stays outside production. These are queue/layout observations,
-not full actor/application memory, peak or throughput results.
-
-Before remaining-wrapper edits, the pure Deadline/ReceiveTimeout witness fails
-at four missing-ID constructors plus exact named/owned product and event
-mismatches. The proposed native Booking journey fails at its two missing-ID
-methods and one downstream inference cascade. Both have twice-reviewed,
-source-frozen compile-only evidence; no runtime credit follows. Reuse the
-existing two-state absolute schedule, removing only its obsolete ID, and the
-existing receive-inactivity lease. Preserve user-only rearming, optional deadline,
-controlled errors, stopping initialization, stale/duplicate discharge and exact
-retirement; no additional state, policy, trait or interpreter seam is proposed.
-
-The four-wrapper lowering now passes28 owner and16 native executions across
-both compilers/profiles, with1460 frozen inputs per driver and two independent
-reviews. It adds no further type, trait, bound, state or interpreter port.
-Current-compiler pure inversions reject service-driven inactivity rearm and
-future deadline acceptance in debug/release. The native collision inverse
-rejects the wrong retained version1 instead of11; its earlier debug receipt is
-explicitly re-audited, not represented as another execution. Deliberately invalid
-collision/path-scope models emit unused-ordinal/private-bound warnings: their
-real assertion failures are falsifiers, never warning-free compiler or Nix gates.
-Healthy matrices have no warnings.
-
-The updated architecture checkpoint passes at2244 selected production lines,
-51 arrows, nine enums and70 direct pub declarations: production+483/-365,
-net+118; tests+910/-70 before focused unit adoption. Seventeen changed Rust files
-remain inside the session's explicitly expanded programme budget. Absolute
-scheduling keeps the same two phases and drops its obsolete ID; inactivity keeps
-the same lease. Focused regressions are committed separately as87aedf1. Existing
-unit-law adoption is underway; these results do not certify catalogue, release
-or full-programme acceptance.
-
-Owner caller adoption retains named domain services and request compatibility:
-347 selected owner cases pass Rust1.95 debug/release;31 affected testkit cases
-pass each profile. Complete workspace nextest then passes992/992, zero skipped,
-in31.007s. That wrapper has no pre/post source manifest and is not a frozen
-Nix certificate. Its first attempt failed on old type-only named expectations;
-those wrapper expectations now use owned requests/events, while the separate
-named custody tests remain exact. Final integrated source/package gates remain.
-
-Two old test oracles needed separate repairs: the alleged inner service event
-was sent to the outer ingress, and timeout fuzzing observed only local model
-state with a no-op reaction. The corrected service test observes an inner state
-change, the original inactivity generation, exact98-to91 delivery, all action
-lanes and replay. Fuzzing reuses the unchanged independent InactivityModel,
-observes actual user/timeout messages and service state, and checks every lane.
-It completes20000 runs per nightly debug/release profile with sanitizer disabled;
-the evolving corpus is not an identical immutable comparative trial. Four
-one-file inversions (missing/duplicate/future notice and service rearm) fail at
-real assertions in both profiles. An initial ordered-comparison mutant failed
-E0369 and provides no runtime credit; the existing explicit future1 falsifier
-supplies the corrected proof without adding a bound or changing production.
-Errors, stopping turns and generation exhaustion retain their separate tests.
-
-Caller-stage checkpoint: production+491/-365/net+126 including eight new rustdoc
-lines; tests+1388/-506/net+882 across31 changed Rust files in the owner and copied
-consumer. Twelve selected production modules now contain2252 lines,51 match
-arrows, nine enums and70 direct pub declarations; states, alternatives and
-current-value ownership are unchanged from the four-wrapper checkpoint. The
-caller stage adds no production type, bound, policy, interpreter port or state.
-Named controls, full request/receipt/rejection products, inner-first effects and
-retirement remain distinct. No arrival history, repeated cause, semantic flag,
-second transition authority or caller path was introduced. Existing layer,
-normalized aggregate and settlement laws remain the cross-check; disposition:
-pass within the authorized bounded experiment. Documentation now distinguishes
-owned wrappers from explicit names and states the breaking migration. Release,
-all native gates, archives and full downstream delivery remain open.
+Memory measurements remain bounded: actual three-ingress queues retain368bytes
+and four allocations before/after on both supported optimized compilers.
+Owned events16 versus24bytes, requests24 versus32, receipts8 versus16; queue120
+unchanged. The disjoint key grows8→16:64 named timers retain7184 versus6672bytes
+(+512),18 allocations each, total allocation14000 versus13008. Drain retains16,
+full release zero. No full actor/application peak, throughput or latency gain
+is established. Final native failure/cancellation/static/package/catalogue
+acceptance and normal breaking release remain open.
