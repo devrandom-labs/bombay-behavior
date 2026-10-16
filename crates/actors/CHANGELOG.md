@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.27.0...bombay-behavior-actors-v0.28.0) - 2026-10-16
+
+### Added
+
+- *(time)* [**breaking**] let timer wrappers own their timers ([#109](https://github.com/devrandom-labs/bombay-behavior/pull/109))
+
+### Fixed
+
+- *(actors)* [**breaking**] infer worker roles at construction ([#107](https://github.com/devrandom-labs/bombay-behavior/pull/107))
+
 ### Added
 
 - `Stash::take()` returns all held messages and their original senders in FIFO
