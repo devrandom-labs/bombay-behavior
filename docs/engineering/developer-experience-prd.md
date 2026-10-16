@@ -916,10 +916,15 @@ REDs, ownership sums and build-scan failure/inversion evidence remain in the
 [merged owner record](https://github.com/devrandom-labs/bombay-behavior/blob/edf103e958e291b907a1b6eb9a95da5a9c84af45/docs/engineering/developer-experience-prd.md).
 Those earlier receipts do not certify the refreshed head; fresh gates and CI
 remain required. Registry publication is not inferred from merging these PRs.
+Refreshed f1acfb0 passes all11 native Nix checks in224.401s, with996 nextest,
+120 doctests and50 reference controls. All source bytes/HEAD remain unchanged;
+all11 output hashes and exact derivers are verified. Its327 Rust files equal
+the previously verified5068f6a sources. This subsequent wording correction is
+documentation-only; final-head gates and CI are recorded separately.
 
 | Exact source | Verified result | Limit |
 | --- | --- | --- |
-| Owner50348d7 | Eleven native Nix checks,987 nextest/118 doctests/50 audit controls, four-workspace archive preflight and all14 exact-head GitHub checks pass. Actual extracted owner consumers and external contracts retain their supported-compiler/profile evidence. | PR107 plus audit PR108 remain open; normal reviewed publication is pending. Sandbox yank lookups were unavailable; separate online audit succeeds. |
+| Owner50348d7 | Eleven native Nix checks,987 nextest/118 doctests/50 audit controls, four-workspace archive preflight and all14 exact-head GitHub checks pass. Actual extracted owner consumers and external contracts retain their supported-compiler/profile evidence. | PR107/108 merged as509a10b/edf103e; normal reviewed publication is pending. Sandbox yank lookups were unavailable; separate online audit succeeds. |
 | Bombayb8c2e6f, registry026/142 | All25 fresh native aarch64-Darwin checks pass in4750.519s with623 conserved hashes:776 outer tests/132 UI fixtures, selected remote debug/release422 outer+20 UI, owner coverage and50 audit controls. Two independent audits pass. | PR383; no reported classifier crash. Not the270 catalogue graph, all-systems proof or automatic-timer implementation. Axum example gate compiles but executes zero tests. |
 | Cataloguece12436 with source-selected503 |31 identical caller tests in seven targets pass1.99/1.96 debug/release; separate protected held-startup/sibling-progress retirement passes all four configurations;397 root and322 protected nonowner records remain exact. | Same747 original assertions plus Released; no final registry delivery, exhaustive custody or new readiness proof. Earlier inaccurate inverse matcher remains a failed matcher, separately attributed. |
 | Startupf244566 with source-selected503 | Existing native+pure tests pass both compilers/profiles (eight test executions), four actual example runs pass;2080 inputs conserved. Strict whole-workspace/all-target Clippy passes14.476s. | Same published closure law; no new panic/cancellation policy. Ordinary initial-factory inference still needs PR107. |
