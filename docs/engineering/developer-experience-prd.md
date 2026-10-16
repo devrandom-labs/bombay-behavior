@@ -13,6 +13,8 @@ criteria: a shorter example that drops owned failures fails acceptance.
 
 Judge the ordinary path from a junior developer's perspective: meaningful
 policy names, one clear entry point, and understandable failure recovery.
+Use short, familiar member names when the receiver or module supplies the
+context (`stash.take()`); add words only to distinguish real meanings.
 Advanced access should let a caller peel one ownership layer at a time without
 requiring that machinery for ordinary application setup.
 
