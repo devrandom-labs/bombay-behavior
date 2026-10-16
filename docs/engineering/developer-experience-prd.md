@@ -35,13 +35,16 @@ require the remaining consumers, inferred standalone roots and full gates.
 
 ## Evidence and scope
 
-Current Bombay selected registry contract: Behavior/Actors0.26.0, macros0.14.2,
-Address0.3.0, Communication0.1.5, Timers0.2.0, Tokio1.53.1 and Axum0.8.9,
-with no repository patches. Published source98983b4 matches all207 downloaded
-owner Rust files. The isolated runtime now returns complete duplicate-correlation
-rejections through that published contract. Pre-merge current/MSRV proofs and all21 native gates pass at their recorded
-revisions. The merged baseline passes all24 native gates ataf87ef4. Joined-result/HTTP commitsf0020c2/0011620 pass720 optimized all-feature tests, one existing skip. The later Entity retirement seam36af335 passes its focused current/MSRV witnesses and affected owner/consumer corpora; its final full gates remain open. Remaining programme work stays open. Earlier
-0.25 and private-patch results retain their revision limits.
+The isolated Bombay branch at4086cbd selects registry Behavior/Actors0.27.0,
+macros0.15.0, Address0.3.0, Communication0.1.6, Timers0.2.0, Tokio1.53.1 and
+Axum0.8.9, without repository patches. All220 shipped owner Rust files match
+published sourceb8307d1. Its catalogue migration still needs the reviewed
+constructor inference repair50348d7 published through the normal workflow;
+source-selected consumer proofs are explicitly separate from registry delivery.
+Bombay mainfbb5c74 and timer PR383 still select owners026/142. The timer
+branch's25 fresh native gates pass; its scope does not certify the newer
+catalogue branch. The single checklist below owns remaining acceptance.
+Earlier registry/private-patch results retain their exact revision limits.
 
 The following table and observations preserve the initial review baseline,
 not the current dependency selection. Claims come from source and test bodies
@@ -721,16 +724,16 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98, stash99 and startup/pool102 are merged on main. Release105/b204637 preserves their contracts and passes ten native gates,987 tests,118 doctests and four-workspace preflight. All14 final GitHub checks pass; release105 merged asb8307d1 and normal publication of270/150 is verified in the registry and tags. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: complete current Bombay catalogue adoption, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Current production adapters, real supervisor/pool consumers and all338 library tests adopt published270/150 on the isolated branch; the same338 cases pass both compilers/profiles, preserving1013 assertions and all production bodies. The unannotated factory-input failure now has an owner fix at50348d7: eleven native checks,987 nextest tests,118 doctests, supported-compiler/profile native and extracted-archive journeys, strict owner denials and all14 exact-head GitHub checks pass. Its extra constructor generic and mutable refusal re-invocation cost are explicit breaking changes. The resumed catalogue compiles all workspace targets in an isolated source-selected copy; publication and registry-only acceptance remain open. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Owning roster/directory/queue/router constructors use named Config and explicit recovery policies. Registry270/150 supplies policy, startup-closure, infallibility and reply-lane improvements. All338 Bombay library tests pass both compilers/profiles with1013 original assertions and unchanged production bodies. Constructor inference repair50348d7 passes eleven owner gates,987 nextest/118 doctests, archives and all14 CI checks; breaking generic/mutable-call changes are explicit. Resumed real consumers pass31 cases on both compilers/profiles, plus protected retirement and eight example executions in isolated candidate-selected copies. | Open: publish the reviewed owner repair, verify final registry-only consumers, migrate named startup boilerplate, audit policy necessity/names and complete costs/full gates. No defaults, extra builder or local dependency patches in delivery manifests. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
-| DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. Bounded native panic-custody fixa54a303 is draft Bombay PR383; its seven-case current/minimum debug/release matrix passes. Test-only repaird265bdc preserves original startup/disposal assertions and strengthens the source guard; supported-compiler/profile controls and inversions pass. Its obsolete full run was interrupted after3589.453s and three masked classifier crashes; it is failed/incomplete evidence. Isolated tooling repairb8c2e6f passes50 controls, six inversions and actual fixup acceptance/refusal; its frozen25-check native run exits0 in4750.519s with623 unchanged hashes and no reported crashes; independent final-log review is pending. All six exact-head GitHub checks pass. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
+| DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. Bounded native panic-custody fixa54a303 is draft Bombay PR383; its seven-case current/minimum debug/release matrix passes. Test-only repaird265bdc preserves original startup/disposal assertions and strengthens the source guard; supported-compiler/profile controls and inversions pass. Its obsolete full run was interrupted after3589.453s and three masked classifier crashes; it is failed/incomplete evidence. Isolated tooling repairb8c2e6f passes50 controls, six inversions and actual fixup acceptance/refusal; its frozen25-check native run exits0 in4750.519s with623 unchanged hashes and no reported crashes; two independent final-log reviews pass. All six exact-head GitHub checks pass. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once, deleting impossible downstream branches while retaining original limits. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
 | DX18 | No new production dependencies selected. Existing thiserror, standard owned sums/products and validated limits remain the chosen tools; bounded registry/language comparisons are in the evidence appendix. | Open: error-embedding/source/visibility/bounds equivalence and dependency/MSRV/feature/compile-cost audit. |
-| DX19 | Strict supported-compiler replay checks exact fixture names/modes, coverage and unchanged sources. Native owner denials add missing-interpreter/wrong-owner cases; damaged-expectation, empty-success and added-source controls reject. Release preflight retains the historical published261 worker: candidate macros143 fails; incompatible150 leaves compatible registry142 selected and compiling. | Open: remaining diagnostic/renamed/minimal-feature corpus, owner diagnostic publication and final archive gates. Node/client denials keep their separate caller checks. |
+| DX19 | Supported-compiler verification preserves exact identities, fixture operations/modes and caller/scratch hashes. Existing44-case strict replay passes both compilers. Complete current replay passes124 fixtures (19 positive/105 negative); minimum replay identifies eight reviewed diagnostic differences. Strict124-case replay now passes both compilers through25 targets/29 UI suites, with exact child/parent ignore accounting, adversarial transcript controls and1248 conserved source hashes. Archive preflight retains the historical registry261 worker and compatible macros142. | Open: remaining renamed/minimal-feature/archive coverage, committed diagnostic delivery and final programme gates. Earlier failed or incomplete runs retain no passing credit. |
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply corpus, capacity and final-source minimum-compiler/full gates. Admission remains distinct from business completion. |
 | DX21 | Shutdown ingress is inferred at the operation; runners require only capabilities they execute. Root wrapper orders, request replay, natural completion and complete retirement pass focused tests; missing/ambiguous authority remains denied. | Open: generated canonical access, child-derived phases/drain/deadline/forced-retirement corpus and final repository gates. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
@@ -738,7 +741,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
 | DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: latest PR375 head214d5b0 integrates main67a286c and is mergeable. All13 affected native cases pass debug/release; strict lint/format and two integration reviews pass. Exact214d5b0 Nix reports24 successes/exit0 in4708.063s with620 unchanged hashes and772 workspace passes/two parent-invoked child ignores, but four classifier crashes prevent a clean original-run claim. Checked/joined recovery verifies all four exact-output reference properties. All six exact-head GitHub checks pass; PR375 merged as5e9bcd1. The earlier optimized retry hang remains unexplained. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→99 plus61 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
-| DX27 | Published Behavior/Actors0.27.0 and Macros0.15.0 have verified checksums, tags and220 shipped Rust files. Five unchanged native pool journeys pass debug/release against these actual registry owners without patches, conserving591 inputs and63 nonowner package records in the disclosed adapted214d runtime. Earlier published Behavior/Actors0.26.1 have verified tags and206 shipped Rust files. Six pure custody tests and an actual archived-Bombay failure/retirement journey pass both profiles against registry owners, without owner patches. Current feature commit05ca9db adopts270/150 with all397 nonowner root records conserved;4086cbd integrates latest mainfbb5c74 without further Rust or dependency changes. Five unchanged native pool journeys pass debug/release against current main plus timer custody, conserving592 inputs. Supervisor commit073078b passes five startup/recovery/rejection/joined-retirement cases on both supported compilers/profiles; example445d4b5 uses named queue Config and deletes its unused reply alias/host. Delivery main still selects026/142; older proofs remain scoped to their graphs. | Open: complete current Bombay catalogue adoption, final programme consumers/features/renaming, delivery documentation and repository gates. No local patch or old-source pass certifies the final release. |
+| DX27 | Actual registry Behavior/Actors0.27.0 and macros0.15.0 match verified tags, checksums and220 shipped Rust files. Bombay05ca9db adopts them without changing397 root nonowner records;4086cbd integrates mainfbb5c74. Existing pool, supervisor, protected retirement and complete static consumers have source-bound evidence in the sections below. Timer branchb8c2e6f passes25 fresh native checks against its actual026/142 graph; candidate-selected catalogue tests prove their stated scope separately. | Open: owner inference-repair publication, current registry-only catalogue and nested-lock adoption, final consumers/features/costs, delivery docs and full programme gates. A local candidate or older graph cannot certify final delivery. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
 
 ### Retained contracts and evidence
@@ -927,6 +930,27 @@ semantic boolean, structural caller syntax or compiler-invented bound. Existing
 complete bodies and hashes, rather than another state label, establish unchanged
 subordinate values. All postcheck dispositions are pass; publication stays open.
 
+The separate protected-counter workspace exposes one catalogue import error:
+its migrated retirement test names `behavior_actors::composition::replies::ExactReplies`
+but that crate is not a direct dependency. The first actual compile fails E0433;
+it also reports E0308 after losing that type. Reuse the existing public
+`bombay::composition::replies::ExactReplies` re-export and delete its unused
+CapabilityResult import. This is caller-import policy: identical concrete type,
+factory, effects and custody; no dependency, production code, bound or public
+surface is added. Prove this one actual native journey before applying the same
+import spelling elsewhere. Do not change control ownership for the second
+compiler diagnostic until the missing type is resolved. Original failed source,
+lock graph and receipt remain frozen in CATALOGUE-PROTECTED-* evidence.
+
+Strict worker-factory replay still rejects all six invalid programs. Its three
+mismatches are the published source path `atomic/worker` → `templates/worker`
+and the type spelling `ImmediateActivation` → `ImmediateStartup`; error codes,
+invalid operations and ownership diagnostics are unchanged. A registry-only270/150
+control independently confirms the canonical paths. Update only those three
+expectations by these exact substitutions; keep fixtures, compiler identities,
+minimum-compiler patch and the full44-case diagnostic coverage unchanged. Do not
+retain absolute candidate-checkout paths from source-patched diagnostics.
+
 #### Creation correlation and registry binding — DX12/16/21/25/27
 
 Creation correlation is not identity or replacement provenance. Fresh allocation
@@ -960,6 +984,51 @@ current/MSRV both profiles; test-only+46/-5/net41, no production/API change.
 The deliberately interrupted426.907-second stale-binding run is not a pass.
 
 #### Verification, costs and delivery — DX19/25–28
+The complete local diagnostic corpus exposes a verification gap beyond the
+old44-case compiler profile: current1.99 accepts all124 fixtures; minimum1.96
+visits all124 but reports eight negative fixtures differently. All19 positive
+programs compile and the same invalid capabilities remain denied. Extend the
+existing diagnostic record and reviewed minimum.patch to all124 fixtures and25
+launch targets; change no fixture operation, compiler identity, actor or bound.
+
+Verification policy: count the exact named ignored child owned and executed by
+run_with's existing parent test, requiring that named parent to pass; reject any other ignored test, failed result,
+filtered selection, missing/extra/duplicate fixture or wrong mode. The current
+coverage function cannot account for that lawful full transcript. Write focused
+coverage regressions first, including forged-ignore and fixture/mode corruption
+controls, then add exact named/count accounting to the same verifier. Expected
+four files: tools/diagnostics.py, its standard-library unit test, compiler JSON
+and minimum.patch. New core production/public types+0/-0; retain existing source
+hashes, scratch-copy isolation, coverage and expectation-tampering controls.
+This extends executable acceptance; it supplies no new actor-model law.
+
+Focused pre-edit replay rejects the lawful named child twice and falsely
+accepts a zero-ignore summary; retain all three intended RED observations.
+Independent review then finds appended failed/filtered/malformed summaries,
+unrecognized target headings and non-OK extra fixture rows can escape matching
+only good records. Their focused inversions precede the repair. Count every
+summary, target heading and fixture outcome, then validate its exact owned
+record; reject rather than silently skip unknown alternatives. The named child
+must have its exact parent passing once in the same target. Reviewers also
+correct the no-ignore positive's announced test count; no actor semantics or
+fixture expectations change in these verifier controls. A final finite control
+also rejects an ordinary outer libtest FAILED row; an honest Cargo nonzero exit
+is an additional guard, not a substitute for the stated transcript contract.
+
+Final source passes five focused unit methods and eight entry-point conservation
+controls, with two independent reviews. Strict V3 actual-registry replay passes
+all124 fixtures/29 suites/25 targets on1.99/1.96 in167.118/174.517s, preserving
+1248 inputs;107 outer tests pass and the named child is counted once with its
+successful parent. The minimum shell reports a busy Nix evaluation cache;
+inner compiler verification and conservation complete successfully. Subsequent
+patch serialization keeps all original13 snapshots as an exact byte prefix,
+appending eight hunks; actual git apply reproduces all21 already-tested minimum
+hashes. This is an independently checked equivalent representation, separate
+from the earlier exact-source strict receipts. Runtime/public types/states and
+all fixture operations remain unchanged. Scope: local axum-enabled callers,
+not remote/all-feature acceptance or final registry catalogue/full gates.
+
+
 
 | Exact source | Executed verification | Scope limit |
 | --- | --- | --- |
