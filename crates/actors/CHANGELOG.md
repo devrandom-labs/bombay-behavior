@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Remove the `TimerId` argument from `OneShot`, `Periodic`, `Deadline` and
+  `ReceiveTimeout` constructors. Each wrapper owns its timer occurrence.
+  Custom wrapper interpreters use `OwnedScheduleAt`, `OwnedScheduleAfter`,
+  `OwnedTimerElapsed` and `OwnedTimerScheduled`; existing named timer products
+  retain their actor-wide replacement contract. Schedule requests now reuse
+  `OwnedItem`; use qualified trait calls when both `OwnedItem` and `ActionItem`
+  supply the same method name.
+
 - Infer borrowed worker roles at roster and FIFO construction. Explicit
   `new::<...>` calls require a fifth type argument; prefer inferred calls.
   Reusing a factory returned on refusal may require a mutable rejection binding
