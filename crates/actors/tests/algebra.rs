@@ -19,9 +19,9 @@ use behavior::{
     RetirementBirths, SendEffects, Step, User, UserEvent,
 };
 use behavior_actors::{
-    Activate, Crash, Exit, Machine, Move, ObserveChild, PeerStopped, ScheduleAt, ShutdownEvent,
-    ShutdownRequested, StashRoute, TimedEvent, TimerElapsed, TimerGeneration, TimerId,
-    TimerScheduled, Watch, stop_on_abnormal_death,
+    Activate, Crash, Exit, Machine, Move, ObserveChild, OwnedScheduleAt, OwnedTimerElapsed,
+    OwnedTimerScheduled, PeerStopped, ShutdownEvent, ShutdownRequested, StashRoute, TimerElapsed,
+    TimerGeneration, Watch, stop_on_abnormal_death,
 };
 use std::time::Instant;
 
@@ -319,12 +319,12 @@ fn custom_send_product_owner_projects_delivery_without_classifying_custom_marker
 
 #[tokio::test]
 async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
-    type InitializationEvent = ShutdownEvent<TimedEvent<User<MailAddr, u8>>>;
+    type InitializationEvent = ShutdownEvent<EventLayer<OwnedTimerElapsed, User<MailAddr, u8>>>;
 
     #[derive(PartialEq, Eq)]
     enum AcceptedInitializationRequest {
         Message(Delivery<U8Sink>),
-        AbsoluteTimer(ScheduleAt),
+        AbsoluteTimer(OwnedScheduleAt),
     }
 
     struct InitializationInterpreter {
@@ -369,14 +369,16 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
         }
     }
 
-    impl InterpretItem<ScheduleAt, InitializationEvent, Inside<Here>> for InitializationInterpreter {
+    impl InterpretItem<OwnedScheduleAt, InitializationEvent, Inside<Here>>
+        for InitializationInterpreter
+    {
         fn interpret_item<'a>(
             &'a mut self,
-            input: &'a mut Option<ScheduleAt>,
-            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+            input: &'a mut Option<OwnedScheduleAt>,
+            received: &'a mut Option<<OwnedScheduleAt as ActionItem>::Reply>,
         ) -> impl Future<Output = ()> + Send + 'a
         where
-            ScheduleAt: 'a,
+            OwnedScheduleAt: 'a,
         {
             async move {
                 if received.is_some() {
@@ -386,7 +388,7 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
                     return;
                 };
                 let producer = {
-                    let scheduled = TimerScheduled {
+                    let scheduled = OwnedTimerScheduled {
                         id: request.id,
                         generation: request.generation,
                     };
@@ -412,7 +414,6 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
     let due = Instant::now();
     let behavior = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
         InitializationCounter(0),
-        TimerId(0),
         Some(due),
         |_| Step::Continue,
     ));
@@ -440,8 +441,7 @@ async fn direct_behavior_composes_with_existing_wrappers_and_init_order() {
                     Recipient::global(MailAddr(4)),
                     1,
                 )),
-                AcceptedInitializationRequest::AbsoluteTimer(ScheduleAt::new(
-                    TimerId(0),
+                AcceptedInitializationRequest::AbsoluteTimer(OwnedScheduleAt::new(
                     TimerGeneration(0),
                     due,
                 )),
@@ -501,12 +501,9 @@ async fn final_shutdown_transition_preserves_effects_and_forces_normal_stop() {
 #[tokio::test]
 async fn outer_combinators_preserve_the_shutdown_lane() {
     let behavior = behavior_actors::Watch::new(
-        behavior_actors::Deadline::new(
-            behavior_actors::StopOnShutdown::new(Quiet),
-            TimerId(0),
-            None,
-            |_| Step::Continue,
-        ),
+        behavior_actors::Deadline::new(behavior_actors::StopOnShutdown::new(Quiet), None, |_| {
+            Step::Continue
+        }),
         MailAddr(8),
         stop_on_abnormal_death,
     );
@@ -521,21 +518,23 @@ async fn outer_combinators_preserve_the_shutdown_lane() {
 
 #[tokio::test]
 async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() {
-    type RootEvent = ShutdownEvent<TimedEvent<TimedEvent<User<MailAddr, u64>>>>;
+    type RootEvent = ShutdownEvent<
+        EventLayer<OwnedTimerElapsed, EventLayer<OwnedTimerElapsed, User<MailAddr, u64>>>,
+    >;
 
     struct TimerInterpreter {
-        schedules: Vec<ScheduleAt>,
+        schedules: Vec<OwnedScheduleAt>,
         pending: Vec<RootEvent>,
     }
 
-    impl InterpretItem<ScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
+    impl InterpretItem<OwnedScheduleAt, RootEvent, Inside<Here>> for TimerInterpreter {
         fn interpret_item<'a>(
             &'a mut self,
-            input: &'a mut Option<ScheduleAt>,
-            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+            input: &'a mut Option<OwnedScheduleAt>,
+            received: &'a mut Option<<OwnedScheduleAt as ActionItem>::Reply>,
         ) -> impl Future<Output = ()> + Send + 'a
         where
-            ScheduleAt: 'a,
+            OwnedScheduleAt: 'a,
         {
             async move {
                 if received.is_some() {
@@ -545,20 +544,21 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
                     return;
                 };
                 let producer = {
-                    let scheduled = TimerScheduled {
+                    let scheduled = OwnedTimerScheduled {
                         id: request.id,
                         generation: request.generation,
                     };
                     async move {
                         self.schedules.push(request);
-                        self.pending.push(
-                            <RootEvent as InjectEvent<TimerElapsed, Inside<Here>>>::inject_at(
-                                TimerElapsed {
-                                    id: request.id,
-                                    generation: request.generation,
-                                },
-                            ),
-                        );
+                        self.pending.push(<RootEvent as InjectEvent<
+                            OwnedTimerElapsed,
+                            Inside<Here>,
+                        >>::inject_at(
+                            OwnedTimerElapsed {
+                                id: request.id,
+                                generation: request.generation,
+                            },
+                        ));
                         ItemSettlement::Accepted(scheduled)
                     }
                 };
@@ -575,14 +575,14 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
         }
     }
 
-    impl InterpretItem<ScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
+    impl InterpretItem<OwnedScheduleAt, RootEvent, Inside<Inside<Here>>> for TimerInterpreter {
         fn interpret_item<'a>(
             &'a mut self,
-            input: &'a mut Option<ScheduleAt>,
-            received: &'a mut Option<<ScheduleAt as ActionItem>::Reply>,
+            input: &'a mut Option<OwnedScheduleAt>,
+            received: &'a mut Option<<OwnedScheduleAt as ActionItem>::Reply>,
         ) -> impl Future<Output = ()> + Send + 'a
         where
-            ScheduleAt: 'a,
+            OwnedScheduleAt: 'a,
         {
             async move {
                 if received.is_some() {
@@ -592,19 +592,21 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
                     return;
                 };
                 let producer = {
-                    let scheduled = TimerScheduled {
+                    let scheduled = OwnedTimerScheduled {
                         id: request.id,
                         generation: request.generation,
                     };
                     async move {
                         self.schedules.push(request);
                         self.pending.push(<RootEvent as InjectEvent<
-                            TimerElapsed,
+                            OwnedTimerElapsed,
                             Inside<Inside<Here>>,
-                        >>::inject_at(TimerElapsed {
-                            id: request.id,
-                            generation: request.generation,
-                        }));
+                        >>::inject_at(
+                            OwnedTimerElapsed {
+                                id: request.id,
+                                generation: request.generation,
+                            },
+                        ));
                         ItemSettlement::Accepted(scheduled)
                     }
                 };
@@ -624,10 +626,7 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
     let inner_due = Instant::now() + Duration::from_secs(1);
     let outer_due = inner_due + Duration::from_secs(1);
     let initialized = behavior_actors::StopOnShutdown::new(behavior_actors::Deadline::new(
-        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(inner_due), |_| {
-            Step::Stop(behavior::Stopped)
-        }),
-        TimerId(0),
+        behavior_actors::Deadline::new(Quiet, Some(inner_due), |_| Step::Stop(behavior::Stopped)),
         Some(outer_due),
         |_| Step::Continue,
     ))
@@ -650,15 +649,15 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
     assert_eq!(
         timers.schedules,
         [
-            ScheduleAt::new(TimerId(0), TimerGeneration(0), inner_due),
-            ScheduleAt::new(TimerId(0), TimerGeneration(0), outer_due),
+            OwnedScheduleAt::new(TimerGeneration(0), inner_due),
+            OwnedScheduleAt::new(TimerGeneration(0), outer_due),
         ]
     );
     assert_eq!(timers.pending.len(), 2);
 
     let mut active = initialized.behavior;
     // Traversal records the inner deadline first. Popping completes the two
-    // identical requests in reverse order: outer, then inner.
+    // same-generation requests in reverse order: outer, then inner.
     let outer = timers.pending.pop().unwrap();
     let outer_actions = active.transition(outer).unwrap();
     assert_eq!(outer_actions.become_, Step::Continue);
@@ -671,7 +670,7 @@ async fn shutdown_over_two_deadlines_preserves_both_exact_local_continuations() 
 #[tokio::test]
 async fn at_is_a_typed_clock_actor_protocol() {
     let now = Instant::now();
-    let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(now), |_| Step::Continue);
+    let behavior = behavior_actors::Deadline::new(Quiet, Some(now), |_| Step::Continue);
 
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
@@ -681,10 +680,7 @@ async fn at_is_a_typed_clock_actor_protocol() {
     assert_eq!(initial.sends.owned[0].at, now);
 
     let fired = behavior
-        .on_path(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        })
+        .on_path(OwnedTimerElapsed::new(TimerGeneration(0)))
         .unwrap();
     assert!(fired.sends.owned.is_empty());
 }
@@ -1017,12 +1013,11 @@ async fn fsm_preserves_direct_stop_and_does_not_drain_on_stay() {
 }
 
 #[tokio::test]
-async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
+async fn receive_timeout_keeps_inner_deadline_separate() {
     let behavior = behavior_actors::ReceiveTimeout::new(
-        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
+        behavior_actors::Deadline::new(Quiet, Some(Instant::now()), |_| {
             Step::Stop(behavior::Stopped)
         }),
-        TimerId(1),
         Duration::from_secs(1),
         |_| Actions::stop(),
     );
@@ -1030,10 +1025,7 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     let mut behavior = initialized.behavior;
     let inner_deadline = behavior
         .transition(behavior::EventLayer::Inner(behavior::EventLayer::Owned(
-            TimerElapsed {
-                id: TimerId(0),
-                generation: TimerGeneration(0),
-            },
+            OwnedTimerElapsed::new(TimerGeneration(0)),
         )))
         .unwrap();
     assert!(matches!(
@@ -1041,10 +1033,9 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
         Step::Stop(behavior::Stopped)
     ));
     let matching_behavior = behavior_actors::ReceiveTimeout::new(
-        behavior_actors::Deadline::new(Quiet, TimerId(0), Some(Instant::now()), |_| {
+        behavior_actors::Deadline::new(Quiet, Some(Instant::now()), |_| {
             Step::Stop(behavior::Stopped)
         }),
-        TimerId(1),
         Duration::from_secs(1),
         |_| Actions::stop(),
     );
@@ -1052,10 +1043,9 @@ async fn receive_timeout_reacts_only_to_its_own_live_timer_id() {
     let matching_generation = initialized.actions.sends.owned[0].generation;
     let mut matching_behavior = initialized.behavior;
     let matching = matching_behavior
-        .transition(behavior::EventLayer::Owned(TimerElapsed {
-            id: TimerId(1),
-            generation: matching_generation,
-        }))
+        .transition(behavior::EventLayer::Owned(OwnedTimerElapsed::new(
+            matching_generation,
+        )))
         .unwrap();
     assert!(matches!(matching.become_, Step::Stop(behavior::Stopped)));
 }
@@ -1124,19 +1114,15 @@ impl Behavior for TimerAware {
 
 #[tokio::test]
 async fn a_stale_local_receive_timeout_is_consumed_not_forwarded() {
-    let behavior = behavior_actors::ReceiveTimeout::new(
-        TimerAware,
-        TimerId(0),
-        Duration::from_secs(1),
-        |_| Actions::stop(),
-    );
+    let behavior = behavior_actors::ReceiveTimeout::new(TimerAware, Duration::from_secs(1), |_| {
+        Actions::stop()
+    });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stale = behavior
-        .transition(behavior::EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(99),
-        }))
+        .transition(behavior::EventLayer::Owned(OwnedTimerElapsed::new(
+            TimerGeneration(99),
+        )))
         .unwrap();
     assert!(matches!(stale.become_, Step::Continue));
 }
@@ -1152,7 +1138,6 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
                     received: Vec::new(),
                     creations: CreationSequence::new(),
                 },
-                TimerId(0),
                 None,
                 |_| Step::Continue,
             ),
@@ -1167,31 +1152,25 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
 #[tokio::test]
 async fn stale_time_events_do_not_fire_or_reschedule() {
     let due = Instant::now() + Duration::from_secs(2);
-    let behavior = behavior_actors::Deadline::new(Quiet, TimerId(0), Some(due), |_| {
-        Step::Stop(behavior::Stopped)
-    });
+    let behavior =
+        behavior_actors::Deadline::new(Quiet, Some(due), |_| Step::Stop(behavior::Stopped));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
-    let stale = EventLayer::Owned(TimerElapsed {
-        id: TimerId(0),
-        generation: TimerGeneration(1),
-    });
+    let stale = EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(1)));
     let ignored = behavior.transition(stale).unwrap();
     assert!(matches!(ignored.become_, Step::Continue));
 
     let fired = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(matches!(fired.become_, Step::Stop(behavior::Stopped)));
 
     let duplicate = behavior
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(matches!(duplicate.become_, Step::Continue));
 }

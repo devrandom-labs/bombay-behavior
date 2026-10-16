@@ -11,9 +11,10 @@ use behavior::{
 use behavior_actors::{
     BreakerOutcome, ChildShutdownRejected, ChildStopped, CircuitBreaker, CreationResolved,
     Deadline, InstallShutdownPlan, Lease, LeaseOutcome, ObserveChild, ObserveCreation, ObservePeer,
-    OneShot, PeerStopped, Periodic, Presence, PresenceReply, ReceiveTimeout, ScheduleAfter,
-    ScheduleAt, ShutdownChild, ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan,
-    ShutdownRequested, StopOnShutdown, TerminationMonitor, TimerElapsed, Watch, WatchEvent,
+    OneShot, OwnedScheduleAfter, OwnedScheduleAt, OwnedTimerElapsed, PeerStopped, Periodic,
+    Presence, PresenceReply, ReceiveTimeout, ScheduleAfter, ScheduleAt, ShutdownChild,
+    ShutdownCoordinator, ShutdownCoordinatorEvent, ShutdownPlan, ShutdownRequested, StopOnShutdown,
+    TerminationMonitor, TimerElapsed, Watch, WatchEvent,
 };
 
 struct Inert;
@@ -103,10 +104,10 @@ fn timer_templates_accept_timer_elapsed() {
     accepts::<CircuitBreaker<MailAddr, Recipient<BreakerReply>>, TimerElapsed>();
     accepts::<Lease<MailAddr, u8, Recipient<LeaseReply>>, TimerElapsed>();
     accepts::<Presence<MailAddr, u8, Recipient<PresenceReplyBehavior>>, TimerElapsed>();
-    accepts::<Deadline<Inert>, TimerElapsed>();
-    accepts::<OneShot<Inert>, TimerElapsed>();
-    accepts::<Periodic<Inert>, TimerElapsed>();
-    accepts::<ReceiveTimeout<Inert>, TimerElapsed>();
+    accepts::<Deadline<Inert>, OwnedTimerElapsed>();
+    accepts::<OneShot<Inert>, OwnedTimerElapsed>();
+    accepts::<Periodic<Inert>, OwnedTimerElapsed>();
+    accepts::<ReceiveTimeout<Inert>, OwnedTimerElapsed>();
 }
 
 #[test]
@@ -143,6 +144,8 @@ fn local_requests_return_to_the_emitting_actor() {
 
     returns_here::<ScheduleAt, TimerElapsed>();
     returns_here::<ScheduleAfter, TimerElapsed>();
+    returns_here::<OwnedScheduleAt, OwnedTimerElapsed>();
+    returns_here::<OwnedScheduleAfter, OwnedTimerElapsed>();
     returns_here::<ObservePeer<MailAddr>, PeerStopped<MailAddr>>();
     returns_here::<ObserveChild<Inert, ChildHead>, ChildStopped<MailAddr>>();
     returns_here::<ObserveCreation<Inert, ChildHead>, CreationResolved<MailAddr>>();
