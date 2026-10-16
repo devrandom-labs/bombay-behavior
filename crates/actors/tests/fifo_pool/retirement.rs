@@ -298,6 +298,8 @@ async fn compare_sequence(sequence: &[DeskInput]) {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()

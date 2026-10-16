@@ -2,6 +2,7 @@
 
 use core::convert::Infallible;
 
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::proxy::{ProxyOutcome, StableProxy};
 use behavior_actors::supervisor::roster::{
     CapabilityResult, FixedCommand, FixedSupervisor, Recovery,
@@ -21,7 +22,7 @@ where
     Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     pub(crate) supervisor:
-        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>>,
+        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible, MixedReplies, MixedReplies>>,
     pub(crate) proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     pub(crate) proxy_id: behavior_core::CreationId,
     pub(crate) previous: WorkerAttempt,
@@ -76,7 +77,7 @@ where
 
 pub(crate) fn search_capability<Source>(
     supervisor: &mut Active<
-        FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>,
+        FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible, MixedReplies, MixedReplies>,
     >,
 ) -> CapabilityResult<Role, Worker>
 where

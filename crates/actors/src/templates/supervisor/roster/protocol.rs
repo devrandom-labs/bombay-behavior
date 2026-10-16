@@ -1,8 +1,8 @@
 //! FixedSupervisor commands and read-only replies.
 
-use behavior::{Address, EndpointAddress, EstablishedRecipient, MessageProtocol, Protocol};
+use crate::composition::replies::ReplyRoutes;
 
-use crate::ReplyRoute;
+use behavior::{Address, EndpointAddress, EstablishedRecipient, MessageProtocol, Protocol};
 
 /// Read-only phase of one fixed roster member.
 pub enum MemberStatus<Service>
@@ -136,10 +136,10 @@ where
 /// let wrong = behavior::Recipient::<
 ///     behavior::MessageProtocol<RuntimeAddress, u8>
 /// >::global(RuntimeAddress);
-/// let _: behavior_actors::supervisor::roster::FixedCommand<RuntimeAddress, u16, Service> =
+/// let _: behavior_actors::supervisor::roster::FixedCommand<RuntimeAddress, u16, Service, behavior_actors::composition::replies::MixedReplies, behavior_actors::composition::replies::ExactReplies> =
 ///     behavior_actors::supervisor::roster::FixedCommand::status(wrong);
 /// ```
-pub enum FixedCommand<A, Role, Service>
+pub enum FixedCommand<A, Role, Service, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
 where
     A: Address + EndpointAddress,
     Service: Protocol<Addr = A>,
@@ -147,20 +147,21 @@ where
     /// Query every member status in declaration order.
     Status {
         /// Temporary logical or exact status recipient.
-        reply_to: ReplyRoute<MessageProtocol<A, FixedSnapshot<Service>>>,
+        reply_to: StatusReplies::Route<MessageProtocol<A, FixedSnapshot<Service>>>,
     },
     /// Query the stable service capability for one semantic role.
     Capability {
         /// Submitted role value, returned in every capability result.
         role: Role,
         /// Temporary logical or exact capability-result recipient.
-        reply_to: ReplyRoute<MessageProtocol<A, CapabilityResult<Role, Service>>>,
+        reply_to: CapabilityReplies::Route<MessageProtocol<A, CapabilityResult<Role, Service>>>,
     },
     /// Close recovery admission and retire the complete owned actor graph.
     Shutdown,
 }
 
-impl<A, Role, Service> FixedCommand<A, Role, Service>
+impl<A, Role, Service, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
+    FixedCommand<A, Role, Service, StatusReplies, CapabilityReplies>
 where
     A: Address + EndpointAddress,
     Service: Protocol<Addr = A>,
@@ -169,7 +170,7 @@ where
     #[must_use]
     pub fn status<Route>(reply_to: Route) -> Self
     where
-        Route: Into<ReplyRoute<MessageProtocol<A, FixedSnapshot<Service>>>>,
+        Route: Into<StatusReplies::Route<MessageProtocol<A, FixedSnapshot<Service>>>>,
     {
         Self::Status {
             reply_to: reply_to.into(),
@@ -180,7 +181,7 @@ where
     #[must_use]
     pub fn capability<Route>(role: Role, reply_to: Route) -> Self
     where
-        Route: Into<ReplyRoute<MessageProtocol<A, CapabilityResult<Role, Service>>>>,
+        Route: Into<CapabilityReplies::Route<MessageProtocol<A, CapabilityResult<Role, Service>>>>,
     {
         Self::Capability {
             role,

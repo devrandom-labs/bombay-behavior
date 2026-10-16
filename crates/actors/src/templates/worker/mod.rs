@@ -1,5 +1,6 @@
 //! Worker submissions and shared start contracts used by atomic aggregates.
 
+use core::future::Future;
 use std::sync::Arc;
 
 use behavior::{
@@ -249,6 +250,20 @@ where
 /// Bombay interprets the owned plan after creation and initialization settle.
 /// Atomic aggregates never invoke application startup work in their pure
 /// transitions.
+///
+/// An owning closure returning an asynchronous `Result` implements this port.
+/// Its success and error values determine `Ready` and `Rejection`; no named
+/// plan or associated-type declarations are needed. For example, pass
+/// `move || async move { connection.prepare().await }` to `with_startup`.
+/// Starting the plan calls its closure once and returns its original future
+/// without polling it. Bombay owns polling and cancellation through the same
+/// initialization-authorized startup request as a named plan.
+/// This does not suspend work that a caller has independently spawned already.
+///
+/// A named plan may implement this trait directly when constructing its startup
+/// future needs a separate operation. A `Send` closure returning a `Send` future
+/// with `Send` success and error values uses the closure implementation and
+/// cannot also implement this trait itself.
 pub trait StartupPlan: Send {
     /// Evidence returned when startup makes the worker ready.
     type Ready: Send;
@@ -259,6 +274,21 @@ pub trait StartupPlan: Send {
     fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send;
+}
+
+impl<Plan, Work, Ready, Rejection> StartupPlan for Plan
+where
+    Plan: FnOnce() -> Work + Send,
+    Work: Future<Output = Result<Ready, Rejection>> + Send,
+    Ready: Send,
+    Rejection: Send,
+{
+    type Ready = Ready;
+    type Rejection = Rejection;
+
+    fn start(self) -> impl Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
+        self()
+    }
 }
 
 /// A worker that needs no application startup work after initialization.
@@ -336,6 +366,8 @@ impl<W> WorkerSubmission<W, ImmediateStartup> {
 
 impl<W, P> WorkerSubmission<W, P> {
     /// Prepare a worker with one concrete owned startup plan.
+    /// A closure returning an asynchronous `Result` is a plan; constructing the
+    /// submission does not call it, poll its work or start an actor.
     #[must_use]
     pub const fn with_startup(worker: W, startup: P) -> Self {
         Self { worker, startup }

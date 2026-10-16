@@ -1,5 +1,7 @@
 //! Owned operational diagnostics emitted by one fixed supervisor.
 
+use crate::composition::replies::ReplyRoutes;
+
 use behavior::{
     ActionItemResult, Behavior, BehaviorAddr, EndpointAddress, InterpreterFault, Protocol,
 };
@@ -18,8 +20,14 @@ use crate::worker::PreparedWorker;
 use crate::worker::WorkerSource;
 
 /// One operational diagnostic emitted by a fixed supervisor.
-pub enum FixedDiagnostic<Role, Worker, Plan, Source>
-where
+pub enum FixedDiagnostic<
+    Role,
+    Worker,
+    Plan,
+    Source,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> where
     Role: Send + Sync,
     Worker: Behavior + Send,
     Plan: StartupPlan,
@@ -56,6 +64,8 @@ where
             Plan,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
             WorkerPreparation<Source, Role, Worker, Plan>,
+            StatusReplies,
+            CapabilityReplies,
         >,
     },
 }

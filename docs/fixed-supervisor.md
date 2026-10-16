@@ -40,12 +40,13 @@ mode flag shared with another aggregate.
 
 `roster::new(factory, roles, config)` is the sole construction path. The factory
 prepares an initial `WorkerSubmission` for each role, and `OrderedRoles` owns the
-validated roster. `roster::Config` names the remaining choices: `activation`,
+validated roster. `roster::Config` names the remaining choices: `startup`,
 `recovery`, `failure`, `shutdown`, and `diagnostics`.
 
-Lifecycle publication is the builder's only optional transformation. Every
-semantic policy is explicit; no no-op recipient or placeholder callback is
-required.
+Lifecycle publication and logical reply capabilities are optional builder
+choices. Status and capability queries select logical routing independently;
+ordinary exact replies require no logical namespace. Every semantic policy stays
+explicit; no no-op recipient or placeholder callback is required.
 
 The initial worker function runs only while the builder prepares the roster. It
 is not stored in the resulting behavior and cannot run during a transition.

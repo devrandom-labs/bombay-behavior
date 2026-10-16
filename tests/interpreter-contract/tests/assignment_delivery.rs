@@ -10,6 +10,7 @@ use behavior::{
     InterpretationProgress, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
     Protocol, Recipient, ReportToParent, SettledItem, User,
 };
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::DiagnosticDisposition;
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::pool::queue;
@@ -96,7 +97,7 @@ impl Behavior for Worker {
     }
 }
 
-type Pool = FifoPool<Role, Worker, ImmediateStartup, Never, Infallible, Box<str>, u16>;
+type Pool = FifoPool<Role, Worker, ImmediateStartup, Never, Infallible, Box<str>, u16, MixedReplies>;
 type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, Box<str>, u16>>;
 
 fn prepare_worker(_: &Role) -> Result<WorkerSubmission<Worker, ImmediateStartup>, Never> {
@@ -137,7 +138,7 @@ async fn ready_pool() -> (Active<Pool>, CreationId) {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    )
+    ).logical_replies().build()
     .unwrap_or_else(|_| panic!("the declared worker constructs the pool"));
     let initialized = pool.initialize().expect("pool initialization");
     let mut pool = initialized.behavior;

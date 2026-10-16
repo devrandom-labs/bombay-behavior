@@ -23,6 +23,7 @@ use behavior::{
     InterpreterFault, ItemSettlement, MessageProtocol, Never, NoBirths, NoSends, Protocol,
     Recipient, RecoverEvent, SettledItem, Step, User, UserEvent,
 };
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::proxy::{
@@ -70,8 +71,16 @@ macro_rules! start_fixed_preparation {
 
 #[test]
 fn fixed_supervisor_projects_status_and_capability_hosts_in_order() {
-    type Supervisor =
-        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>;
+    type Supervisor = FixedSupervisor<
+        SearchRole,
+        SearchWorker,
+        SearchStartup,
+        Never,
+        Infallible,
+        Infallible,
+        MixedReplies,
+        MixedReplies,
+    >;
     type Status = MessageProtocol<
         RuntimeAddr,
         behavior_actors::supervisor::roster::FixedSnapshot<<SearchWorker as Behavior>::Protocol>,
@@ -206,7 +215,14 @@ fn terminal_unexpected<Source>(
     mut diagnostics: Vec<
         DiagnosticAction<
             Infallible,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >,
 ) -> FixedSupervisorEvent<
@@ -215,6 +231,8 @@ fn terminal_unexpected<Source>(
     SearchStartup,
     ActionItemResult<PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>>,
     WorkerPreparation<Source, SearchRole, SearchWorker, SearchStartup>,
+    MixedReplies,
+    MixedReplies,
 >
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
@@ -333,14 +351,22 @@ struct SearchDiagnosticProtocol;
 
 impl Protocol for SearchDiagnosticProtocol {
     type Addr = RuntimeAddr;
-    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Never>;
+    type Msg =
+        FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Never, MixedReplies, MixedReplies>;
 }
 
 struct SearchRecoveryDiagnosticProtocol;
 
 impl Protocol for SearchRecoveryDiagnosticProtocol {
     type Addr = RuntimeAddr;
-    type Msg = FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>;
+    type Msg = FixedDiagnostic<
+        SearchRole,
+        SearchWorker,
+        SearchStartup,
+        SearchWorkshop,
+        MixedReplies,
+        MixedReplies,
+    >;
 }
 
 impl StartupPlan for SearchStartup {
@@ -360,6 +386,8 @@ type SearchSupervisorEvent = FixedSupervisorEvent<
     SearchStartup,
     ActionItemResult<PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>>,
     WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
+    MixedReplies,
+    MixedReplies,
 >;
 
 fn shutdown_supervisor_event(from: RuntimeAddr) -> SearchSupervisorEvent {
@@ -477,7 +505,18 @@ fn commit_proxy_births(
 fn first_proxy_dispatched(
     endpoint: u64,
 ) -> (
-    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
+    Active<
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Never,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
+    >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) {
     let initialized = roster::new(
@@ -491,6 +530,8 @@ fn first_proxy_dispatched(
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -532,6 +573,8 @@ fn routed_start(
             Never,
             EstablishedRecipient<SearchDiagnosticProtocol>,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
@@ -547,6 +590,8 @@ fn routed_start(
             diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -710,6 +755,8 @@ fn fixed_runtime_inputs_use_their_declared_sources() {
                 PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
             >,
             WorkerPreparation<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
+            MixedReplies,
+            MixedReplies,
         >,
     >();
 }
@@ -862,6 +909,8 @@ fn automatic_recovery_has_one_named_worker_preparation_lane() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -883,6 +932,8 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -958,6 +1009,8 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -1033,6 +1086,8 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
                 diagnostics: DiagnosticDisposition::terminate(),
             },
         )
+        .logical_status()
+        .logical_capabilities()
         .build()
         .unwrap_or_else(|_| panic!("every initial worker prepares"))
         .initialize()
@@ -1276,6 +1331,8 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("both tracked workers prepare"))
     .initialize()
@@ -1397,6 +1454,8 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the tracked worker prepares"))
     .initialize()
@@ -1798,7 +1857,18 @@ fn another_supervisors_proxy_input_settlement_returns_to_its_owner() {
 fn single_proxy_dispatched(
     nonce: u64,
 ) -> (
-    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
+    Active<
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Never,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
+    >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
 ) {
     single_proxy_dispatched_with_recovery(nonce, Recovery::temporary())
@@ -1809,7 +1879,16 @@ fn single_proxy_dispatched_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Source,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
     >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
 )
@@ -1840,6 +1919,8 @@ fn single_proxy_dispatched_with_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
@@ -1847,7 +1928,14 @@ fn single_proxy_dispatched_with_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let initialized = roster::new(
@@ -1862,6 +1950,8 @@ where
             diagnostics: diagnostics,
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -1892,7 +1982,18 @@ where
 }
 
 async fn ready_single_proxy_with_worker() -> (
-    Active<FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Never, Infallible, Infallible>>,
+    Active<
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Never,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
+    >,
     ReadyMember,
 ) {
     ready_single_proxy_with_recovery(Recovery::temporary()).await
@@ -1902,7 +2003,16 @@ async fn ready_single_proxy_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Source,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
     >,
     ReadyMember,
 )
@@ -1932,6 +2042,8 @@ async fn ready_single_proxy_with_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ReadyMember,
@@ -1939,7 +2051,14 @@ async fn ready_single_proxy_with_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let (mut fixed, initial) = single_proxy_dispatched_with_policies(
@@ -1994,6 +2113,8 @@ async fn ready_single_proxy_with_lifecycle() -> (
             Never,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ReadyMember,
@@ -2019,6 +2140,8 @@ async fn ready_single_proxy_with_lifecycle_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ReadyMember,
@@ -2026,7 +2149,14 @@ async fn ready_single_proxy_with_lifecycle_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let initialized = roster::new(
@@ -2043,6 +2173,8 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -2121,6 +2253,8 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
         },
     )
     .publish_lifecycle(lifecycle.clone())
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -2189,6 +2323,8 @@ fn three_role_initial_operations(
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
@@ -2222,6 +2358,8 @@ fn three_role_initial_operations_with_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     Vec<ProxyOperation<Here, SearchWorker, SearchStartup>>,
@@ -2229,7 +2367,14 @@ fn three_role_initial_operations_with_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let initialized = roster::new(
@@ -2246,6 +2391,8 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -2281,6 +2428,8 @@ async fn accept_initial_operation<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     operation: ProxyOperation<Here, SearchWorker, SearchStartup>,
@@ -2291,7 +2440,14 @@ async fn accept_initial_operation<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let endpoint = Endpoint(operation.creation().get() + 100);
@@ -2381,6 +2537,8 @@ async fn ready_three_role_roster(
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     Vec<ReadyMember>,
@@ -2415,6 +2573,8 @@ async fn ready_three_role_roster_with_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     Vec<ReadyMember>,
@@ -2422,7 +2582,14 @@ async fn ready_three_role_roster_with_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let (mut fixed, operations) = three_role_initial_operations_with_policies(
@@ -2454,6 +2621,8 @@ async fn coordinated_preparation(
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
@@ -3045,6 +3214,8 @@ async fn admitted_one_for_all(
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     Vec<ReadyMember>,
@@ -3083,6 +3254,8 @@ async fn one_for_all_with_dispatched_initial_peers() -> (
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
@@ -3133,6 +3306,8 @@ fn begin_recovery<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     member: &ReadyMember,
@@ -3140,7 +3315,14 @@ fn begin_recovery<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let worker_stop = ChildStopped::new(member.worker.creation(), Ok(Exit::Normal), Instant::now());
@@ -4433,6 +4615,8 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -4561,6 +4745,8 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -5203,6 +5389,8 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
             diagnostics: DiagnosticDisposition::deliver_to(diagnostics.clone()),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -5629,6 +5817,8 @@ fn unavailable_report_before_proxy_creation_returns_complete() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -5964,6 +6154,8 @@ async fn one_replacement_operation() -> (
             SearchWorkshop,
             Infallible,
             EstablishedRecipient<SearchLifecycleProtocol>,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ProxyOperation<Here, SearchWorker, SearchStartup>,
@@ -5992,6 +6184,8 @@ async fn one_replacement_operation() -> (
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -6724,7 +6918,14 @@ async fn routed_replacement_rejection_retires_only_the_failed_member() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(709));
     let recovery = Recovery::permanent(
@@ -6846,7 +7047,14 @@ async fn routed_restart_denial_retires_the_exact_trigger() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(710));
     let recovery = Recovery::permanent(
@@ -6919,7 +7127,14 @@ async fn routed_restart_denial_stops_the_complete_supervisor() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(711));
     let recovery = Recovery::permanent(
@@ -7188,7 +7403,14 @@ async fn routed_restart_schedule_rejection_retires_only_the_trigger() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(712));
     let (mut fixed, schedule) = delayed_schedule_with_policies(
@@ -7244,7 +7466,14 @@ async fn routed_restart_schedule_rejection_stops_the_supervisor() {
     let diagnostic_route = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(713));
     let (mut fixed, schedule) = delayed_schedule_with_policies(
@@ -7881,7 +8110,14 @@ async fn coordinated_worker_rejection_restores_peers_before_supervisor_shutdown(
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                FallibleWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(985));
     let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -8009,7 +8245,14 @@ async fn every_coordinated_preparation_return_preserves_selection_and_reaction()
                 let diagnostics = EstablishedRecipient::<
                     MessageProtocol<
                         RuntimeAddr,
-                        FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+                        FixedDiagnostic<
+                            SearchRole,
+                            SearchWorker,
+                            SearchStartup,
+                            FallibleWorkshop,
+                            MixedReplies,
+                            MixedReplies,
+                        >,
                     >,
                 >::issued(Endpoint(986));
                 let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -8184,7 +8427,14 @@ async fn every_coordinated_worker_rejection_preserves_strategy_and_topology_reac
                 let diagnostics = EstablishedRecipient::<
                     MessageProtocol<
                         RuntimeAddr,
-                        FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+                        FixedDiagnostic<
+                            SearchRole,
+                            SearchWorker,
+                            SearchStartup,
+                            FallibleWorkshop,
+                            MixedReplies,
+                            MixedReplies,
+                        >,
                     >,
                 >::issued(Endpoint(987));
                 let (mut fixed, members) = ready_three_role_roster_with_policies(
@@ -8381,7 +8631,14 @@ async fn routed_preparation_failure_retires_only_the_failed_member() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                FallibleWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(911));
     let recovery = Recovery::permanent(
@@ -8672,7 +8929,14 @@ async fn exact_proxy_retirement_publishes_the_topology_change_once() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                FallibleWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(913));
     let recovery = Recovery::permanent(
@@ -8796,7 +9060,14 @@ async fn routed_preparation_failure_stops_the_complete_supervisor() {
     let diagnostics = EstablishedRecipient::<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, FallibleWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                FallibleWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     >::issued(Endpoint(921));
     let recovery = Recovery::permanent(
@@ -8903,6 +9174,8 @@ async fn preparing_one_for_one() -> (
             SearchWorkshop,
             Infallible,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     PrepareWorkers<SearchWorkshop, SearchRole, SearchWorker, SearchStartup>,
@@ -8923,7 +9196,16 @@ async fn preparing_one_for_one_with_recovery<Source>(
     recovery: Recovery<Source>,
 ) -> (
     Active<
-        FixedSupervisor<SearchRole, SearchWorker, SearchStartup, Source, Infallible, Infallible>,
+        FixedSupervisor<
+            SearchRole,
+            SearchWorker,
+            SearchStartup,
+            Source,
+            Infallible,
+            Infallible,
+            MixedReplies,
+            MixedReplies,
+        >,
     >,
     PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>,
     CreationId,
@@ -8953,6 +9235,8 @@ async fn preparing_one_for_one_with_policies<Source, DiagnosticRoute>(
             Source,
             DiagnosticRoute,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     PrepareWorkers<Source, SearchRole, SearchWorker, SearchStartup>,
@@ -8962,7 +9246,14 @@ async fn preparing_one_for_one_with_policies<Source, DiagnosticRoute>(
 where
     Source: WorkerSource<SearchRole, SearchWorker, SearchStartup>,
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, Source>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                Source,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let (mut fixed, member) = ready_single_proxy_with_policies(
@@ -9011,13 +9302,22 @@ async fn delayed_schedule_with_policies<DiagnosticRoute>(
             SearchWorkshop,
             DiagnosticRoute,
             Infallible,
+            MixedReplies,
+            MixedReplies,
         >,
     >,
     ScheduleAfter,
 )
 where
     DiagnosticRoute: behavior_actors::diagnostic::DiagnosticRoute<
-            FixedDiagnostic<SearchRole, SearchWorker, SearchStartup, SearchWorkshop>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchStartup,
+                SearchWorkshop,
+                MixedReplies,
+                MixedReplies,
+            >,
         > + Clone,
 {
     let recovery = Recovery::permanent(
@@ -9432,6 +9732,8 @@ fn pending_proxy_births_are_observable_as_creating_proxy() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .logical_status()
+    .logical_capabilities()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()

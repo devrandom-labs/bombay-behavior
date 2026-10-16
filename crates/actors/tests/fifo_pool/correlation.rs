@@ -49,6 +49,8 @@ async fn creation_batch_requires_declared_worker_order() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -94,6 +96,8 @@ async fn creation_batch_requires_declared_worker_order() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -544,6 +548,8 @@ fn pending_creation_drain_accepts_only_the_exact_worker_stop() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -612,6 +618,8 @@ fn creation_returned_during_drain_stops_the_uninitialized_worker() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -681,6 +689,8 @@ fn rejected_creation_during_drain_returns_the_activation_to_diagnostics() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -727,6 +737,8 @@ fn initialization_stop_must_name_its_exact_worker() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -788,6 +800,8 @@ fn initialization_stop_during_drain_must_name_its_exact_worker() {
             diagnostics: DiagnosticDisposition::<core::convert::Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -969,6 +983,8 @@ async fn non_source_diagnostic_returns_original_shared_role_and_reason() {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("infallible worker declaration"));
     let initialized = pool
         .initialize()

@@ -1,5 +1,7 @@
 //! Fixed-roster proxy ownership during initialization.
 
+use crate::composition::replies::ReplyRoutes;
+
 mod outcome;
 mod start;
 mod stop;
@@ -101,7 +103,12 @@ where
         Self::New(members)
     }
 
-    pub(super) fn begin<PreparationStart, PreparationReturn>(
+    pub(super) fn begin<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         creations: &mut CreationSequence,
     ) -> Result<
@@ -112,7 +119,15 @@ where
         ),
         (
             Self,
-            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+            FixedSupervisorError<
+                Role,
+                Worker,
+                Plan,
+                PreparationStart,
+                PreparationReturn,
+                StatusReplies,
+                CapabilityReplies,
+            >,
         ),
     > {
         match self {

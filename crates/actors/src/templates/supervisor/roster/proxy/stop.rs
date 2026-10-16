@@ -1,5 +1,7 @@
 //! Exact fixed-member join for StableProxy shutdown settlement and proxy exit.
 
+use crate::composition::replies::ReplyRoutes;
+
 use core::ops::ControlFlow;
 
 use behavior::{
@@ -277,14 +279,27 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    pub(in super::super) fn accept_proxy_stop<PreparationStart, PreparationReturn>(
+    pub(in super::super) fn accept_proxy_stop<
+        PreparationStart,
+        PreparationReturn,
+        StatusReplies: ReplyRoutes,
+        CapabilityReplies: ReplyRoutes,
+    >(
         self,
         stopped: ChildStopped<BehaviorAddr<Worker>>,
     ) -> Result<
         (Self, Option<RoleName<Role>>),
         (
             Self,
-            FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+            FixedSupervisorError<
+                Role,
+                Worker,
+                Plan,
+                PreparationStart,
+                PreparationReturn,
+                StatusReplies,
+                CapabilityReplies,
+            >,
         ),
     > {
         match self {

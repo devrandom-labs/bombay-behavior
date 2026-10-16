@@ -79,6 +79,7 @@ fn initial_workers_preserve_roster_order_and_fresh_creation() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
+    .build()
     .unwrap_or_else(|_| panic!("both workers are prepared"));
     let initialized = pool
         .initialize()
@@ -113,7 +114,7 @@ fn preparation_refusal_returns_all_workers_and_original_configuration() {
     let route = Box::new(vec![173_u8, 179]);
     let route_address = core::ptr::from_ref(route.as_ref());
     let activation = StartupLimit::new(2).expect("two activations");
-    let mut rejection = match queue::new(
+    let rejection = match queue::new(
         |role: &SearchRole| match role {
             SearchRole::Primary | SearchRole::Reserve => {
                 Ok(WorkerSubmission::immediate(SearchWorker))
@@ -133,7 +134,9 @@ fn preparation_refusal_returns_all_workers_and_original_configuration() {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::deliver_to(route),
         },
-    ) {
+    )
+    .build()
+    {
         Ok(_) => panic!("secondary preparation must return its refusal"),
         Err(rejection) => rejection,
     };

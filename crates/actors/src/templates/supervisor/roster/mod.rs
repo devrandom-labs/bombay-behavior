@@ -1,11 +1,12 @@
 //! Construction values for one fixed, ordered supervisor roster.
 
+use crate::composition::replies::ReplyRoutes;
+
+use core::marker::PhantomData;
 use core::mem;
 use core::ops::ControlFlow;
 
-use crate::{
-    DeliveryRoute, DiagnosticAction, DiagnosticDisposition, ObserveChild, ReplyRoute, ScheduleAfter,
-};
+use crate::{DeliveryRoute, DiagnosticAction, DiagnosticDisposition, ObserveChild, ScheduleAfter};
 use behavior::{
     ActionItemResult, Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorAddr,
     BehaviorBase, Births, ChildHead, CreationId, CreationSequence, Creations, CreationsSettled,
@@ -138,8 +139,16 @@ pub enum FailureReaction {
 }
 
 /// A fixed supervisor whose complete initial roster has been prepared.
-pub struct FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>
-where
+pub struct FixedSupervisor<
+    Role,
+    Worker,
+    Plan,
+    Source,
+    DiagnosticRoute,
+    LifecycleRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> where
     Role: Send + Sync,
     Source: WorkerSource<Role, Worker, Plan>,
     Worker: Behavior + Send,
@@ -155,6 +164,7 @@ where
     actor_drain: ActorDrainPolicy,
     diagnostics: DiagnosticDisposition<DiagnosticRoute>,
     lifecycle: Option<LifecycleRoute>,
+    replies: PhantomData<fn() -> (StatusReplies, CapabilityReplies)>,
 }
 
 /// Controlled rejection while establishing a fixed supervisor's proxy roster.
@@ -162,8 +172,15 @@ where
 /// No variant loses a prepared worker submission or a returned runtime input.
 /// Namespace exhaustion retires every locally reserved child route and returns
 /// the complete prepared roster partitioned around the exact rejected role.
-pub enum FixedSupervisorError<Role, Worker, Plan, PreparationStart, PreparationReturn>
-where
+pub enum FixedSupervisorError<
+    Role,
+    Worker,
+    Plan,
+    PreparationStart,
+    PreparationReturn,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> where
     Worker: Behavior,
     Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
@@ -184,7 +201,15 @@ where
     /// A typed runtime or application input was not valid in the current phase.
     InputRejected {
         /// Complete returned input, unchanged.
-        input: FixedSupervisorEvent<Role, Worker, Plan, PreparationStart, PreparationReturn>,
+        input: FixedSupervisorEvent<
+            Role,
+            Worker,
+            Plan,
+            PreparationStart,
+            PreparationReturn,
+            StatusReplies,
+            CapabilityReplies,
+        >,
     },
     /// The stored roster contradicted its aggregate phase.
     ///
@@ -210,8 +235,26 @@ where
     },
 }
 
-impl<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute> BehaviorBase
-    for FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>
+impl<
+    Role,
+    Worker,
+    Plan,
+    Source,
+    DiagnosticRoute,
+    LifecycleRoute,
+    StatusReplies: ReplyRoutes,
+    CapabilityReplies: ReplyRoutes,
+> BehaviorBase
+    for FixedSupervisor<
+        Role,
+        Worker,
+        Plan,
+        Source,
+        DiagnosticRoute,
+        LifecycleRoute,
+        StatusReplies,
+        CapabilityReplies,
+    >
 where
     Role: Send + Sync,
     Worker: Behavior + Send,
@@ -228,8 +271,8 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>
-    FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>
+impl<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes>
+    FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute, StatusReplies, CapabilityReplies>
 where
     Role: Eq + Send + Sync,
     Worker: Behavior + Send,
@@ -239,7 +282,7 @@ where
     <BehaviorAddr<Worker> as Address>::Nonce: Send,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
     EstablishedActor<StableProxy<Worker, Plan>>: Clone + Send,
-    DiagnosticRoute: crate::DiagnosticRoute<FixedDiagnostic<Role, Worker, Plan, Source>> + Clone,
+    DiagnosticRoute: crate::DiagnosticRoute<FixedDiagnostic<Role, Worker, Plan, Source, StatusReplies, CapabilityReplies>> + Clone,
     LifecycleRoute: FixedLifecycleRoute<Role, Worker, Plan> + Clone,
     LifecycleRoute::Sends: behavior::SendsFor<
             FixedSupervisorEvent<
@@ -248,8 +291,16 @@ where
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
                 WorkerPreparation<Source, Role, Worker, Plan>,
-            >,
+             StatusReplies, CapabilityReplies>,
         >,
+    <StatusReplies::Route<MessageProtocol<BehaviorAddr<Worker>, FixedSnapshot<Worker::Protocol>>> as DeliveryRoute>::Sends:
+        behavior::SendsFor<FixedSupervisorEvent<Role, Worker, Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>, StatusReplies, CapabilityReplies>>,
+    <CapabilityReplies::Route<MessageProtocol<BehaviorAddr<Worker>, CapabilityResult<Role, Worker::Protocol>>> as DeliveryRoute>::Sends:
+        behavior::SendsFor<FixedSupervisorEvent<Role, Worker, Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>, StatusReplies, CapabilityReplies>>,
 {
     fn authorize_roster(
         &self,
@@ -267,7 +318,7 @@ where
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
                 WorkerPreparation<Source, Role, Worker, Plan>,
-            >,
+             StatusReplies, CapabilityReplies>,
         ),
     > {
         let (roster, operations) = match roster.authorize(self.startup.maximum()) {
@@ -390,7 +441,7 @@ where
     fn apply_recovery_failure(
         &mut self,
         failed: RecoveryFailure<Role, Worker, Plan>,
-        diagnostic: FixedDiagnostic<Role, Worker, Plan, Source>,
+        diagnostic: FixedDiagnostic<Role, Worker, Plan, Source, StatusReplies, CapabilityReplies>,
     ) -> BehaviorActed<Self> {
         match (&self.diagnostics, self.failure_reaction) {
             (DiagnosticDisposition::Terminate, _) => {
@@ -820,7 +871,7 @@ where
         previous: OnlineMember<Role, Worker, Plan>,
         stopped: Option<crate::ChildStopped<BehaviorAddr<Worker>>>,
         recovery: RecoveryTicket,
-        diagnostic: FixedDiagnostic<Role, Worker, Plan, Source>,
+        diagnostic: FixedDiagnostic<Role, Worker, Plan, Source, StatusReplies, CapabilityReplies>,
     ) -> BehaviorActed<Self> {
         let OnlineMember {
             role,
@@ -1256,7 +1307,7 @@ where
         &mut self,
         roster: FixedRoster<Role, Worker, Plan>,
         from: BehaviorAddr<Worker>,
-        message: FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol>,
+        message: FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol, StatusReplies, CapabilityReplies>,
     ) -> BehaviorActed<Self> {
         match message {
             FixedCommand::Shutdown => match roster.begin_shutdown(self.actor_drain) {
@@ -1326,7 +1377,7 @@ where
             Plan,
             ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
             WorkerPreparation<Source, Role, Worker, Plan>,
-        >,
+         StatusReplies, CapabilityReplies>,
     ) -> BehaviorActed<Self> {
         let become_ = match &self.diagnostics {
             DiagnosticDisposition::DeliverTo(_) => Step::Continue,
@@ -1341,8 +1392,8 @@ where
     }
 }
 
-impl<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute> Behavior
-    for FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute>
+impl<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute, StatusReplies: ReplyRoutes, CapabilityReplies: ReplyRoutes> Behavior
+    for FixedSupervisor<Role, Worker, Plan, Source, DiagnosticRoute, LifecycleRoute, StatusReplies, CapabilityReplies>
 where
     Role: Eq + Send + Sync,
     Worker: Behavior + Send,
@@ -1352,7 +1403,7 @@ where
     <BehaviorAddr<Worker> as Address>::Nonce: Send,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
     EstablishedActor<StableProxy<Worker, Plan>>: Clone + Send,
-    DiagnosticRoute: crate::DiagnosticRoute<FixedDiagnostic<Role, Worker, Plan, Source>> + Clone,
+    DiagnosticRoute: crate::DiagnosticRoute<FixedDiagnostic<Role, Worker, Plan, Source, StatusReplies, CapabilityReplies>> + Clone,
     LifecycleRoute: FixedLifecycleRoute<Role, Worker, Plan> + Clone,
     LifecycleRoute::Sends: behavior::SendsFor<
             FixedSupervisorEvent<
@@ -1361,12 +1412,20 @@ where
                 Plan,
                 ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
                 WorkerPreparation<Source, Role, Worker, Plan>,
-            >,
+             StatusReplies, CapabilityReplies>,
         >,
+    <StatusReplies::Route<MessageProtocol<BehaviorAddr<Worker>, FixedSnapshot<Worker::Protocol>>> as DeliveryRoute>::Sends:
+        behavior::SendsFor<FixedSupervisorEvent<Role, Worker, Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>, StatusReplies, CapabilityReplies>>,
+    <CapabilityReplies::Route<MessageProtocol<BehaviorAddr<Worker>, CapabilityResult<Role, Worker::Protocol>>> as DeliveryRoute>::Sends:
+        behavior::SendsFor<FixedSupervisorEvent<Role, Worker, Plan,
+        ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
+        WorkerPreparation<Source, Role, Worker, Plan>, StatusReplies, CapabilityReplies>>,
 {
     type Protocol = MessageProtocol<
         BehaviorAddr<Worker>,
-        FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol>,
+        FixedCommand<BehaviorAddr<Worker>, Role, Worker::Protocol, StatusReplies, CapabilityReplies>,
     >;
     type Event = FixedSupervisorEvent<
         Role,
@@ -1374,24 +1433,24 @@ where
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
         WorkerPreparation<Source, Role, Worker, Plan>,
-    >;
+     StatusReplies, CapabilityReplies>;
     type Sends = FixedSupervisorRequests<
         InterpreterRequests<ObserveChild<Worker::Protocol, ChildHead>>,
         SourceActions<PrepareWorkers<Source, Role, Worker, Plan>>,
         SourceActions<ProxyOperation<behavior::Here, Worker, Plan>>,
         SourceActions<ScheduleAfter>,
         LifecycleRoute::Sends,
-        <ReplyRoute<
+        <StatusReplies::Route<
             MessageProtocol<BehaviorAddr<Worker>, FixedSnapshot<Worker::Protocol>>,
         > as DeliveryRoute>::Sends,
-        <ReplyRoute<
+        <CapabilityReplies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 CapabilityResult<Role, Worker::Protocol>,
             >,
         > as DeliveryRoute>::Sends,
         InterpreterRequests<
-            DiagnosticAction<DiagnosticRoute, FixedDiagnostic<Role, Worker, Plan, Source>>,
+            DiagnosticAction<DiagnosticRoute, FixedDiagnostic<Role, Worker, Plan, Source, StatusReplies, CapabilityReplies>>,
         >,
     >;
     type Ph = Never;
@@ -1401,7 +1460,7 @@ where
         Plan,
         ActionItemResult<PrepareWorkers<Source, Role, Worker, Plan>>,
         WorkerPreparation<Source, Role, Worker, Plan>,
-    >;
+     StatusReplies, CapabilityReplies>;
     type Birth = Births<StableProxy<Worker, Plan>>;
 
     fn init(&mut self, _: InitializationTurn) -> BehaviorActed<Self> {

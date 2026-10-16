@@ -1,0 +1,24 @@
+error[E0283]: type annotations needed
+  --> tests/ui/pool_ambiguous_completion.rs:55:6
+   |
+55 |     .build();
+   |      ^^^^^ cannot infer type for struct `ReportToParent<Completion<_>>`
+   |
+note: multiple `impl`s satisfying `ClerkSends: SendInput<ReportToParent<Completion<_>>, _>` found
+  --> tests/ui/pool_ambiguous_completion.rs:28:1
+   |
+28 | / #[behavior::behavior(addr = RuntimeAddr, message = Assignment<u64>, sends = {
+29 | | first: InterpreterRequests<ReportToParent<Completion<u64>>>,
+30 | |     second: InterpreterRequests<ReportToParent<Completion<u64>>>,
+31 | |     audits: Vec<Delivery<Audits>>,
+32 | | })]
+   | |___^
+note: required by a bound in `FifoBuilder::<Factory, Role, Source, DiagnosticRoute, Replies>::build`
+  --> $BEHAVIOR_ACTORS/src/templates/pool/queue/config.rs
+   |
+   |     pub fn build<W, P, Preparation, Job, WorkerResult, Path>(
+   |            ----- required by a bound in this associated function
+...
+   |             behavior::SendInput<behavior::ReportToParent<super::Completion<WorkerResult>>, Path>,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FifoBuilder::<Factory, Role, Source, DiagnosticRoute, Replies>::build`
+   = note: this error originates in the attribute macro `behavior::behavior` (in Nightly builds, run with -Z macro-backtrace for more info)
