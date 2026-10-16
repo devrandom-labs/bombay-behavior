@@ -3209,6 +3209,22 @@ EstablishedDelivery/ClosedRecipient/Continue row beside final Stop while parent
 completion succeeds. Job input is u64, not an affine-input proof; Keyed still
 names two actual domain reply protocols/hosts. These are old actual runtime
 archives with their five recorded syntax adapters, not latest-main acceptance.
+The unchanged five-case consumer against repaired Bombay214d5b0 first fails
+four E0432 imports because delivery still uses published atomic module names.
+The pre-recorded current-consumer stage repeats only the existing five-file
+module/startup migration in an exact isolated214d5b0 archive: original files
+match6c5c18a, replacements match the already-proven adapters, all615 other
+tracked files match214d5b0, and every consumer assertion/oracle is unchanged.
+This mechanical migration adds no law, state, bound, wrapper, protocol or
+interpreter capability. All five native cases pass current1.99 debug/release
+in8.289/36.157s, zero ignored, with614 frozen inputs conserved, including
+inherited workspace context. Both independent reviews pass. Evidence:
+worker-effects/current-runtime-adaptation.json and
+current-adapted-bombay-{metadata,native-sources,native-results,REVIEW}.json.
+This is214d5b0 plus five explicit adapters, not unchanged214d5b0, registry-only
+owners, a minimum-compiler replay or full-runtime gate. The initial setup's
+no-runtime-edit wording and final driver's exact-current shorthand do not widen
+this scope; the unadapted E0432 compile remains retained separately.
 Original FIFO assertions remain; absolute progress deadlines and nonempty final
 Stop checks prevent the two reviewed false positives. Five v3 fixture controls
 are independently reviewed; attempts1/2 have no acceptance credit. Their scope
