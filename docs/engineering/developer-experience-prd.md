@@ -993,25 +993,42 @@ adoption,7f4f0b3 independent oracles and7b0d013/c8c2104 migration guidance.
 | Reconciled Engine inventory | Registry1a8f20b passes all11 inventory checks on both compilers/profiles; four intended metadata inversions fail. All45 templates/19 capability families and24 historical98983 evidence records remain. Candidate241088d additionally binds Actors to6488965 and its shared timer family. | Presence scans are inventory, not complete type/interpreter proof or refreshed historical execution. Registry source still uses named wrappers; candidate remains unpublished. |
 | Independent inactivity fuzz |20000 runs per nightly1.101 debug/release with sanitizer disabled; complete actual notices/targets, schedules, actor state, creations and verdict checked against unchanged InactivityModel. Eight intended assertion failures reject missing/duplicate/future notification and service rearm. | Evolving corpus, not identical comparative trials or sanitizer evidence; errors, terminal turns and exhaustion have separate tests. |
 
-The subsequent pinned1.99 remote feature matrix passes both child-feature
-harnesses (six fixtures each) and all426 debug outer cases/20 separate UI
-fixtures. Optimized execution fails one Counter Node startup before pressure or
-retry work;425 other cases pass. Its old panic discarded the startup cause, so
-no cause is established. A same-source isolated pass does not repair that failed
-matrix. Clippy/docs and minimum-compiler feature runs have not executed.
+The final formatted Bombayd743f1f test source passes the pinned1.99 remote
+sequence in101.644s:426 exact outer cases and20 separate UI fixtures per
+debug/release profile, both child-feature harnesses with six fixtures each,
+formatting, Bombay all-feature/all-target strict Clippy and all-feature docs.
+All2084 inputs remain exact through nine commands; two independent reviews
+confirm case/target sets, fixture modes, six required request regressions and
+absence of warnings. Docs did not deny warnings; none were emitted. This does
+not certify minimum compiler, actual registry, protected nested consumers,
+whole-workspace all-feature runtime or authoritative Bombay Nix gates.
 
-The focused next witness is test-only: retain startup cause diagnostics and hold
-both actual loopback listeners at the chosen nonzero port. Require the original
-endpoint to fail specifically at native address binding, then prove the complete
-unchanged local pressure journey with `tls/localhost:0` while those listeners
-remain held. This is fixture ownership policy: only a real SDK listener owns a
-port reservation; both pressure cases have no peer that needs a preselected
-port. Reuse their actual Node, configuration and full failure/retirement oracles;
-change no runtime/API, shared two-node fixture or retry policy. Expected retained
-surface: one test file, zero production/public-type delta. A successful control
-would prove this fixture vulnerability and repair, not recover the original
-historical cause. The failed matrix remains failed.
+The original optimized matrix still fails one startup before pressure work;
+its panic hid the cause, and a same-source isolated pass does not explain it.
+A controlled copy retains one parent IPv4/IPv6 listening pair across all four
+commands: fixed-port startup fails native AddressInUse in both profiles, while
+SDK-owned `localhost:0` passes the complete original Counter journey. Both
+local-only pressure fixtures now select SDK-owned ports and reveal existing
+startup sources on failure. Their Work bodies/all61 assertions and shared
+two-node fixtures stay exact. The pre-edit law is preserved at
+[566be5c](https://github.com/devrandom-labs/bombay-behavior/blob/566be5c/docs/engineering/developer-experience-prd.md).
+First-runner, Darwin socket-option guard, initial formatting and draft audit
+parser failures receive no gate credit. These controls establish a fixture
+vulnerability and repair, not the hidden historical failure cause.
 
+Minimum feature execution stops at child-denial snapshot drift before later
+stages:1.96 emits oneE0277 where1.99 expects two. The original bare and
+feature-unified child fixtures are byte-identical; current stderr differs only
+by filename. The already reviewed minimum patch removes that same duplicate
+error for the feature-unified twin. The next test-only change will keep one
+existing bare fixture, remove the obsolete feature branch/twin, and project the
+reviewed expectation by filename into the same strict compiler manifest.
+No production API, bound, diagnostic parser, error meaning or fixture source
+will change;124 corpus cases/19 positives/105 denials must remain. Prove both
+compilers under both feature modes and rerun strict verification before
+retention. Expected scope: harness plus compiler metadata/patch, two files
+deleted, zero production/public-type delta. Current passing runs do not close
+the failed minimum gate or the old optimized retry hang.
 
 Two old oracles were repaired separately from mechanical migration. The service
 test previously sent its alleged inner event to the outer ingress; it now
@@ -1038,7 +1055,7 @@ unchanged. The disjoint key grows8→16:64 named timers retain7184 versus6672byt
 (+512),18 allocations each, total allocation14000 versus13008. Drain retains16,
 full release zero. No full actor/application peak, throughput or latency gain
 is established. Complete Bombay feature Rust delta againstbf1921b is
-production+143/-39/net104, tests+610/-166/net444 across28 Rust files; public
+production+143/-39/net104, tests+623/-175/net448 across29 Rust files; public
 types+0/-0. Four existing ActorExt signatures lose IDs; three private contracts
 own timer key, occurrence proof and destination. There is no new production
 module, lifecycle phase, nested transition authority, duplicated cause, semantic
