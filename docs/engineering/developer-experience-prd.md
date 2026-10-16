@@ -1172,6 +1172,20 @@ broad gates remain separate. The patch is private pending the AGENTS file-budget
 expansion; the actual branch stays clean at native aedca53. Existing receipts
 NATIVE-MIGRATION-{FORMATTED,ASSERTIONS,INPUTS} bind the prepared result.
 
+The broader private source-selected nextest run exits100:790 pass/one failure/
+two skipped in254.721s. The failure independently detects driver-law metadata
+still selecting027 while Cargo selects source028; this is not a full pass.
+Before any binding edits, the law is exact package/version/revision conservation,
+with one entry per actual actor composition. A later registry-adoption batch
+must update its existing three metadata/test files, retain all eight Driver laws
+and original executable evidence revisions, and inventory finite Stash plus
+explicit UnlimitedStash (45→46 templates, unchanged19 runtime request families).
+Existing initialization, interpreter, custody and source obligations are reused;
+no production/type/bound change is justified. Prepare this only in another private
+copy now; it is outside the pending24-file caller-only approval and remains a
+separately counted adoption prerequisite. Do not weaken the version assertion
+or rewrite historical evidence as current-source execution.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
