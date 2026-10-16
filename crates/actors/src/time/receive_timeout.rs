@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use super::domain::{TimerAdmission, TimerLease};
-use super::event::{TimedEvent, TimedReaction};
-use crate::protocol::{ScheduleAfter, TimerId};
+use super::event::TimedReaction;
+use crate::protocol::{OwnedScheduleAfter, OwnedTimerElapsed};
 use behavior::Step;
 use behavior::{
     Actions, Address, Behavior, BirthMode, EventLayer, InterpreterRequests, SendEffects, SendLayer,
@@ -15,7 +15,7 @@ use behavior::{
 pub(crate) type ReceiveTimeoutActions<B> = Actions<
     behavior::BehaviorAddr<B>,
     <B as Behavior>::Ph,
-    SendLayer<InterpreterRequests<ScheduleAfter>, <B as Behavior>::Sends>,
+    SendLayer<InterpreterRequests<OwnedScheduleAfter>, <B as Behavior>::Sends>,
     <B as Behavior>::Birth,
 >;
 
@@ -30,7 +30,7 @@ pub(crate) type ReceiveTimeoutActions<B> = Actions<
 /// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
 /// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(behavior::Actions::cont()) }
-/// let _ = behavior_actors::ReceiveTimeout::new(App, behavior_actors::TimerId(1), std::time::Duration::from_secs(1), fallible);
+/// let _ = behavior_actors::ReceiveTimeout::new(App, std::time::Duration::from_secs(1), fallible);
 /// ```
 /// A pure one-notification-per-idle-period receive timeout.
 ///
@@ -42,7 +42,6 @@ pub(crate) type ReceiveTimeoutActions<B> = Actions<
 /// delegated transitions retain the wrapped error type.
 pub struct ReceiveTimeout<B: Behavior> {
     inner: B,
-    id: TimerId,
     after: Duration,
     timer: TimerLease,
     on_elapsed: TimedReaction<B>,
@@ -54,27 +53,26 @@ impl<B: Behavior> ReceiveTimeout<B> {
     /// Initialization and each successful continuing user fold stage a fresh
     /// timer generation. Interpreter events do not reset inactivity.
     #[must_use]
-    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: TimedReaction<B>) -> Self {
+    pub fn new(inner: B, after: Duration, on_elapsed: TimedReaction<B>) -> Self {
         Self {
             inner,
-            id,
             after,
             timer: TimerLease::new(),
             on_elapsed,
         }
     }
 
-    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<OwnedScheduleAfter> {
         self.timer
             .arm()
             .map_or_else(InterpreterRequests::empty, |generation| {
-                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.after))
+                InterpreterRequests::one(OwnedScheduleAfter::new(generation, self.after))
             })
     }
 
     fn wrap(
         actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        own: InterpreterRequests<ScheduleAfter>,
+        own: InterpreterRequests<OwnedScheduleAfter>,
     ) -> ReceiveTimeoutActions<B> {
         actions.map_sends(|inner| SendLayer::new(own, inner))
     }
@@ -110,8 +108,8 @@ where
     B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
-    type Event = TimedEvent<B::Event>;
-    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
+    type Event = EventLayer<OwnedTimerElapsed, B::Event>;
+    type Sends = SendLayer<InterpreterRequests<OwnedScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -136,16 +134,13 @@ where
         event: Self::Event,
     ) -> Result<ReceiveTimeoutActions<B>, Self::Error> {
         match event {
-            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
-                match self.timer.accept(elapsed.generation) {
-                    TimerAdmission::Accepted => {
-                        let actions = (self.on_elapsed)(&mut self.inner);
-                        Ok(Self::wrap(actions, InterpreterRequests::empty()))
-                    }
-                    TimerAdmission::Ignored => Ok(Actions::cont()),
+            EventLayer::Owned(elapsed) => match self.timer.accept(elapsed.generation) {
+                TimerAdmission::Accepted => {
+                    let actions = (self.on_elapsed)(&mut self.inner);
+                    Ok(Self::wrap(actions, InterpreterRequests::empty()))
                 }
-            }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+                TimerAdmission::Ignored => Ok(Actions::cont()),
+            },
             EventLayer::Inner(event) => match event.into_user() {
                 Ok(user) => {
                     let event = B::Event::user(user.from, user.message);
@@ -211,14 +206,14 @@ mod tests {
         }
     }
 
-    fn elapsed(_inner: &mut CountBehavior) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+    fn elapsed(inner: &mut CountBehavior) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+        inner.0 += 100;
         Actions::cont()
     }
 
     #[tokio::test]
     async fn exhaustion_retires_only_the_timer_and_preserves_the_inner_transition() {
-        let mut timeout =
-            ReceiveTimeout::new(Count(0), TimerId(0), Duration::from_secs(1), elapsed);
+        let mut timeout = ReceiveTimeout::new(Count(0), Duration::from_secs(1), elapsed);
         let initialized = behavior::initialize(&mut timeout).unwrap();
         assert_eq!(initialized.sends.owned.len(), 1);
         assert!(initialized.sends.inner.is_empty());

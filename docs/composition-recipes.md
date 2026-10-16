@@ -40,7 +40,7 @@ add only transformations that own a distinct event/effect law:
 ```text
 StopOnShutdown                         root lifecycle transformation
 └── ReceiveTimeout                     activity/timer transformation
-    └── Stash                          bounded hold/replay transformation
+    └── Stash                          FIFO hold/replay transformation
         └── DomainBehavior             application transition law
 ```
 
@@ -49,7 +49,7 @@ Callers compose at the value level; Rust infers the full nested type:
 ```rust,ignore
 let behavior = domain
     .layer(|inner| Stash::new(inner, |_, message| admission(message)))
-    .layer(|inner| ReceiveTimeout::new(inner, timer, idle, on_idle))
+    .layer(|inner| ReceiveTimeout::new(inner, idle, on_idle))
     .layer(StopOnShutdown::new);
 ```
 
@@ -58,6 +58,41 @@ still owns and documents its event routing, initialization order, sends
 product, failure, and terminal decision. Reordering layers can therefore
 change the program and must be chosen from those laws, not from type
 convenience.
+
+### Recovering held messages
+
+When you own a stash, `let pending = stash.take();` moves its held messages
+into your custody in arrival order. Each value retains its original sender
+and message; taking again returns an empty queue. The wrapped actor and routing
+policy remain available, and a later release still follows that policy.
+This operation performs no replay or actor effect. Unread runtime mailbox
+inputs have their own retirement custody and must also be consumed.
+
+The current stash has no capacity limit; recovery does not add one. Executable
+[recovery and wrapper-order tests](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs) cover both
+shutdown orders and preserve a machine's separate deferrals and future replay.
+
+### Timer ownership
+
+`OneShot`, `Periodic`, `Deadline` and `ReceiveTimeout` select their own event
+occurrence. Their constructors take the inner actor, duration or deadline, and
+reaction; they no longer take `TimerId`. Adding or reordering wrappers requires
+no timer-name coordination. Initialization still emits explicit requests, inner
+first. Receive inactivity advances only after successful continuing user input;
+service events never renew it. A consumed generation cannot fire twice.
+
+Migration: remove the timer ID argument from those four constructors. Custom
+interpreters use `OwnedScheduleAt`/`OwnedScheduleAfter`, return
+`OwnedTimerScheduled`, and inject `OwnedTimerElapsed` at the request's ingress.
+The old `ScheduleAt`, `ScheduleAfter`, `TimerScheduled`, `TimerElapsed` and
+`TimedEvent` remain the named protocols: equal names replace actor-wide, even
+across event ports. Named domain services retain that contract. Rejection keeps
+the complete request and reason; an earlier accepted effect is not rolled back.
+
+Executable witnesses: [wrapper orders](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/wrapped_send_requests.rs),
+[deadline and inactivity](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/deadline_requests.rs),
+[request custody](https://github.com/devrandom-labs/bombay-behavior/blob/87aedf1/crates/actors/tests/timer_requests.rs) and
+[independent inactivity observations](https://github.com/devrandom-labs/bombay-behavior/blob/7f4f0b3/crates/behavior-testkit/tests/receive_timeout.rs).
 
 ### Actor-to-actor topology
 
@@ -259,6 +294,22 @@ install that concrete protocol. For stable replaceable workers, subscribe the
 logical stable protocol, not a stale exact worker incarnation. Different
 destination protocols remain different actors and are connected with typed
 `MessageAdapter`s; `Topic` never erases them into a common envelope.
+
+## Protocol adapters
+
+Use `MessageAdapter::new(destination, map)` for one ordinary actor hop between
+protocols. The actual destination selects logical, established or mixed reply
+routing. The pure mapper runs once per input; the adapter emits one typed
+communication and keeps running. Use the ordinary shutdown decoration when the
+application needs to stop it. Delivery rejection retains the complete mapped
+message and its original destination capability; it cannot reconstruct an input
+that the mapper consumed.
+
+Construction is inferred. For an explicitly named logical type, write
+`MessageAdapter<Input, Recipient<Destination>>`; the second parameter names the
+route rather than repeating its protocol. This replaces the logical-only alias
+and the competing `MessageAdapterWithRoute` name. No child-route capability is
+added: a standalone adapter has no creation namespace of its own.
 
 ## Root shutdown
 

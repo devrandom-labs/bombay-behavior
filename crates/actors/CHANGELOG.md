@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Stash::take()` returns all held messages and their original senders in FIFO
+  order, leaving the stash empty while preserving its wrapped actor and route.
+  It performs no replay and requires no cloned messages. Retired applications
+  retain unread runtime mailbox inputs separately.
+
 ### Breaking
+
+- Use `MessageAdapter::new(destination, map)` for logical, established and mixed
+  reply destinations. Remove `MessageAdapterWithRoute`; the concrete route-aware
+  actor now owns the canonical name. Explicit logical adapter types change from
+  `MessageAdapter<Input, Protocol>` to `MessageAdapter<Input, Recipient<Protocol>>`.
+  Inferred calls keep their shape. Delivery, initialization and rejection laws
+  are unchanged.
+
+- Remove the `TimerId` argument from `OneShot`, `Periodic`, `Deadline` and
+  `ReceiveTimeout` constructors. Each wrapper owns its timer occurrence.
+  Custom wrapper interpreters use `OwnedScheduleAt`, `OwnedScheduleAfter`,
+  `OwnedTimerElapsed` and `OwnedTimerScheduled`; existing named timer products
+  retain their actor-wide replacement contract. Schedule requests now reuse
+  `OwnedItem`; use qualified trait calls when both `OwnedItem` and `ActionItem`
+  supply the same method name.
 
 - Infer borrowed worker roles at roster and FIFO construction. Explicit
   `new::<...>` calls require a fifth type argument; prefer inferred calls.

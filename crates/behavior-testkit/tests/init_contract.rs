@@ -38,12 +38,8 @@ impl Recorder {
 #[test]
 fn deadline_initialization_emits_exactly_one_schedule() {
     let due = Instant::now() + Duration::from_secs(1);
-    let deadline = behavior_actors::Deadline::new(
-        Recorder::default(),
-        behavior_actors::TimerId(0),
-        Some(due),
-        |_| Step::Continue,
-    );
+    let deadline =
+        behavior_actors::Deadline::new(Recorder::default(), Some(due), |_| Step::Continue);
     let initialized = deadline.initialize().expect("deadline initializes");
     assert_eq!(initialized.actions.sends.owned.len(), 1);
 }
@@ -81,7 +77,6 @@ proptest! {
             let due = origin + Duration::from_nanos(offset);
             let initialized = behavior_actors::Deadline::new(
                 Recorder::default(),
-                behavior_actors::TimerId(0),
                 Some(due),
                 |_| Step::Continue,
             )

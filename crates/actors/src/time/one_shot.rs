@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use super::domain::{TimerAdmission, TimerLease};
-use super::event::{TimedEvent, TimedReaction};
-use crate::protocol::{ScheduleAfter, TimerId};
+use super::event::TimedReaction;
+use crate::protocol::{OwnedScheduleAfter, OwnedTimerElapsed};
 use behavior::Step;
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
@@ -22,7 +22,7 @@ use behavior::{
 /// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
 /// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(behavior::Actions::cont()) }
-/// let _ = behavior_actors::OneShot::new(App, behavior_actors::TimerId(1), std::time::Duration::ZERO, fallible);
+/// let _ = behavior_actors::OneShot::new(App, std::time::Duration::ZERO, fallible);
 /// ```
 /// Notify a wrapped behavior once after a relative delay.
 ///
@@ -38,7 +38,6 @@ use behavior::{
 /// policy; sleeping and clock interpretation belong to `bombay-timers`.
 pub struct OneShot<B: Behavior> {
     inner: B,
-    id: TimerId,
     after: Duration,
     lease: TimerLease,
     on_elapsed: TimedReaction<B>,
@@ -47,31 +46,30 @@ pub struct OneShot<B: Behavior> {
 impl<B: Behavior> OneShot<B> {
     /// Construct a relative one-shot wrapper definition.
     #[must_use]
-    pub fn new(inner: B, id: TimerId, after: Duration, on_elapsed: TimedReaction<B>) -> Self {
+    pub fn new(inner: B, after: Duration, on_elapsed: TimedReaction<B>) -> Self {
         Self {
             inner,
-            id,
             after,
             lease: TimerLease::new(),
             on_elapsed,
         }
     }
 
-    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<OwnedScheduleAfter> {
         self.lease
             .arm()
             .map_or_else(InterpreterRequests::empty, |generation| {
-                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.after))
+                InterpreterRequests::one(OwnedScheduleAfter::new(generation, self.after))
             })
     }
 
     fn wrap(
         actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        schedules: InterpreterRequests<ScheduleAfter>,
+        schedules: InterpreterRequests<OwnedScheduleAfter>,
     ) -> Actions<
         behavior::BehaviorAddr<B>,
         B::Ph,
-        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        SendLayer<InterpreterRequests<OwnedScheduleAfter>, B::Sends>,
         B::Birth,
     > {
         actions.map_sends(|inner| SendLayer::new(schedules, inner))
@@ -95,8 +93,8 @@ where
     B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
-    type Event = TimedEvent<B::Event>;
-    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
+    type Event = EventLayer<OwnedTimerElapsed, B::Event>;
+    type Sends = SendLayer<InterpreterRequests<OwnedScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -114,16 +112,13 @@ where
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
-                match self.lease.accept(elapsed.generation) {
-                    TimerAdmission::Accepted => {
-                        let actions = (self.on_elapsed)(&mut self.inner);
-                        Ok(Self::wrap(actions, InterpreterRequests::empty()))
-                    }
-                    TimerAdmission::Ignored => Ok(Actions::cont()),
+            EventLayer::Owned(elapsed) => match self.lease.accept(elapsed.generation) {
+                TimerAdmission::Accepted => {
+                    let actions = (self.on_elapsed)(&mut self.inner);
+                    Ok(Self::wrap(actions, InterpreterRequests::empty()))
                 }
-            }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+                TimerAdmission::Ignored => Ok(Actions::cont()),
+            },
             EventLayer::Inner(event) => behavior::delegate_transition(&mut self.inner, event)
                 .map(|actions| Self::wrap(actions, InterpreterRequests::empty())),
         }
@@ -133,14 +128,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, TimerElapsed};
+    use crate::Activate as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
-    struct Probe {
+    struct Reminder {
         elapsed: usize,
     }
 
-    impl behavior::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Reminder {
         type Base = Self;
 
         fn base(&self) -> &Self {
@@ -148,25 +143,29 @@ mod tests {
         }
     }
 
-    impl behavior::Protocol for Probe {
+    impl behavior::Protocol for Reminder {
         type Addr = MailAddr;
-        type Msg = ();
+        type Msg = Never;
     }
 
-    impl Behavior for Probe {
+    impl Behavior for Reminder {
         type Protocol = Self;
-        type Event = User<MailAddr, ()>;
+        type Event = User<MailAddr, Never>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
+            match event.message {}
         }
     }
 
-    fn mark(probe: &mut Probe) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+    fn mark(probe: &mut Reminder) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
         probe.elapsed += 1;
         Actions::cont()
     }
@@ -174,36 +173,36 @@ mod tests {
     #[test]
     fn initialization_schedules_then_matching_generation_fires_once() {
         let delay = Duration::from_millis(20);
-        let initialized = crate::OneShot::new(Probe { elapsed: 0 }, TimerId(7), delay, mark)
+        let initialized = crate::OneShot::new(Reminder { elapsed: 0 }, delay, mark)
             .initialize()
             .unwrap();
         assert!(initialized.actions.sends.inner.is_empty());
         assert_eq!(
             initialized.actions.sends.owned.as_slice(),
-            [ScheduleAfter::new(
-                TimerId(7),
-                crate::TimerGeneration(0),
-                delay
-            )]
+            [OwnedScheduleAfter::new(crate::TimerGeneration(0), delay)]
         );
         assert!(initialized.actions.creates.is_empty());
         assert!(matches!(initialized.actions.become_, Step::Continue));
 
         let mut active = initialized.behavior;
-        let wrong_id = active
-            .on_path(TimerElapsed::new(TimerId(8), crate::TimerGeneration(0)))
+        let wrong_generation = active
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(1)))
             .unwrap();
-        assert!(wrong_id.sends == SendLayer::empty());
+        assert!(wrong_generation.sends == SendLayer::empty());
+        assert!(wrong_generation.creates.is_empty());
+        assert!(matches!(wrong_generation.become_, Step::Continue));
         assert_eq!(active.base().elapsed, 0);
 
         let fired = active
-            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(0)))
             .unwrap();
         assert!(fired.sends == SendLayer::empty());
+        assert!(fired.creates.is_empty());
+        assert!(matches!(fired.become_, Step::Continue));
         assert_eq!(active.base().elapsed, 1);
 
         let duplicate = active
-            .on_path(TimerElapsed::new(TimerId(7), crate::TimerGeneration(0)))
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(duplicate.sends, SendLayer::empty());
         assert!(duplicate.creates.is_empty());

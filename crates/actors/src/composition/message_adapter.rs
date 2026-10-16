@@ -1,6 +1,6 @@
 //! Typed protocol adaptation through an ordinary actor hop.
 
-use behavior::{Actions, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, Recipient, User};
+use behavior::{Actions, Behavior, BehaviorActed, BehaviorBase, Never, NoBirths, User};
 
 use super::DeliveryRoute;
 
@@ -37,7 +37,7 @@ use super::DeliveryRoute;
 /// }
 /// fn adapt(value: u8) -> u16 { u16::from(value) }
 /// let destination = behavior::Recipient::<Destination>::global(behavior::MailAddr(1));
-/// let _ = behavior_actors::MessageAdapterWithRoute::new(destination, adapt);
+/// let _ = behavior_actors::MessageAdapter::new(destination, adapt);
 /// ```
 ///
 /// ```compile_fail,E0277
@@ -50,9 +50,9 @@ use super::DeliveryRoute;
 /// let mut sequence = behavior::CreationSequence::new();
 /// let creation = sequence.issue().expect("fixture creation ID");
 /// let child = behavior::ChildDelivery::<Destination, behavior::ChildHead>::after(creation, 1);
-/// let _ = behavior_actors::MessageAdapterWithRoute::new(child, adapt);
+/// let _ = behavior_actors::MessageAdapter::new(child, adapt);
 /// ```
-pub struct MessageAdapterWithRoute<Input, Route>
+pub struct MessageAdapter<Input, Route>
 where
     Route: DeliveryRoute,
 {
@@ -60,11 +60,7 @@ where
     adapt: fn(Input) -> <Route::Protocol as behavior::Protocol>::Msg,
 }
 
-/// An adapter whose destination is a logical protocol name.
-pub type MessageAdapter<Input, Destination> =
-    MessageAdapterWithRoute<Input, Recipient<Destination>>;
-
-impl<Input, Route> MessageAdapterWithRoute<Input, Route>
+impl<Input, Route> MessageAdapter<Input, Route>
 where
     Route: DeliveryRoute,
 {
@@ -84,7 +80,7 @@ where
     }
 }
 
-impl<Input, Route> BehaviorBase for MessageAdapterWithRoute<Input, Route>
+impl<Input, Route> BehaviorBase for MessageAdapter<Input, Route>
 where
     Route: DeliveryRoute,
 {
@@ -95,7 +91,7 @@ where
     }
 }
 
-impl<Input, Route> behavior::Protocol for MessageAdapterWithRoute<Input, Route>
+impl<Input, Route> behavior::Protocol for MessageAdapter<Input, Route>
 where
     Route: DeliveryRoute,
 {
@@ -103,7 +99,7 @@ where
     type Msg = Input;
 }
 
-impl<Input, Route> Behavior for MessageAdapterWithRoute<Input, Route>
+impl<Input, Route> Behavior for MessageAdapter<Input, Route>
 where
     Route: DeliveryRoute + Clone,
     Route::Sends: behavior::SendsFor<User<<Route::Protocol as behavior::Protocol>::Addr, Input>>,
@@ -125,7 +121,7 @@ where
 mod tests {
     use super::*;
     use crate::Activate as _;
-    use behavior::MailAddr;
+    use behavior::{MailAddr, Recipient};
     use core::sync::atomic::{AtomicUsize, Ordering};
 
     struct Destination;

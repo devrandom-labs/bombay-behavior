@@ -81,21 +81,18 @@ where
 #[test]
 fn actual_timer_wrappers_preserve_completion_in_both_orders() {
     accepts_timed_pool_worker(behavior_actors::ReceiveTimeout::new(
-        behavior_actors::Deadline::new(SearchWorker, behavior_actors::TimerId(10), None, |_| {
+        behavior_actors::Deadline::new(SearchWorker, None, |_| {
             behavior::Step::Stop(behavior::Stopped)
         }),
-        behavior_actors::TimerId(11),
         std::time::Duration::from_secs(5),
         |_| Actions::stop(),
     ));
     accepts_timed_pool_worker(behavior_actors::Deadline::new(
         behavior_actors::ReceiveTimeout::new(
             SearchWorker,
-            behavior_actors::TimerId(12),
             std::time::Duration::from_secs(5),
             |_| Actions::stop(),
         ),
-        behavior_actors::TimerId(13),
         None,
         |_| behavior::Step::Stop(behavior::Stopped),
     ));

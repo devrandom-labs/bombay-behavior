@@ -76,10 +76,7 @@ mod watch;
 pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
-pub use composition::{
-    DeliveryRoute, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery,
-    ReplyRoute,
-};
+pub use composition::{DeliveryRoute, MessageAdapter, ReplyDeliveries, ReplyDelivery, ReplyRoute};
 pub(crate) use diagnostic::{DiagnosticAction, DiagnosticDisposition, DiagnosticRoute};
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
@@ -114,12 +111,14 @@ pub use operations::{
 pub use persistence::{
     Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
 };
+pub use protocol::timer;
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
     CreationResolved, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationAuthority,
     ObservationId, ObservationOperation, ObservationRejection, ObservationRelationship,
     ObserveChild, ObserveCreation, ObserveEstablished, ObserveEstablishedCreation, ObservePeer,
+    OwnedScheduleAfter, OwnedScheduleAt, OwnedTimerElapsed, OwnedTimerScheduled,
     PeerObservationRejection, PeerStopped, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
     ScheduleAtRejection, ShutdownChild, ShutdownEstablished, ShutdownId, ShutdownRejection,
     ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, UnwatchPeer,

@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use super::domain::{TimerAdmission, TimerLease};
-use super::event::{TimedEvent, TimedReaction};
-use crate::protocol::{ScheduleAfter, TimerId};
+use super::event::TimedReaction;
+use crate::protocol::{OwnedScheduleAfter, OwnedTimerElapsed};
 use behavior::Step;
 use behavior::{
     Actions, Address, Behavior, BehaviorActed, BirthMode, EventLayer, InterpreterRequests,
@@ -22,14 +22,14 @@ use behavior::{
 /// #   fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> behavior::BehaviorActed<Self> { Ok(behavior::Actions::cont()) }
 /// # }
 /// fn fallible(_: &mut App) -> behavior::BehaviorActed<App> { Ok(behavior::Actions::cont()) }
-/// let _ = behavior_actors::Periodic::new(App, behavior_actors::TimerId(1), std::time::Duration::from_secs(1), fallible);
+/// let _ = behavior_actors::Periodic::new(App, std::time::Duration::from_secs(1), fallible);
 /// ```
 /// Repeatedly notify a wrapped behavior at a relative interval.
 ///
 /// Initialization preserves inner effects and appends generation zero. Each
 /// matching timer event is consumed once, folds `on_elapsed`, and—only when
 /// that fold continues—appends the next generation. Stale, duplicate, and
-/// wrong-ID observations are inert unless the inner protocol accepts them.
+/// foreign-generation observations are inert unless the inner protocol accepts them.
 /// Termination emits no replacement. Generation exhaustion leaves the
 /// timer retired while preserving the inner continuation. These are Bombay
 /// policies; clock access and sleeping remain `bombay-timers` capabilities.
@@ -37,7 +37,6 @@ use behavior::{
 /// behavior; ordinary delegated transitions retain the wrapped error type.
 pub struct Periodic<B: Behavior> {
     inner: B,
-    id: TimerId,
     every: Duration,
     lease: TimerLease,
     on_elapsed: TimedReaction<B>,
@@ -49,31 +48,30 @@ impl<B: Behavior> Periodic<B> {
     /// Accepted timer generations are rearmed only after a continuing
     /// reaction. Clock access and scheduling remain interpreter capabilities.
     #[must_use]
-    pub fn new(inner: B, id: TimerId, every: Duration, on_elapsed: TimedReaction<B>) -> Self {
+    pub fn new(inner: B, every: Duration, on_elapsed: TimedReaction<B>) -> Self {
         Self {
             inner,
-            id,
             every,
             lease: TimerLease::new(),
             on_elapsed,
         }
     }
 
-    fn schedule(&mut self) -> InterpreterRequests<ScheduleAfter> {
+    fn schedule(&mut self) -> InterpreterRequests<OwnedScheduleAfter> {
         self.lease
             .arm()
             .map_or_else(InterpreterRequests::empty, |generation| {
-                InterpreterRequests::one(ScheduleAfter::new(self.id, generation, self.every))
+                InterpreterRequests::one(OwnedScheduleAfter::new(generation, self.every))
             })
     }
 
     fn wrap(
         actions: Actions<behavior::BehaviorAddr<B>, B::Ph, B::Sends, B::Birth>,
-        schedules: InterpreterRequests<ScheduleAfter>,
+        schedules: InterpreterRequests<OwnedScheduleAfter>,
     ) -> Actions<
         behavior::BehaviorAddr<B>,
         B::Ph,
-        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        SendLayer<InterpreterRequests<OwnedScheduleAfter>, B::Sends>,
         B::Birth,
     > {
         actions.map_sends(|inner| SendLayer::new(schedules, inner))
@@ -85,7 +83,7 @@ impl<B: Behavior> Periodic<B> {
     ) -> Actions<
         behavior::BehaviorAddr<B>,
         B::Ph,
-        SendLayer<InterpreterRequests<ScheduleAfter>, B::Sends>,
+        SendLayer<InterpreterRequests<OwnedScheduleAfter>, B::Sends>,
         B::Birth,
     > {
         let schedules = if matches!(actions.become_, Step::Stop(_)) {
@@ -115,8 +113,8 @@ where
     B::Protocol: behavior::Protocol<Addr = A>,
 {
     type Protocol = B::Protocol;
-    type Event = TimedEvent<B::Event>;
-    type Sends = SendLayer<InterpreterRequests<ScheduleAfter>, Sends>;
+    type Event = EventLayer<OwnedTimerElapsed, B::Event>;
+    type Sends = SendLayer<InterpreterRequests<OwnedScheduleAfter>, Sends>;
     type Ph = Ph;
     type Error = B::Error;
     type Birth = Br;
@@ -128,16 +126,13 @@ where
 
     fn transition(&mut self, _: behavior::ActiveTurn, event: Self::Event) -> BehaviorActed<Self> {
         match event {
-            EventLayer::Owned(elapsed) if elapsed.id == self.id => {
-                match self.lease.accept(elapsed.generation) {
-                    TimerAdmission::Accepted => {
-                        let actions = (self.on_elapsed)(&mut self.inner);
-                        Ok(self.wrap_and_rearm(actions))
-                    }
-                    TimerAdmission::Ignored => Ok(Actions::cont()),
+            EventLayer::Owned(elapsed) => match self.lease.accept(elapsed.generation) {
+                TimerAdmission::Accepted => {
+                    let actions = (self.on_elapsed)(&mut self.inner);
+                    Ok(self.wrap_and_rearm(actions))
                 }
-            }
-            EventLayer::Owned(_) => Ok(Actions::cont()),
+                TimerAdmission::Ignored => Ok(Actions::cont()),
+            },
             EventLayer::Inner(event) => {
                 let actions = behavior::delegate_transition(&mut self.inner, event)?;
                 if matches!(actions.become_, Step::Stop(_)) {
@@ -152,12 +147,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Activate as _, TimerElapsed};
+    use crate::Activate as _;
     use behavior::{MailAddr, Never, NoBirths, Step, User};
 
-    struct Probe(usize);
+    struct Bell(usize);
 
-    impl behavior::BehaviorBase for Probe {
+    impl behavior::BehaviorBase for Bell {
         type Base = Self;
 
         fn base(&self) -> &Self {
@@ -165,25 +160,29 @@ mod tests {
         }
     }
 
-    impl behavior::Protocol for Probe {
+    impl behavior::Protocol for Bell {
         type Addr = MailAddr;
-        type Msg = ();
+        type Msg = Never;
     }
 
-    impl Behavior for Probe {
+    impl Behavior for Bell {
         type Protocol = Self;
-        type Event = User<MailAddr, ()>;
+        type Event = User<MailAddr, Never>;
         type Sends = Vec<Never>;
         type Ph = Never;
         type Error = Never;
         type Birth = NoBirths;
 
-        fn transition(&mut self, _: behavior::ActiveTurn, _: Self::Event) -> BehaviorActed<Self> {
-            Ok(Actions::cont())
+        fn transition(
+            &mut self,
+            _: behavior::ActiveTurn,
+            event: Self::Event,
+        ) -> BehaviorActed<Self> {
+            match event.message {}
         }
     }
 
-    fn tick(probe: &mut Probe) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
+    fn tick(probe: &mut Bell) -> Actions<MailAddr, Never, Vec<Never>, NoBirths> {
         probe.0 += 1;
         if probe.0 == 2 {
             Actions::stop()
@@ -195,44 +194,46 @@ mod tests {
     #[test]
     fn accepted_ticks_rearm_until_the_reaction_stops() {
         let every = Duration::from_secs(3);
-        let initialized = crate::Periodic::new(Probe(0), TimerId(2), every, tick)
+        let initialized = crate::Periodic::new(Bell(0), every, tick)
             .initialize()
             .unwrap();
         assert_eq!(
             initialized.actions.sends.owned.as_slice(),
-            [ScheduleAfter::new(
-                TimerId(2),
-                crate::TimerGeneration(0),
-                every
-            )]
+            [OwnedScheduleAfter::new(crate::TimerGeneration(0), every)]
         );
+        assert!(initialized.actions.sends.inner.is_empty());
+        assert!(initialized.actions.creates.is_empty());
+        assert!(matches!(initialized.actions.become_, Step::Continue));
         let mut active = initialized.behavior;
 
         let first = active
-            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(0)))
             .unwrap();
         assert_eq!(
             first.sends.owned.as_slice(),
-            [ScheduleAfter::new(
-                TimerId(2),
-                crate::TimerGeneration(1),
-                every
-            )]
+            [OwnedScheduleAfter::new(crate::TimerGeneration(1), every)]
         );
         assert!(matches!(first.become_, Step::Continue));
+        assert!(first.sends.inner.is_empty());
+        assert!(first.creates.is_empty());
         assert_eq!(active.base().0, 1);
 
         let duplicate = active
-            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(0)))
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(0)))
             .unwrap();
         assert!(duplicate.sends.owned.is_empty());
+        assert!(duplicate.sends.inner.is_empty());
+        assert!(duplicate.creates.is_empty());
+        assert!(matches!(duplicate.become_, Step::Continue));
         assert_eq!(active.base().0, 1);
 
         let stopped = active
-            .on_path(TimerElapsed::new(TimerId(2), crate::TimerGeneration(1)))
+            .on_path(OwnedTimerElapsed::new(crate::TimerGeneration(1)))
             .unwrap();
         assert!(stopped.sends.owned.is_empty());
         assert!(matches!(stopped.become_, Step::Stop(_)));
+        assert!(stopped.sends.inner.is_empty());
+        assert!(stopped.creates.is_empty());
         assert_eq!(active.base().0, 2);
     }
 }

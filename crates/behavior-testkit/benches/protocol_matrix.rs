@@ -163,7 +163,6 @@ fn measure_nested() -> f64 {
             MailAddr(7),
             stop_on_abnormal_death,
         ),
-        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );

@@ -6,8 +6,9 @@ use behavior::{
     SendLayer, SendSettlements, SettledItem, User,
 };
 use behavior_actors::{
-    Deadline, ReceiveTimeout, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
-    ScheduleAtRejection, TimerGeneration, TimerId, TimerScheduled,
+    Deadline, OwnedScheduleAfter, OwnedScheduleAt, ReceiveTimeout, ScheduleAfter,
+    ScheduleAfterRejection, ScheduleAt, ScheduleAtRejection, TimerGeneration, TimerId,
+    TimerScheduled,
 };
 
 struct Probe;
@@ -50,14 +51,14 @@ fn real_timer_wrappers_preserve_both_lanes_in_both_orders() {
 
     let _: Option<
         SendLayer<
-            InterpreterRequests<ScheduleAfter>,
-            SendLayer<InterpreterRequests<ScheduleAt>, NoSends>,
+            InterpreterRequests<OwnedScheduleAfter>,
+            SendLayer<InterpreterRequests<OwnedScheduleAt>, NoSends>,
         >,
     > = None::<<ReceiveTimeout<Deadline<Probe>> as Behavior>::Sends>;
     let _: Option<
         SendLayer<
-            InterpreterRequests<ScheduleAt>,
-            SendLayer<InterpreterRequests<ScheduleAfter>, NoSends>,
+            InterpreterRequests<OwnedScheduleAt>,
+            SendLayer<InterpreterRequests<OwnedScheduleAfter>, NoSends>,
         >,
     > = None::<<Deadline<ReceiveTimeout<Probe>> as Behavior>::Sends>;
 }

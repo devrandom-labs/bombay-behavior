@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use behavior_actors::{
-    Activate, Crash, Exit, PeerStopped, StashRoute, TimerElapsed, TimerGeneration, TimerId,
+    Activate, Crash, Exit, OwnedTimerElapsed, PeerStopped, StashRoute, TimerGeneration,
     stop_on_abnormal_death,
 };
 use behavior_core::EventLayer;
@@ -67,9 +67,7 @@ impl Recorder {
 const PEER: MailAddr = MailAddr(44);
 
 fn at<T: Behavior>(behavior: T, when: Instant) -> behavior_actors::Deadline<T> {
-    behavior_actors::Deadline::new(behavior, behavior_actors::TimerId(0), Some(when), |_| {
-        Step::Continue
-    })
+    behavior_actors::Deadline::new(behavior, Some(when), |_| Step::Continue)
 }
 
 struct GeneratedBase {
@@ -203,7 +201,6 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     // innermost Deadline owns T1.
     let c1 = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(at(Recorder::default(), first), PEER, stop_on_abnormal_death),
-        behavior_actors::TimerId(0),
         Some(second),
         |_| Step::Continue,
     );
@@ -216,12 +213,9 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 
     // Watch::new(Deadline::new(Deadline::new(inner, T1), T2), p): Watch owns the outer product.
     let c2 = behavior_actors::Watch::new(
-        behavior_actors::Deadline::new(
-            at(Recorder::default(), first),
-            behavior_actors::TimerId(0),
-            Some(second),
-            |_| Step::Continue,
-        ),
+        behavior_actors::Deadline::new(at(Recorder::default(), first), Some(second), |_| {
+            Step::Continue
+        }),
         PEER,
         stop_on_abnormal_death,
     );
@@ -236,11 +230,9 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let c3 = behavior_actors::Deadline::new(
         behavior_actors::Deadline::new(
             behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
-            behavior_actors::TimerId(0),
             Some(first),
             |_| Step::Continue,
         ),
-        behavior_actors::TimerId(0),
         Some(second),
         |_| Step::Continue,
     );
@@ -253,12 +245,9 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 
     // Watch::new(Deadline::new(Deadline::new(inner, T2), T1), p).
     let c4 = behavior_actors::Watch::new(
-        behavior_actors::Deadline::new(
-            at(Recorder::default(), second),
-            behavior_actors::TimerId(0),
-            Some(first),
-            |_| Step::Continue,
-        ),
+        behavior_actors::Deadline::new(at(Recorder::default(), second), Some(first), |_| {
+            Step::Continue
+        }),
         PEER,
         stop_on_abnormal_death,
     );
@@ -276,7 +265,6 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
             PEER,
             stop_on_abnormal_death,
         ),
-        behavior_actors::TimerId(0),
         Some(first),
         |_| Step::Continue,
     );
@@ -291,11 +279,9 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
     let c6 = behavior_actors::Deadline::new(
         behavior_actors::Deadline::new(
             behavior_actors::Watch::new(Recorder::default(), PEER, stop_on_abnormal_death),
-            behavior_actors::TimerId(0),
             Some(second),
             |_| Step::Continue,
         ),
-        behavior_actors::TimerId(0),
         Some(first),
         |_| Step::Continue,
     );
@@ -311,51 +297,46 @@ fn all_wrapper_permutations_preserve_init_protocol_nesting() {
 fn nested_deadlines_at_the_same_instant_route_to_the_selected_occurrence() {
     let due = Instant::now() + Duration::from_secs(1);
     let deadline = behavior_actors::Deadline::new(
-        behavior_actors::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+        behavior_actors::Deadline::new(Recorder::default(), Some(due), |_| {
             Step::Stop(behavior_core::Stopped)
         }),
-        TimerId(1),
         Some(due),
         |_| Step::Continue,
     );
     let mut deadline = deadline.initialize().unwrap().behavior;
 
     let actions = deadline
-        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        })))
+        .transition(EventLayer::Inner(EventLayer::Owned(
+            OwnedTimerElapsed::new(TimerGeneration(0)),
+        )))
         .unwrap();
 
     assert!(matches!(actions.become_, Step::Stop(_)));
 }
 
 #[test]
-fn equal_timer_ids_in_nested_deadlines_remain_separately_addressable() {
+fn nested_deadlines_remain_separately_addressable() {
     let due = Instant::now() + Duration::from_secs(1);
     let deadline = behavior_actors::Deadline::new(
-        behavior_actors::Deadline::new(Recorder::default(), TimerId(0), Some(due), |_| {
+        behavior_actors::Deadline::new(Recorder::default(), Some(due), |_| {
             Step::Stop(behavior_core::Stopped)
         }),
-        TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
     let mut deadline = deadline.initialize().unwrap().behavior;
 
     let outer = deadline
-        .transition(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        }))
+        .transition(EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(
+            0,
+        ))))
         .unwrap();
     assert!(matches!(outer.become_, Step::Continue));
 
     let inner = deadline
-        .transition(EventLayer::Inner(EventLayer::Owned(TimerElapsed {
-            id: TimerId(0),
-            generation: TimerGeneration(0),
-        })))
+        .transition(EventLayer::Inner(EventLayer::Owned(
+            OwnedTimerElapsed::new(TimerGeneration(0)),
+        )))
         .unwrap();
     assert!(matches!(inner.become_, Step::Stop(_)));
 }
@@ -371,7 +352,6 @@ fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
             PEER,
             stop_on_abnormal_death,
         ),
-        behavior_actors::TimerId(0),
         Some(due),
         |_| Step::Continue,
     );
@@ -379,10 +359,7 @@ fn environment_lanes_bypass_stash_while_user_lane_is_intercepted() {
     let mut behavior = initialized.behavior;
 
     // Time lane: fires through the stash layer, nothing stashed.
-    let reached = EventLayer::Owned(TimerElapsed {
-        id: TimerId(0),
-        generation: TimerGeneration(0),
-    });
+    let reached = EventLayer::Owned(OwnedTimerElapsed::new(TimerGeneration(0)));
     let fired = behavior.transition(reached).unwrap();
     assert!(matches!(fired.become_, Step::Continue));
     assert_eq!(behavior.stashed(), 0);
@@ -501,23 +478,17 @@ fn duplicate_nested_watch_peer_remains_addressable_at_both_paths() {
 /// Reached event: the reaction never fires.
 #[test]
 fn unscheduled_at_is_inert_to_reached_events() {
-    let behavior = behavior_actors::Deadline::new(
-        Recorder::default(),
-        behavior_actors::TimerId(0),
-        None,
-        |_| Step::Stop(behavior_core::Stopped),
-    );
+    let behavior = behavior_actors::Deadline::new(Recorder::default(), None, |_| {
+        Step::Stop(behavior_core::Stopped)
+    });
     let initialized = behavior.initialize().unwrap();
     let initial = initialized.actions;
     let mut behavior = initialized.behavior;
     assert!(initial.sends.owned.is_empty());
 
-    for id in [TimerId(0), TimerId(1)] {
+    for generation in [TimerGeneration(0), TimerGeneration(1)] {
         let actions = behavior
-            .transition(EventLayer::Owned(TimerElapsed {
-                id,
-                generation: TimerGeneration(0),
-            }))
+            .transition(EventLayer::Owned(OwnedTimerElapsed::new(generation)))
             .unwrap();
         assert_eq!(actions.become_, Step::Continue);
     }

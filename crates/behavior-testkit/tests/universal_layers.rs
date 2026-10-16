@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use behavior_actors::{
     Activate as _, Cache, CacheConfiguration, CacheMessage, CacheResult, Deadline,
     FinalizeOnShutdown, OneShot, PeerTermination, Periodic, PropagateTermination, ReceiveTimeout,
-    ShutdownRequested, Stash, StashRoute, StopOnShutdown, TerminationMonitor, TimerId, Watch,
-    propagate_all, stop_on_abnormal_death,
+    ShutdownRequested, Stash, StashRoute, StopOnShutdown, TerminationMonitor, Watch, propagate_all,
+    stop_on_abnormal_death,
 };
 use behavior_core::{
     Actions, Behavior, BehaviorLayer, Delivery, MailAddr, MessageProtocol, Never, NoBirths,
@@ -95,12 +95,9 @@ fn finalization_layer_preserves_its_complete_transition_before_stopping() {
 #[test]
 fn generic_consumer_carries_every_stateless_and_timing_transformation_output() {
     let deadline = apply(cache(), |inner| {
-        Deadline::new(
-            inner,
-            TimerId(1),
-            Some(Instant::now() + Duration::from_secs(1)),
-            |_| Step::Continue,
-        )
+        Deadline::new(inner, Some(Instant::now() + Duration::from_secs(1)), |_| {
+            Step::Continue
+        })
     })
     .initialize()
     .unwrap();
@@ -108,9 +105,7 @@ fn generic_consumer_carries_every_stateless_and_timing_transformation_output() {
     assert!(deadline.actions.sends.inner.is_empty());
 
     let one_shot = apply(cache(), |inner| {
-        OneShot::new(inner, TimerId(2), Duration::from_secs(1), |_| {
-            Actions::cont()
-        })
+        OneShot::new(inner, Duration::from_secs(1), |_| Actions::cont())
     })
     .initialize()
     .unwrap();
@@ -118,9 +113,7 @@ fn generic_consumer_carries_every_stateless_and_timing_transformation_output() {
     assert!(one_shot.actions.sends.inner.is_empty());
 
     let periodic = apply(cache(), |inner| {
-        Periodic::new(inner, TimerId(3), Duration::from_secs(1), |_| {
-            Actions::cont()
-        })
+        Periodic::new(inner, Duration::from_secs(1), |_| Actions::cont())
     })
     .initialize()
     .unwrap();
@@ -128,9 +121,7 @@ fn generic_consumer_carries_every_stateless_and_timing_transformation_output() {
     assert!(periodic.actions.sends.inner.is_empty());
 
     let timeout = apply(cache(), |inner| {
-        ReceiveTimeout::new(inner, TimerId(4), Duration::from_secs(1), |_| {
-            Actions::cont()
-        })
+        ReceiveTimeout::new(inner, Duration::from_secs(1), |_| Actions::cont())
     })
     .initialize()
     .unwrap();
