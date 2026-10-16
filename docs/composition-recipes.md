@@ -40,7 +40,7 @@ add only transformations that own a distinct event/effect law:
 ```text
 StopOnShutdown                         root lifecycle transformation
 └── ReceiveTimeout                     activity/timer transformation
-    └── Stash                          bounded hold/replay transformation
+    └── Stash                          FIFO hold/replay transformation
         └── DomainBehavior             application transition law
 ```
 
@@ -58,6 +58,19 @@ still owns and documents its event routing, initialization order, sends
 product, failure, and terminal decision. Reordering layers can therefore
 change the program and must be chosen from those laws, not from type
 convenience.
+
+### Recovering held messages
+
+When you own a stash, `let pending = stash.take();` moves its held messages
+into your custody in arrival order. Each value retains its original sender
+and message; taking again returns an empty queue. The wrapped actor and routing
+policy remain available, and a later release still follows that policy.
+This operation performs no replay or actor effect. Unread runtime mailbox
+inputs have their own retirement custody and must also be consumed.
+
+The current stash has no capacity limit; recovery does not add one. Executable
+[recovery and wrapper-order tests](../crates/actors/tests/stash.rs) cover both
+shutdown orders and preserve a machine's separate deferrals and future replay.
 
 ### Timer ownership
 
