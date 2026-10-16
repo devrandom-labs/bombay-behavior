@@ -67,12 +67,14 @@ fn canonical_fifo_worker_and_constructor_need_no_structural_types() {
     assert_eq!(initialized.actions.creates.len(), 1);
 }
 
-fn accepts_timed_pool_worker<W>(_: W)
+fn accepts_timed_pool_worker<W, Path>(_: W)
 where
     W: behavior::Behavior + behavior::BehaviorBase,
     W::Protocol: behavior::Protocol<Addr = RuntimeAddr, Msg = Assignment<SearchJob>>,
-    W::Sends: behavior_actors::pool::CompletesAssignments<WorkerResult = SearchResult>
-        + behavior::SendSettlements,
+    W::Sends: behavior::SendInput<
+            behavior::ReportToParent<behavior_actors::pool::Completion<SearchResult>>,
+            Path,
+        > + behavior::SendSettlements,
 {
 }
 

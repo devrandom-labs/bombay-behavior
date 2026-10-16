@@ -1,0 +1,31 @@
+error[E0277]: the trait bound `Vec<Delivery<Audits>>: SendInput<ReportToParent<Completion<_>>, Own>` is not satisfied
+  --> tests/ui/pool_missing_completion.rs:51:6
+   |
+51 |     .build();
+   |      ^^^^^ the trait `SendInput<ReportToParent<Completion<_>>, Own>` is not implemented for `Vec<Delivery<Audits>>`
+   |
+help: the trait `SendInput<ReportToParent<Completion<_>>, Own>` is not implemented for `Vec<Delivery<Audits>>`
+      but trait `SendInput<Delivery<Audits>, Own>` is implemented for it
+  --> $BEHAVIOR/src/effects/sending.rs
+   |
+   | impl<T> SendInput<T, Own> for Vec<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `Delivery<Audits>`, found `ReportToParent<Completion<_>>`
+note: required for `ClerkSends` to implement `SendInput<ReportToParent<Completion<_>>, ClerkSendsAudits>`
+  --> tests/ui/pool_missing_completion.rs:26:1
+   |
+26 | / #[behavior::behavior(addr = RuntimeAddr, message = Assignment<u64>, sends = {
+27 | | audits: Vec<Delivery<Audits>>,
+28 | | })]
+   | |___^ unsatisfied trait bound introduced here
+29 |   impl Clerk {
+   |        ^^^^^
+note: required by a bound in `FifoBuilder::<Factory, Role, Source, DiagnosticRoute, Replies>::build`
+  --> $BEHAVIOR_ACTORS/src/templates/pool/queue/config.rs
+   |
+   |     pub fn build<W, P, Preparation, Job, WorkerResult, Path>(
+   |            ----- required by a bound in this associated function
+...
+   |             behavior::SendInput<behavior::ReportToParent<super::Completion<WorkerResult>>, Path>,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FifoBuilder::<Factory, Role, Source, DiagnosticRoute, Replies>::build`
+   = note: this error originates in the attribute macro `behavior::behavior` (in Nightly builds, run with -Z macro-backtrace for more info)

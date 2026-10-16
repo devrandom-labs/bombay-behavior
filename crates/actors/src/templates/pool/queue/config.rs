@@ -8,9 +8,7 @@ use behavior::{Behavior, BehaviorAddr, EndpointAddress};
 use super::{AcceptedJobSequence, AssignmentSequence, FifoPool, PoolState, ShutdownSequence};
 use crate::diagnostic::DiagnosticDisposition;
 use crate::lifecycle::ActorDrainPolicy;
-use crate::templates::pool::{
-    Assignment, BacklogCapacity, CompletesAssignments, Interruption, PoolRecovery,
-};
+use crate::templates::pool::{Assignment, BacklogCapacity, Interruption, PoolRecovery};
 use crate::templates::worker::{
     InitialWorkerPreparation, InitialWorkerRejection, prepare_initial_workers,
 };
@@ -121,10 +119,14 @@ impl<Factory, Role, Source, DiagnosticRoute, Replies: ReplyRoutes>
 {
     /// Prepare every worker in declaration order or return complete custody.
     ///
+    /// Workers may emit ordinary business sends alongside assignment completion.
+    /// Construction infers the result from an unambiguous completion lane, including
+    /// named products and wrappers.
+    ///
     /// The factory may return `WorkerSubmission` directly or a fallible
     /// `Result`. Rejection preserves the factory, prepared prefix, rejected
     /// role and reason, untouched suffix, policies and reply capability choice.
-    pub fn build<W, P, Preparation, Job, WorkerResult>(
+    pub fn build<W, P, Preparation, Job, WorkerResult, Path>(
         self,
     ) -> Result<
         FifoPool<Role, W, P, Source, DiagnosticRoute, Job, WorkerResult, Replies>,
@@ -145,7 +147,9 @@ impl<Factory, Role, Source, DiagnosticRoute, Replies: ReplyRoutes>
         Role: Eq,
         W: Behavior,
         W::Protocol: behavior::Protocol<Msg = Assignment<Job>>,
-        W::Sends: CompletesAssignments<WorkerResult = WorkerResult>,
+        W::Sends:
+            behavior::SendInput<behavior::ReportToParent<super::Completion<WorkerResult>>, Path>,
+        WorkerResult: Send,
         BehaviorAddr<W>: EndpointAddress,
     {
         let Self {
