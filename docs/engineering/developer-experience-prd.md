@@ -721,7 +721,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published Behavior/Actors0.24.0 preserves uniquely selected semantic send lanes through wrappers, complete Actions and static denials; Bombay selects its successor0.26.0. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy head186266e passes owner/package/archive proofs with unchanged actor layouts. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests and979 whole-workspace tests pass; the native Nix invocation exits0 with an audit-subprocess limitation recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy head186266e passes owner/package/archive proofs with unchanged actor layouts. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests and979 whole-workspace tests pass; the latest ten native Nix checks return0 without a reported classifier crash, with earlier audit limitations retained below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
@@ -736,7 +736,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
-| DX25 | Protected6c5c18a preserves actions/custody under two independent reviews. Pre-style matrix272 executions/four existing ignores; final source passes minimum both profiles/current debug. Close-omission and detached-Cell counterexamples fail; restored controls, strict lint/fmt and callback fixtures pass. | Open: current optimized retry hung after65 passes/one ignore (252.881s, exit101); diagnostic repetitions do not waive it. All24 native aarch64-Darwin Nix gates pass at6c5c18a (4524.472s,617 conserved sources), with both evidence reviews; all six exact-head CI checks pass. A fresh exact Cargo optimized suite passes66/one existing ignore. The earlier hang remains unresolved; PR375 stays draft. Prior23/24 and selected formatting repair certify only their revisions. |
+| DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: full combined gates run at06d6fd2 after Communication0.1.6/main76dbd84; every Rust file equals cd77c8b and399/324 lock neighbors are conserved. Earlier optimized retry hang remains unexplained despite fresh68-pass/one controlled-child ignore suite. Prior24-gate acceptance at6c5c18a certifies only its617 frozen inputs; PR375 remains draft. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→99 plus61 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.26.0 and macros0.14.2 match207 downloaded owner sources, with owner gates, package preflight and executed Bombay registry consumers. Recorded archive journeys preserve syntax, denials and custody. | Open: policy/other owner publication, final programme consumers/features/renaming, delivery documentation and repository gates. No local patch or old-source pass certifies the final release. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
@@ -3082,8 +3082,9 @@ successfully (3.755seconds). No signing/disk failure occurs in these runs.
 
 Audit probes preserve that distinction: an injected classifier exit37 is masked
 by the original routine, but returned by the copied routine with an explicit
-producer join and top-level status check. Its actual98,120,993-byte rooted archive
-passes all four C/en_US.UTF-8 and ordinary/strict-shell scans. Exact source/log
+producer join and top-level status check. It classifies the file headers of an actual98,120,993-byte compressed output
+under all four C/en_US.UTF-8 and ordinary/strict-shell combinations; archived
+contents are not inspected. Exact source/log
 hashes are in REPLIES-NIX-CLASSIFIER-STATUS.details.json. An earlier locale probe
 found absent old outputs and returned before inspecting files; it receives no
 credit. These are observations of the tooling, not a repository patch or waiver
@@ -3118,3 +3119,45 @@ passes at422e840: Nix, published-API audit, eight mutation shards and their join
 (11 jobs). Main-only CodeQL/dependency workflows do not trigger for this stacked
 base and remain required at main integration. This is neither merge nor
 publication approval.
+
+
+Latest-main provider correction (DX20/23/25) is retained at Bombaycd77c8b. The
+pre-edit compile fails13 errors. Existing private connection capture and the
+complete four-part outcome repair its old callback/result contract; no public
+SDK capability, dependency, production state or production Rust is added.
+One shared provider source preserves both complete concrete families and existing
+Requester Scope. Native tests retain actual Export sharing, buffers, proofs,
+reference counts, duplicate/conflict/replay, pending work and full retirement.
+Only Rc allocation counters move to the existing isolated allocator owner, using
+public verify and the same source. Four original Rc::new windows and one clone
+window exclude verification, SDK work and lookup. Recorded/scheduled blocks
+measure376/392bytes on this host; each clone measures0. This is neither total
+native memory nor measurement of the identical SDK-owned process objects.
+
+Two independent source/evidence reviews pass. All18 required commands, exact
+cases, key-derived exit modes and0ignored summaries are checked:48passing
+executions and12 intended failures. Each failing case's own panic header points
+to its frozen primitive assertion. Both original/restored593-file maps match.
+Compiler versions are observed post-run; variant hashes are reconstructed from
+the immutable driver/originals, not sampled per-run inventories. Actual commands,
+timings and hashes remain in provider-sharing/{final-sources,results,verified,
+verified-modes}.json. The first global-substring guard alone grants no attribution
+credit. Rust1.99/1.96 debug/release pass6native+2sharing each; restored current
+profiles add16passing executions. Omitted-window/extra-allocation calibrations
+fail2cases per profile, and omitted Node.close fails both native cases at the
+closed-connection assertion per profile. Final strict lint/format passes.
+Production/API0; tests+551/-389/net162 in5files, gates+13/-3/net10 in1file;7files
+including coordination documentation. Provider sums remain4enums/9alternatives;
+Node declaration Some(Application)|None, independent connection, all production
+branches/modules and public spellings are unchanged. No historical state,
+repeated cause, semantic boolean, nested actor authority or structural caller
+syntax is added. Cross-check Node-private close, Driver custody and authoritative
+fact conservation. Disposition: pass for this test-only batch; programme open.
+
+Main76dbd84 is merged at06d6fd2 after the sole dependency-sentence conflict.
+Behavior/Actors0.26.0 and macros0.14.2 remain selected; Communication0.1.6 matches
+its published checksum, VCS963067e and all21 packaged files. Both locks retain
+all399/324 neighbors and every Rust file equals cd77c8b. Capacity observation
+reserves no slot or authority; Consumer preserves the original across notification
+panic. All24 native gates are running on this combined revision; old0.1.5 proof
+is not its acceptance. No merge/publication authorization is inferred.
