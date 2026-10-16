@@ -727,7 +727,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX10 | Owning roster/directory/queue/router constructors use Config and explicit recovery. Registry270/150 supplies startup closures and reply-lane policy. All338 library tests pass both compilers/profiles with1013 original assertions;31 resumed caller tests and real examples have source-selected503 proofs. Startupf244566 removes its named plan/alias. | Open: publish the reviewed inference repair, verify registry-only callers/nested locks, audit policy necessity/names and complete costs/full gates. Breaking source costs remain explicit. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
-| DX13 | Native named timers and panic-custody repair pass their recorded matrices. Bombay PR383/b8c2e6f passes25 fresh native gates and both final reviews against026/142. Disjoint queue keys pass their probe/inverse; automatic wrappers remain unimplemented. | Open: typed automatic requests, wrappers and interpreter integration; preserve named/custom ports and complete duplicate/reorder/cancel/zero/stale/rejection/exhaustion custody. Both removed-model falsifiers remain below. |
+| DX13 | Named/panic-custody PR383/b8c2e6f passes25 native gates against026/142. Four candidate timer wrappers and the copied interpreter pass owner and native compiler/profile matrices, mixed/custom named controls and deliberate failures; bounded memory comparison is recorded below. | Open: remaining cancellation/rejection/exhaustion/static witnesses, current registry delivery, catalogue/docs and full gates. Candidate proofs do not certify the complete programme. Both removed-model falsifiers remain below. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: complete current Bombay catalogue adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
@@ -1000,8 +1000,10 @@ fresh creation, pure Actions and interpreter-owned clock laws stay unchanged.
 A public timer module would own four generic request/receipt/event families,
 with no generic defaults; existing root names project TimerId and four owned
 aliases project Here. Owned constructors supply their own capability. This adds
-one sealed capability trait, no behavior/state/registry/facade, and shares rather
-than copies the existing ActionItem custody implementation. A bound belongs only
+one sealed capability trait and no behavior/state/registry/facade. Reuse the
+existing OwnedItem blanket instead of copying the two manual ActionItem custody
+implementations: their input pair, lifetime, prepare/input/finish and default
+receipt retention equations are identical. SourceAction keeps its exact source. A bound belongs only
 to its actual named or owned interpreter port. TimedEvent remains the existing
 named alias for Lease/Presence/CircuitBreaker; the four ordinary wrappers get
 owned elapsed lanes and delete their stored IDs.
@@ -1013,12 +1015,22 @@ at no more than250 lines before remeasurement, not described as cleanup. Existin
 named LocalTimers schedule_at<Path>/schedule_after<Path> keep their exact single
 Path parameter and InjectEvent bound, including custom paths. Only new owned
 requests derive the occurrence ordinal; reject unsupported custom owned paths
-statically. The private queue key is an exhaustive Named/Owned sum, with no
+statically. A private TimerDestination<Path> owns the two genuine interpretation
+ports: TimerId executes those unchanged named methods for arbitrary valid paths;
+Here executes owned scheduling for finite occurrence paths. One generic
+InterpretItem body preserves the original custody algorithm. Do not strand named
+methods as test-only forwarding facades, add dead-code allowances or copy the
+settlement algorithm. Distinct-path and nominal custom-path named controls must
+reject accidental path-scoped naming. Occurrence ordinals use associated constant
+arithmetic: [constant overflow is a compile error](https://doc.rust-lang.org/reference/const_eval.html),
+including optimized builds; no runtime wrapping counter is introduced.
+The private queue key is an exhaustive Named/Owned sum, with no
 fallback ID, counter, wrapping ordinal or inferred lifecycle provenance. Named
 new/struct-literal/pattern/From syntax receives compatibility witnesses.
 
 Baseline checkpoint V2: eleven selected production module files,2126 lines,
-56 match arrows, eight enum declarations and56 direct public spellings. It
+56 match arrows, eight enum declarations and56 direct `pub` declarations (excluding reexports
+and restricted visibility). It
 excludes true test-module tails and the two inline test-only idle/live methods;
 the first truncating counter was rejected. Current states are B × TimerLease
 (NeverIssued/Armed/Idle/Exhausted), or B × OneShotSchedule (Unscheduled/Scheduled);
@@ -1028,3 +1040,99 @@ ID from an owned schedule. No arrival history, repeated cause, semantic boolean
 or second transition authority is justified. Baseline disposition: pass; the
 candidate still needs exact after-counts, both reviews, inverses, supported
 compiler/profile owner+consumer proofs and memory measurements before retention.
+
+The first two-wrapper lowering now executes in an isolated source-selected
+consumer: three native journeys, four direct queue controls and the unchanged
+boxed parent-report custody case pass32 executions across Rust1.99/1.96 and
+debug/release. Two independent reviews verify exact cases, profile-specific
+package cleans, original ownership assertions and1457 conserved inputs. Six
+current-compiler debug/release inversions fail at their intended namespace,
+overflow and readiness assertions, with2706 inputs conserved; compiler errors,
+zero-test selectors and stale-cache attempts earn no credit. Custom nominal
+ports execute named absolute scheduling, not named relative scheduling.
+
+The architecture checkpoint passes for this bounded stage: production+387/-291,
+net+96; twelve selected modules versus eleven; match arrows56→52, enums8→9
+(the disjoint queue key), direct pub declarations56→70. These are lexical counts,
+not model-quality or complete API measures. TimerLease's four states, admission
+alternatives and2/3 scheduling rejections are unchanged. The key owns exact
+replacement namespace; no arrival history, duplicated cause, semantic boolean,
+new lifecycle authority or structural caller syntax was added. The existing
+layer laws and all four normalized actor documents plus runtime settlement
+contracts were cross-checked. Remaining templates and full acceptance stay open.
+
+An isolated DHAT comparison of the actual private queues, on both supported
+compilers in optimized builds, observes368 live bytes/four allocations for three
+independent timer ingresses before and after. Owned elapsed events are16 versus
+24 bytes in that event sum; requests24 versus32, receipts8 versus16; queue
+storage remains120. The key grows8→16 bytes:64 explicit named timers retain
+7184 versus6672 bytes (+512), with18 allocations in both and14000 versus13008
+total allocated bytes. Both scenarios drain to16 bytes and release to zero.
+Instrumentation stays outside production. These are queue/layout observations,
+not full actor/application memory, peak or throughput results.
+
+Before remaining-wrapper edits, the pure Deadline/ReceiveTimeout witness fails
+at four missing-ID constructors plus exact named/owned product and event
+mismatches. The proposed native Booking journey fails at its two missing-ID
+methods and one downstream inference cascade. Both have twice-reviewed,
+source-frozen compile-only evidence; no runtime credit follows. Reuse the
+existing two-state absolute schedule, removing only its obsolete ID, and the
+existing receive-inactivity lease. Preserve user-only rearming, optional deadline,
+controlled errors, stopping initialization, stale/duplicate discharge and exact
+retirement; no additional state, policy, trait or interpreter seam is proposed.
+
+The four-wrapper lowering now passes28 owner and16 native executions across
+both compilers/profiles, with1460 frozen inputs per driver and two independent
+reviews. It adds no further type, trait, bound, state or interpreter port.
+Current-compiler pure inversions reject service-driven inactivity rearm and
+future deadline acceptance in debug/release. The native collision inverse
+rejects the wrong retained version1 instead of11; its earlier debug receipt is
+explicitly re-audited, not represented as another execution. Deliberately invalid
+collision/path-scope models emit unused-ordinal/private-bound warnings: their
+real assertion failures are falsifiers, never warning-free compiler or Nix gates.
+Healthy matrices have no warnings.
+
+The updated architecture checkpoint passes at2244 selected production lines,
+51 arrows, nine enums and70 direct pub declarations: production+483/-365,
+net+118; tests+910/-70 before focused unit adoption. Seventeen changed Rust files
+remain inside the session's explicitly expanded programme budget. Absolute
+scheduling keeps the same two phases and drops its obsolete ID; inactivity keeps
+the same lease. Focused regressions are committed separately as87aedf1. Existing
+unit-law adoption is underway; these results do not certify catalogue, release
+or full-programme acceptance.
+
+Owner caller adoption retains named domain services and request compatibility:
+347 selected owner cases pass Rust1.95 debug/release;31 affected testkit cases
+pass each profile. Complete workspace nextest then passes992/992, zero skipped,
+in31.007s. That wrapper has no pre/post source manifest and is not a frozen
+Nix certificate. Its first attempt failed on old type-only named expectations;
+those wrapper expectations now use owned requests/events, while the separate
+named custody tests remain exact. Final integrated source/package gates remain.
+
+Two old test oracles needed separate repairs: the alleged inner service event
+was sent to the outer ingress, and timeout fuzzing observed only local model
+state with a no-op reaction. The corrected service test observes an inner state
+change, the original inactivity generation, exact98-to91 delivery, all action
+lanes and replay. Fuzzing reuses the unchanged independent InactivityModel,
+observes actual user/timeout messages and service state, and checks every lane.
+It completes20000 runs per nightly debug/release profile with sanitizer disabled;
+the evolving corpus is not an identical immutable comparative trial. Four
+one-file inversions (missing/duplicate/future notice and service rearm) fail at
+real assertions in both profiles. An initial ordered-comparison mutant failed
+E0369 and provides no runtime credit; the existing explicit future1 falsifier
+supplies the corrected proof without adding a bound or changing production.
+Errors, stopping turns and generation exhaustion retain their separate tests.
+
+Caller-stage checkpoint: production+491/-365/net+126 including eight new rustdoc
+lines; tests+1388/-506/net+882 across31 changed Rust files in the owner and copied
+consumer. Twelve selected production modules now contain2252 lines,51 match
+arrows, nine enums and70 direct pub declarations; states, alternatives and
+current-value ownership are unchanged from the four-wrapper checkpoint. The
+caller stage adds no production type, bound, policy, interpreter port or state.
+Named controls, full request/receipt/rejection products, inner-first effects and
+retirement remain distinct. No arrival history, repeated cause, semantic flag,
+second transition authority or caller path was introduced. Existing layer,
+normalized aggregate and settlement laws remain the cross-check; disposition:
+pass within the authorized bounded experiment. Documentation now distinguishes
+owned wrappers from explicit names and states the breaking migration. Release,
+all native gates, archives and full downstream delivery remain open.
