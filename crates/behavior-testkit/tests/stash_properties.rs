@@ -88,7 +88,7 @@ proptest! {
         releases in vec(any::<u8>(), 0..32),
     ) {
         let _runtime = Builder::new_current_thread().enable_all().build().unwrap();
-        let behavior = behavior_actors::Stash::new(Recorder::default(), |_, message| route(message));
+        let behavior = behavior_actors::UnlimitedStash::new(Recorder::default(), |_, message| route(message));
         let initialized = behavior.initialize().unwrap();
         let mut behavior = initialized.behavior;
         let mut effect_trace = Vec::new();
@@ -159,7 +159,8 @@ fn stash_filter_holds_through_the_driver() {
         User::user(MailAddr(4), 4), // Stash
     ];
     let mut mailbox = Mailbox::new(events);
-    let behavior = behavior_actors::Stash::new(Recorder::default(), |_, message| route(message));
+    let behavior =
+        behavior_actors::UnlimitedStash::new(Recorder::default(), |_, message| route(message));
     let trace = behavior_testkit::drive(behavior, &mut mailbox).unwrap();
 
     assert_eq!(
@@ -199,9 +200,10 @@ fn stash_exhaustive_sequences_match_the_filter_model() {
     while length <= MAX_LENGTH {
         let total = ALPHABET.pow(u32::try_from(length).unwrap());
         for code in 0..total {
-            let behavior = behavior_actors::Stash::new(Recorder::default(), |_, message| {
-                residue_route(message)
-            });
+            let behavior =
+                behavior_actors::UnlimitedStash::new(Recorder::default(), |_, message| {
+                    residue_route(message)
+                });
             let initialized = behavior.initialize().unwrap();
             let mut behavior = initialized.behavior;
             let mut effect_trace = Vec::new();
@@ -281,7 +283,7 @@ impl StopRecorder {
 fn stash_filter_with_a_stopping_inner_matches_the_prefix_model() {
     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
     let behavior =
-        behavior_actors::Stash::new(StopRecorder::default(), |_, message| route(message));
+        behavior_actors::UnlimitedStash::new(StopRecorder::default(), |_, message| route(message));
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let mut stopped = false;

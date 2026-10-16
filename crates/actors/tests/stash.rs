@@ -3,7 +3,7 @@ use behavior::{
     Step, Stopped, UserEvent, delegate_transition, initialize,
 };
 use behavior_actors::{
-    Machine, MessageAdapter, Move, ShutdownRequested, Stash, StashRoute, StopOnShutdown,
+    Machine, MessageAdapter, Move, ShutdownRequested, StashRoute, StopOnShutdown, UnlimitedStash,
 };
 
 fn cents(dollars: u64) -> u64 {
@@ -13,7 +13,7 @@ fn cents(dollars: u64) -> u64 {
 #[test]
 fn shutdown_outside_stash_returns_the_original_fifo_once() {
     let destination = Recipient::<MessageProtocol<MailAddr, u64>>::global(MailAddr(29));
-    let mut stash = Stash::new(MessageAdapter::new(destination, cents), |_, _| {
+    let mut stash = UnlimitedStash::new(MessageAdapter::new(destination, cents), |_, _| {
         StashRoute::Stash
     });
     let empty = stash.take();
@@ -63,7 +63,7 @@ fn shutdown_outside_stash_returns_the_original_fifo_once() {
 #[test]
 fn stash_outside_shutdown_returns_the_original_fifo_once() {
     let destination = Recipient::<MessageProtocol<MailAddr, u64>>::global(MailAddr(31));
-    let mut root = Stash::new(
+    let mut root = UnlimitedStash::new(
         StopOnShutdown::new(MessageAdapter::new(destination, cents)),
         |_, _| StashRoute::Stash,
     );
@@ -134,7 +134,7 @@ fn receive_parcel(door: Door, stored: &mut Vec<u64>, parcel: &Parcel) -> Result<
 #[test]
 fn taking_messages_preserves_machine_deferrals_and_the_stash_route() {
     let machine = Machine::<MailAddr, _, _, _, _>::new(Vec::new(), Door::Closed, receive_parcel);
-    let mut stash = Stash::new(machine, |machine, parcel| match parcel {
+    let mut stash = UnlimitedStash::new(machine, |machine, parcel| match parcel {
         Parcel::Arrived(number) if number % 2 == 1 && machine.phase() == Door::Closed => {
             StashRoute::Stash
         }

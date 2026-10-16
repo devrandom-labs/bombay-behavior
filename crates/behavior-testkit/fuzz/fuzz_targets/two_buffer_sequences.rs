@@ -39,7 +39,7 @@ fuzz_target!(|bytes: &[u8]| {
             },
         );
         let behavior =
-            behavior_actors::Stash::new(behavior, |_, message: &u64| match message % 3 {
+            behavior_actors::UnlimitedStash::new(behavior, |_, message: &u64| match message % 3 {
                 0 => StashRoute::Release,
                 1 => StashRoute::Deliver,
                 _ => StashRoute::Stash,

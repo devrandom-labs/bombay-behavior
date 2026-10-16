@@ -377,7 +377,7 @@ fn protocol_preserving_wrappers_keep_one_public_identity() {
     }
 
     preserves::<RootProtocolProbe, StopOnShutdown<RootProtocolProbe>>();
-    preserves::<RootProtocolProbe, Stash<RootProtocolProbe>>();
+    preserves::<RootProtocolProbe, UnlimitedStash<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, Watch<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, ReceiveTimeout<RootProtocolProbe>>();
     preserves::<RootProtocolProbe, Deadline<RootProtocolProbe>>();

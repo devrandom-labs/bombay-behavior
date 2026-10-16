@@ -271,12 +271,13 @@ async fn driver_full_stack_mixed_lanes_stop_on_peer_death() {
     let peer = MailAddr(44);
     let behavior = behavior_actors::Deadline::new(
         behavior_actors::Watch::new(
-            behavior_actors::Stash::new(EchoingApplication { seen: Vec::new() }, |_, message| {
-                match message % 3 {
+            behavior_actors::UnlimitedStash::new(
+                EchoingApplication { seen: Vec::new() },
+                |_, message| match message % 3 {
                     2 => StashRoute::Stash,
                     _ => StashRoute::Deliver,
-                }
-            }),
+                },
+            ),
             peer,
             stop_on_abnormal_death,
         ),
@@ -450,13 +451,13 @@ async fn driver_stash_stop_preserves_held_and_stops() {
         }
     }
 
-    let behavior =
-        behavior_actors::Stash::new(StopOnZero { seen: Vec::new() }, |_, message: &u64| {
-            match message {
-                0 => StashRoute::Release,
-                _ => StashRoute::Stash,
-            }
-        });
+    let behavior = behavior_actors::UnlimitedStash::new(
+        StopOnZero { seen: Vec::new() },
+        |_, message: &u64| match message {
+            0 => StashRoute::Release,
+            _ => StashRoute::Stash,
+        },
+    );
     let mut mailbox = Mailbox::new([User::new(MailAddr(1), 5), User::new(MailAddr(9), 0)]);
     let trace = drive(behavior, &mut mailbox).unwrap();
 
