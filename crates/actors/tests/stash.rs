@@ -237,7 +237,11 @@ fn a_replay_selector_panic_preserves_the_reheld_prefix_and_undelegated_suffix() 
     let released = catch_unwind(AssertUnwindSafe(|| {
         delegate_transition(&mut stash, UserEvent::user(MailAddr(19), Parcel::Released))
     }));
-    assert!(released.is_err());
+    let Err(payload) = released else {
+        panic!("replay must reach the selected panic");
+    };
+    let panic_message = payload.downcast_ref::<&str>();
+    assert_eq!(panic_message, Some(&"the borrowed parcel selector failed"));
     assert_eq!(stash.base().phase(), Door::Open);
     // The second parcel was delegated before the panic. The first remains
     // held; only the still-undelegated originals belong to this FIFO.
@@ -294,7 +298,14 @@ fn a_replay_actor_panic_preserves_the_reheld_prefix_and_undelegated_suffix() {
     let released = catch_unwind(AssertUnwindSafe(|| {
         delegate_transition(&mut stash, UserEvent::user(MailAddr(19), Parcel::Released))
     }));
-    assert!(released.is_err());
+    let Err(payload) = released else {
+        panic!("replay must reach the delegated actor panic");
+    };
+    let panic_message = payload.downcast_ref::<&str>();
+    assert_eq!(
+        panic_message,
+        Some(&"the parcel actor failed after delegation")
+    );
     assert_eq!(stash.base().phase(), Door::Open);
     // The second parcel was delegated before the panic. The first remains
     // held; only the still-undelegated originals belong to this FIFO.
