@@ -2,6 +2,15 @@
 
 Companion to the [PRD](developer-experience-prd.md). Source references are pinned to Behavior `d69f992b371c12ab34e73b18e45b8112c90a1508` and Bombay `c3afb3011090ac4c9112fd39e4a76980db856df0`. Repository documents supplied requirement names, not implementation verdicts. Source inventory and test-body inspection do not constitute a fresh passing test run.
 
+Current implementation additions are tracked in the owning PRD's single
+checklist. Published Behavior/Actors0.28.0 is verified at d9237dde; it does not
+contain finite holding. Candidate [PR114/a863633](https://github.com/devrandom-labs/bombay-behavior/pull/114)
+owns finite admission and replay-panic custody in stash/{queue,limit}.rs, with
+executable owner tests in stash.rs/stash_limits.rs and real source-selected
+Bombay retirement witnesses. [PR113/3389c00](https://github.com/devrandom-labs/bombay-behavior/pull/113)
+owns generic send insertion. Both remain unpublished; the pinned inventory below
+is the initial source inventory, not a claim about their current spellings.
+
 ## Source evidence
 
 | Area | Inspected source and test witnesses | PRD owner |

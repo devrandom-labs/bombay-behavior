@@ -735,7 +735,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers, typed request custody and matching runtime are implemented on feature branches. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: authoritative Bombay and protected nested gates, remaining acceptance cuts and registry0.28 caller migration. Candidate/source/archive proofs do not certify the complete programme. |
-| DX14 | Owner5068f6a adds FIFO `take()`. Candidate3248540 adds finite admission and complete original-input refusal through existing typed routes. Both wrapper orders, initialization/replay effects, native open/closed-recipient custody, static denials, exhaustive/property/fuzz sequences and loss/order/sender/limit inversions pass their bounded matrices below. | Open: replay-panic custody cut, Bombay catalogue adoption/final gates and Machine bounds/retention audit. Approved owner migration and b8ae315 full owner gates pass; Clone-based rollback remains disproven. |
+| DX14 | Owner a863633 adds finite admission, complete refusal and unwind-safe previously held custody; `take()` transfers originals. Both wrapper orders, initialization/replay/Stop, native open/closed/panic retirement, static denials, ranked/property/fuzz sequences and four independent defects pass the bounded matrices below. All11 owner gates pass with1,016 tests/123 doctests. | Open: Bombay catalogue adoption, breaking publication/registry/final downstream gates and Machine bounds/retention audit. Approved owner migration and replay-panic custody cuts pass; Clone-based rollback remains disproven. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete Bombay270 catalogue migration, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -1040,299 +1040,117 @@ two paths and no production code. Receipts live under the existing evidence root
 `POSTLOWERING-DRIFT` and `RETAINED-REVIEW` bind their exact sources, failures and dispositions. These
 are bounded custody proofs, not bounded retention or full-programme acceptance.
 
-#### Stash limits — DX06/14/17 pre-edit law
+#### Stash limits and replay custody — DX06/14/17
 
-Selected policy: `actor.with_stash(8, refused, route)` or the owning
-`Stash::new(actor, 8, refused, route)` starts with an empty FIFO. The limit counts
-held logical inputs, not allocation bytes, Machine deferrals, runtime mailboxes
-or outgoing effects. Zero is valid. Only a newly selected `Stash` input at the
-limit is refused: its original `User` (sender and move-only message) moves to the
-supplied typed recipient through Actions, and the actor continues. Holding owns
-the original input; refusal owns it in an explicit send; release/take transfers
-that same ownership. No duplication, eviction, crash or rollback is involved.
-`Deliver`, `Release`, non-user events, initialization and stop keep their existing
-laws, including successful effect prefixes and untouched replay suffixes.
+Canonical construction is `actor.with_stash(8, refused, route)`, lowering to
+`Stash::new(actor, 8, refused, route)`. The limit counts held logical inputs,
+not allocation bytes, Machine deferrals, runtime mailboxes or outgoing effects.
+Zero is valid. Only a newly hold-selected input at capacity is refused: the
+complete original User, including sender and move-only message, enters the typed
+refusal lane and the actor continues. Deliver, Release, non-user events, init
+and Stop preserve their prior laws. `take()` transfers FIFO originals, leaves
+policy unchanged and returns empty when repeated. Explicit UnlimitedStash keeps
+deliberately unbounded/Never callers free of an irrelevant refusal capability.
 
-This is Bombay resource policy, not an actor-model guarantee. Cross-check the
-[actor computation reductions](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/E9A5266BA5D37A1856D50C939679F31C/S095679689700261Xa.pdf/a-foundation-for-actor-computation.pdf),
-Behavior layer laws L4–6/8/9 and all four normalized atomic documents.
-`VecDeque::with_capacity` reserves storage; it does not enforce this limit.
-Expected refusal is a normal typed effect, not transition failure. Use existing
-DeliveryRoute logical/exact/mixed capabilities and SendProduct interpretation,
-settlement and source custody. A same-event `StashSends { actor, refusals }`
-preserves the inner effects first; add no synthetic ingress/event wrapper.
-The repeatable route alone needs Clone because DeliveryRoute consumes it;
-neither input nor inner actor acquires that bound.
+These are Bombay buffering/recovery policies, not actor-model guarantees. The
+[actor reductions](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/E9A5266BA5D37A1856D50C939679F31C/S095679689700261Xa.pdf/a-foundation-for-actor-computation.pdf)
+retain the pure effects boundary; layer laws L4–6/8/9 and all four normalized
+atomic documents supply composition constraints. Reuse DeliveryRoute, existing
+User/events, SendProduct interpretation/settlement, initialization and terminal
+custody. `StashSends { actor, refusals }` keeps one event algebra and interprets
+inner effects first. Only the repeatable consuming refusal route needs Clone;
+input/actor do not gain that bound. Closed phase and statically uninhabited
+inner error remain required. Machine's Clone-based rollback hypothesis remains
+reopened: shared cloned state disproves it; do not weaken the existing bounds.
 
-Reuse the one existing queue/replay authority as explicit `UnlimitedStash` for
-advanced unbounded use, including real Never/identity callers that need no
-refusal capability. Finite Stash adds only an empty queue owner, limit and real
-recipient. Do not convert populated queues without returning every original
-input on refusal. `take()` leaves the limit, recipient and pure selector intact.
-The finite constructor/generic-arity break is deliberate and requires migration
-guidance; the ordinary facade infers the complete type. There is no optional
-dummy port, policy trait, default generic, second queue or second replay engine.
+The first finite lowering was removed after its outer-timeout witness rejected
+inferred with_send at E0277. The common-owner repair is independently reviewable
+PR113/3389c00: conditional generic SendProduct delegation reuses Own/Inside and
+SendInput. Unique lanes infer; absent/duplicate/aliased lanes retain E0277/E0283,
+with explicit selection available. Seven focused cases, both wrapper orders,
+move-only nominal messages and caller-local pure construction pass. No new public
+state/type/trait, storage or interpreter change. Its11 Nix checks,1,003 tests,
+123 doctests, package/archive and FIFO/keyed static controls pass; all14 current
+CI checks pass. It is ready for review, unpublished and lacks merge authorization.
 
-Isolated owner/native `codex/devx-stash-limits` start at5068f6a/c8dfe3b.
-Before production, execute focused owner and real Application REDs at the desired
-syntax, with frozen original dependencies. Prove zero/full/refill/release, two
-original senders and move-only allocations, both shutdown orders, MessageAdapter
-and Machine, inner initialization/sends/creates/stop, accepted refusal and closed
-exact-recipient custody. Review every test twice. Static denials must preserve
-protocol/phase/infallibility and exact-only routing without a logical host.
-Migration may begin only after the smallest complete downstream proof.
+Finite owner a863633 follows pre-edit laws/tests5068f6a/569e4d6/bd27c9f and the
+removed candidate's recorded falsifier. Its tests cover zero/full/refill/take,
+separate Machine deferrals, both shutdown/timeout orders, stale elapsed, real
+init sends/creations, produced effect prefix and Stop suffix. A ranked interval
+oracle checks16,383 short sequence/limit combinations plus256 longer sequences
+per profile. Lost refusal, extra slot, reversed FIFO and changed sender each fail
+both direct/ranked oracles in both profiles. A polluted shared-target attempt is
+discarded; separate actual/private targets establish the accepted controls.
+Release rechecks eligibility; it does not override the selector. No Rust bounds
+were added for assertions. The approved migration changes29 old unlimited names
+across12 owner files, preserving assertions; formatting-aware inverses restore
+original bytes. No further old owner constructions/types remain.
 
-Expected owner scope: stash/{mod,queue,limit}.rs replacing stash.rs, crate exports,
-one focused test, existing guide/changelog; about150 net production lines,
-two additional public types (UnlimitedStash and StashSends), no trait/event/error.
-Bombay scope: ActorExt, one native test and coordination; about20 production lines.
-Baseline:223 stash lines, one module, two types/two traits,11 public spellings,
-zero control-state sums, three transient route choices, three match/two if/one
-while. Surviving values are inner behavior, pure selector, FIFO originals, finite
-limit and actual refusal capability. Record measured drift and loss/order/sender/
-limit inversions before retention. Two independent pre-edit design passes clear
-only this Stash hypothesis. Machine bounded deferral remains open: Clone can
-share state, so cloning then discarding a mutated candidate does not prove rollback.
-Do not lower that reopened Machine hypothesis or weaken its existing bounds.
+Replay ownership equation: pre-held originals = delegated inputs + reheld prefix
++ unread suffix. Pure selection only borrows. A selector unwind retains current
+plus unread tail; inner unwind retains only still-undelegated originals. Neither
+rolls back inner state nor recovers consumed inputs or unreturned Actions.
+Pre-edit law2d7a72d/6169bc2 precedes the production change. The real Application
+regression fails0-vs-2 originals in both profiles on the original queue. Two pure
+regressions fail at old retained[1]: selector expects[1,3,4], actor expects[1,4],
+with delegated2 surviving in inner state. Double review strengthened exact panic
+cause attribution; isolated original-source runs reject both strengthened pure
+oracles in both profiles. Only existing Rust panic payloads are inspected; no
+message/effect erasure is introduced.
 
-Pre-production result: owner debug/release REDs fail at missing StashSends and
-the four-argument constructor (with the related untyped Machine selector); the
-real native consumer fails only the missing product and three-argument facade.
-All835 owner and1,504 native/archive inputs stay frozen. Five pure and two native
-tests now specify the intended limits, original custody and lifecycle journeys;
-this is compile-failure evidence, not runtime acceptance. Two source reviews
-caught and corrected a zero-limit coverage gap, a waiting endpoint left open,
-and an invalid assumption about retirement-settlement order. Nonempty inner
-initialization/creation/stop-prefix and static-denial cuts still precede lowering.
-Production remains byte-identical to the baseline. The initial missing private
-native driver and pre-format check are setup failures, with no proof credit.
+Fix a863633 adds one private held-input custody product, with no transition
+method: its destructor reunites unread originals after the reheld prefix.
+Selection borrows front before pop. Existing dispatch, effect accumulation and
+Stop decision reconstruct byte-for-byte after removing only custody changes.
+This uses ordinary [Rust destruction](https://doc.rust-lang.org/reference/destructors.html)
+and [unwind safety](https://doc.rust-lang.org/nomicon/exception-safety.html), without
+indexed-removal's possible quadratic shifts, new runtime catch, Clone, phase,
+error or public surface. Abort, allocator/destructor failure and arbitrary inner
+rollback are excluded. Both independent source/oracle reviews pass.
 
-Complete the effect witnesses in the existing algebra test using its existing
-ExplicitInitialization and StashRecording actors, including ReceiveTimeout's
-real initialization/replay schedules. No new actor/protocol fixture family is
-needed. This adds algebra.rs and the composition export file to the owner scope.
-The same-event send law requires the chosen route's concrete SendsFor<B::Event>
-proof at construction/Behavior and the facade; keep that bound at those ports,
-not on stored queue values or borrowed observations. The queue exposes only
-pure selection and receipt of an already selected original User to finite
-admission; replay remains wholly at the old queue owner. Native static fixtures
-must distinguish wrong refusal payload/address, fallible/open-phase replay,
-and a real exact-only positive without a logical host. These are the remaining
-focused test edits, not permission for catalogue migration before the native
-accepted/closed-recipient journeys pass.
+Aggregate checkpoint: finite scope22 owner files, complete shared stack28;
+finite production+399/-226/net173 before this fix. The fix adds32/removes6 Rust
+lines (seven added doc lines), net26; whole-stack production net277. Queue
+240→264 lines, stash modules3→3, control/subordinate state sums0→0, route choices
+3→3, private custody products0→1, public types4→4/traits2→2/spellings18→18.
+Executable branch points add one Option-pop alternative; match/if/while counts
+stay3/2/1. Surviving private fields own only borrowed destination and unread
+originals. No arrival history, repeated cause, false cardinality, nested actor,
+semantic flag or structural caller syntax survives. Cross-check the same layer,
+normalized atomic, Driver D-TURN-1/D-TERM-1 and settlement laws: disposition pass.
+This is new capability/correctness code, not production code reduction.
 
-Before retention, also prove the existing DX08/L4 insertion law: adding a
-same-event named effect product must preserve `Actions::cont().with_send(request)`
-for a unique typed inner lane. A ReceiveTimeout outside the finite stash must
-emit a real reminder to the MessageAdapter destination without naming the stash
-product or a structural path. Initialize, hold one original input, refuse a second,
-fire the actual latest schedule generation, and prove exactly one reminder plus
-unchanged original custody; replaying elapsed must emit nothing. This is a derived
-composition law, not new timer semantics. Generic SendProduct currently derives
-interpretation/custody but no insertion delegation; inspect that common owner
-and existing SendLayer/SendInput proofs before choosing a fix. A failing witness
-reopens this unretained lowering; do not compensate in the callback or migrate
-the catalogue. Any common fix needs a second real product and wrapper order,
-missing/duplicate-lane denials, and unchanged interpreter ordering/custody.
+Exact-source verification at a863633:40 focused cases/profile, strict owner/native
+Clippy,11 native Nix checks (realization249.678s, authoritative rerun6.339s),1,016
+nextest/zero skips and123 doctests pass. All838 owner inputs/HEAD and actual
+output hashes/derivers remain exact. No signing/disk failure occurred;60 offline
+yank-index errors and eight dependency-policy warnings remain explicit. Package
+preflight passes four workspaces in7.827s; four fixture dead-code and two unused
+historical-patch warnings remain. Immutable archives contain252 safe members and
+228 Rust files matching the clean commit. These candidate archives are not the
+published0.28.0 contents. Final byte-driven fuzz completes20,000 runs/profile
+with sources conserved, sanitizer none and three missing-sanitizer-symbol
+warnings/profile; corpus evolves, and max_len512 does not bound existing seeds.
+The standard all-target ASAN build passes in15.275s inside the pinned fuzz shell;
+its initial host-environment libiconv link failure remains uncredited.
 
-The first finite lowering is reopened and removed: the real outer-timeout
-callback fails only E0277 in both profiles at its unique adapter delivery.
-The saved candidate's five pure and two native journeys remain bounded positive
-evidence, not retention. Common-owner work starts separately at main e42088c6
-in `codex/devx-send-products`. Generic SendProduct must delegate exactly one input
-unchanged to its statically selected field and preserve every other lane. Each
-field forwards the existing arbitrary inner SendInput path, using disjoint
-existing Own/Inside markers solely for static selection; unique inference remains
-canonical and duplicate/aliased capabilities stay ambiguous. Nominal actor sends
-keep their existing semantic lane implementations without extra alternatives.
-No new public type, trait, state, branch, storage or interpreter is proposed.
-Scope: macros/src/lib.rs and its rustdoc/guide/changelog plus one focused actors
-test and compile-denial docs; about35 production lines. Reuse all existing
-SendEffects, SendInput, Actions, named interpretation and settlement machinery.
-Before macro edits, a second real DeliveryOutcomes product with both nonempty
-lanes and nested nominal actor sends must fail, while reverse wrapper placement
-and missing/duplicate input cases specify the limits. Aggregate baseline: no
-control states, no subordinate alternatives, one derive owner; the fix must
-leave all interpretation/custody/initialization ordering code byte-identical.
-This removes per-product caller-side insertion machinery rather than adding a
-parallel constructor or callback adapter. Preserve the original stash regression
-and prove it after integrating the shared fix before further stash lowering.
+Three real native journeys cover accepted refusal, closed-recipient complete
+custody and borrowed-selector panic retirement. Each passes Rust1.99/1.96 in
+both profiles alongside all six exact static fixtures (12 runtime/24 UI fixture
+executions,16 outer passes, zero ignored/filtered). All2,112 bound inputs remain
+exact;397 nonowner package records are conserved. Total wrapper57.554s, with
+per-run13.023/11.589/13.377/12.029s. These are source-selected proofs, not registry
+or broad-catalogue acceptance. Initial wrong-import/setup and stale-artifact
+attempts retain failure dispositions. Layout observation is56→72 actor bytes,
+24→48 send-product bytes for the same logical u64 adapter; it proves no heap
+bound, peak-memory or latency gain. No persistent fields change in the panic fix.
 
-Shared insertion is now implemented on `codex/devx-send-products` at3389c00.
-The common derive adds56 conditional field delegations across11 existing
-products, no public types, stored fields or actor control states. Macro source
-is+44/-1 (six added rustdoc lines); the existing interpreter/custody generation
-and nominal actor lane generator remain byte-identical. Seven focused tests
-pass debug/release, including actual move-only nominal messages and separately
-caller-local pure construction. Exact static checks retain E0277 for absence
-and E0283 for duplicate/aliased lanes, with explicit-selection positives.
-All1,003 workspace tests pass directly and under the release-profile Nix gate;
-all123 doctests and all11 native checks pass. Rooted realization takes278.226s;
-the authoritative flake rerun takes2.640s with835 frozen inputs/HEAD unchanged
-and every output's actual deriver/hash verified. Package preflight passes in
-10.321s (two workspaces; four fixture dead-code and two unused historical-patch
-warnings retained). Actual archives contain249 safe members/225 matching Rust
-files at the exact clean commit. FIFO/keyed positive completion and all four
-missing/ambiguous denials pass in both profiles without snapshot changes.
-These times are observations, not a controlled compile-performance comparison.
-New blanket impls can overlap hand-written field witnesses; migration guidance
-requires removing those duplicates. Interpretation and runtime storage are
-unchanged; no global memory/latency claim follows. PR113 at3389c00 is ready for review and has all14
-current GitHub checks passing after its required breaking classification. The
-superseded minor-classification failure remains in the original run record.
-
-The finite candidate is lowered again using this common fix. Seven focused
-pure tests pass debug/release, including both actual timeout orders and repeated
-elapsed denial. The outer order observes held cardinality; original held sender/
-Box recovery is independently checked in the reverse order. Existing26 algebra
-cases pass both profiles, including the new initialization/creation and replay
-stop-prefix/suffix cuts; only six old unlimited constructor names change there.
-Native accepted/closed-refusal journeys pass both supported compilers/profiles
-(eight executions), with the exact three owner paths and unchanged397 nonowner
-records. Six native static fixtures pass strict verification under both
-compilers/profiles (24 fixture executions): finite and explicit-unlimited
-construction succeed; wrong payload/address, missing logical host, inhabited
-error and open phase fail for their own single intended cause. All five canonical
-diagnostics agree between compilers. Snapshot generation occurred only in private
-copies before strict, immutable runs; all2,741 frozen inputs stayed unchanged
-through those runs. Only the five reviewed diagnostic files were then adopted.
-These are source-selected proofs; independent loss/order/limit inversions,
-resource models, migration and full final-source gates remain open. The initial outer test wrongly expected Release to override
-its pure selector; the authoritative unchanged replay correctly reholds that
-input. The oracle was corrected, without a production change. A whole-product
-Debug-only assertion was replaced by the same complete PartialEq observation,
-without adding a bound. Earlier failed/setup runs remain uncredited in the
-existing evidence root; records under `send-products/` and `stash-limits/` bind
-all raw logs, source maps and before/after reviews.
-
-Before extending resource tests, use the existing Invoice/MessageAdapter witness
-with an independent interval projection: between take operations, the first N
-hold-selected originals are retained and the remaining originals are refused.
-Deliver/release inputs never occupy those slots. Check complete per-turn effects
-and original FIFO custody on every take, exhaustive short inputs and longer
-generated inputs. This adds no production type or policy and does not model a
-byte-memory bound. Existing dynamic replay/stop tests remain separate. Extend the
-existing stash_sequences fuzz target with byte-selected limit/route/take inputs,
-checking exact delivery/refusal/take partitions and original senders. This
-replaces its ineffective byte-length-only variation; use the pinned fuzz shell
-and a private corpus, without changing production or adding another target.
-
-The ranked model now passes9 owner cases in debug/release, including16,383
-exhaustive sequence/limit combinations per profile and256 generated sequences
-shorter than128 operations. Four isolated defects (lost refusal, extra slot,
-reversed FIFO and changed sender) each fail both original and ranked oracles in
-both profiles. The strict ranked run freezes837 actual inputs throughout; its
-private variants visibly rebuild in a separate target. An earlier shared-target
-run reused a deliberately broken library and is discarded, preserving its raw
-failure and shrinking seed; fresh actual/private targets resolve that artifact
-mixing without changing production. Whole-value equality avoids an unnecessary
-Debug requirement. This does not prove dynamically eligible replay or heap bytes.
-The pinned release layout probe measures56→72 actor bytes and24→48 send-product
-bytes for the same logical u64 adapter; these are stack-layout costs, not heap or
-latency results. Receipts bind the selected source files, probe and raw output.
-
-Finite admission is committed locally at3248540 after tests a309bbd/e8043e1.
-The production ledger is+398/-225/net173, two added public types and no new
-control-state sums; stash modules1→3, transient route choices3→3. Final focused
-checks pass35 tests per profile, Actors doctests, strict Clippy, formatting,
-rustdoc-import and assertion checks. The unchanged assertion checker required
-moving the oracle iterator's take/count observation before its assertion; no
-transition or custody check was removed. Final byte-driven fuzz completes20,000
-runs per profile with all frozen sources unchanged, sanitizer=none and three
-known missing-sanitizer-symbol warnings per profile. Its corpus evolves between
-profiles; configured max_len512 is not a verified bound on existing seed sizes.
-No deterministic performance or memory-safety claim follows. The pure existing
-initialize/delegate ports allow owned mutable take; Active's deliberate lack of
-DerefMut remains unchanged. Initial unsupported formatting arguments and fuzz
-harness compile attempts are setup failures with no execution credit.
-The user authorized the prepared migration. Its23 names across ten files preserve
-old unlimited/identity oracles without refusal placeholders. The first full build
-exposed six more explicit-type/import references in two static protocol/capability
-tests; the same migration changes no bound or assertion. Final12-file/29-reference
-inverses reproduce original bytes after pinned formatting. Complete Stash-word
-audit finds no further old construction/type references. Owner d897ac2 records
-this mechanical batch, plus a one-line crate-doc correction; finite scope is22
-files, the complete stack28. Direct workspace nextest passes all1,014 tests/zero
-skips in49.133s before main refresh. Merging published main d9237dd preserves all
-Rust and all nonowner dependency records. Changelog b8ae315 keeps finite policy
-explicitly unreleased. At that clean head, all11 native Nix checks are freshly
-realized in262.075s; authoritative flake rerun passes in2.688s. Actual output
-hashes/derivers and838 frozen inputs/HEAD are conserved. They execute1,014 unique
-nextest cases,123 doctests and50 reference controls. Native signing/disk failures
-are absent, while60 offline yank-index errors and eight dependency-policy
-warnings remain explicit. Four-workspace/package preflight passes in15.209s;
-its four fixture dead-code and two unused historical-patch warnings remain.
-These are candidate source/archive proofs, not publication of finite policy or
-final registry/Bombay programme acceptance. The b8ae315 source-selected native
-refresh passes Rust1.99/1.96 debug/release: both runtime journeys and six static
-fixtures per configuration, with397 nonowner package records conserved. Total
-wrapper time205.965s; per-run57.422/43.687/56.972/45.534s. An initial private
-cargo-update attempt changed four unrelated Windows dependency edges and was
-rejected before testing; preserving the previously validated graph and changing
-only two owner versions passes locked metadata and all conservation checks.
-
-Before further lowering, investigate the replay-panic cut at DX14. Desired law:
-a previously held original remains owned by the stash until delegated to the
-inner actor or transferred by take(); pure selection only borrows it. If
-selection panics, the selected original and all still-undelegated originals
-must remain recoverable, in original FIFO order, from the surviving behavior.
-If inner execution panics, only the still-undelegated originals are promised;
-no rollback of inner mutations, delegated inputs or unreturned Actions follows.
-This is deliberate Bombay queue/recovery policy, not an Agha or Rust rollback
-guarantee. Driver D-TURN-1/D-TERM-1 and driver.rs673–688 retain only the surviving
-partially mutated actor; their law does not restore detached local storage.
-
-The pre-edit consumer witness uses an ordinary Ledger actor with Closed/Open
-business state and real boxed invoices. Explicit UnlimitedStash avoids an unused
-refusal recipient: admit originals, then Open releases them, changing the actor
-before its borrowed selector deliberately panics. Await actual termination and
-join TransitionPanicked custody; take() must recover all original allocations,
-payloads and senders in FIFO order. Inspect cleanup, both notifications, every
-ActorCustody lane and all interpretation/source/settlement products. Write and
-run this failing real Application witness before any owner production edit.
-A separate pure transition witness must cover selector panic and inner panic,
-including an already reheld prefix, delegated originals and unread suffix.
-
-Reuse the existing queue, Stash/UnlimitedStash, User, actor facade, Application,
-Driver unwind capture and terminal custody. Do not change the runtime panic
-contract or add Clone, error/phase widening, public types or protocol values.
-Candidate direct owned-data approaches are an in-place queue cursor and a
-private scoped queue custodian; compare ordering, unwind ownership and traversal
-cost before choosing. Expected production scope is the existing queue.rs and
-its existing docs/changelog; expected delta below40 net lines, zero public
-types. Reuse existing owner/native test files. The complete stack currently
-has28 owner files and251 net source Rust lines (two new public types); stay
-within the authorized file surface and500-line threshold. Pre-experiment control
-states and subordinate sums remain zero; route choices remain3, one FIFO owner,
-no additional transition authority. Existing shared send insertion/interpreter
-code must remain byte-identical. Record exact before/after counts and a pass or
-reopen disposition after the failing witness and retained experiment; PR114
-remains draft and DX14 stays open until these cuts and downstream adoption pass.
-
-The pre-edit Application witness now fails at the intended custody assertion
-in both profiles: take() returns0 originals instead of2 after the independently
-identified selector panic. Cleanup, both notifications, native panic
-classification, partially mutated Open state and every other custody lane
-already pass. A setup-only wrong import was corrected without changing any
-contract; it supplies no execution evidence. Independent double review required
-attributing the existing native Rust panic payload to this exact selector; that
-stronger oracle also fails both profiles. It introduces no erased message/effect
-protocol. Two pure owner regressions fail both profiles: the reheld prefix
-survives but selector panic loses current+tail, while inner panic loses only the
-still-undelegated tail. The already delegated parcel remains in inner state.
-
-Choose a private held-input custody product over indexed queue removal: one
-borrowed retained FIFO plus the existing unread FIFO reunite on scope exit,
-including unwind. Classify front by borrow before popping. It owns no behavior,
-route, Actions, dispatch, phase or lifecycle authority; Drop only appends unread
-originals after the reheld prefix. This deletes detached unprotected custody
-and explicit stop-only reunion. Indexed removal could shift repeatedly and
-become quadratic; the scoped queue preserves the existing linear traversal.
-No allocation-free, abort recovery, allocator failure or destructor-panic
-promise is made. Baseline queue240 lines, three modules, zero control/subordinate
-state sums/private custody products, three route alternatives, four public
-types/two public traits. One private custody product is justified by unwind
-reunion; public surface and all interpreter paths must remain unchanged.
+PR114 remains draft. Remaining: actual Bombay catalogue/static-manifest adoption,
+normal reviewed breaking publication and registry/nested-lock/full downstream
+gates, plus Machine retention/bounds. Exact receipts remain in the existing
+`stash-limits/` and `send-products/` evidence directories, notably PANIC-SHAPE,
+PANIC-OWNER-ORIGINAL-RESULTS, PANIC-NATIVE-GREEN-{SOURCES,RESULTS}, FUZZ-V5 and
+full-panic/FULL-RESULTS. The single DX01–DX28 checklist remains authoritative.
 
 
 #### Policy construction and startup — DX10/11/19/24/27
