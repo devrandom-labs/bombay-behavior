@@ -1143,7 +1143,7 @@ attempts retain failure dispositions. Layout observation is56→72 actor bytes,
 24→48 send-product bytes for the same logical u64 adapter; it proves no heap
 bound, peak-memory or latency gain. No persistent fields change in the panic fix.
 
-PR114 remains draft. Remaining: actual Bombay catalogue/static-manifest adoption,
+PR114 is ready for owner review. Remaining: actual Bombay catalogue/static-manifest adoption,
 normal reviewed breaking publication and registry/nested-lock/full downstream
 gates, plus Machine retention/bounds. Exact receipts remain in the existing
 `stash-limits/` and `send-products/` evidence directories, notably PANIC-SHAPE,
