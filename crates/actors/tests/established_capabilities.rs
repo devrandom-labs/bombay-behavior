@@ -8,7 +8,7 @@ use behavior::{
     ItemSettlement, Never, NoBirths, NoSends, Protocol, Recipient, ResolveChildOccurrence,
     SendEffects, SendLayer, Step, User, UserEvent,
 };
-use behavior_actors::atomic::{ImmediateActivation, WorkerSubmission};
+use behavior_actors::worker::{ImmediateStartup, WorkerSubmission};
 use behavior_actors::{
     Activate as _, CancelObservation, DeliveryRoute, EstablishedObservation,
     EstablishedTerminationMonitor, Exit, HeterogeneousShutdownPlan,
@@ -1459,7 +1459,7 @@ fn existing_worker_factory_result_accepts_affine_observation_definitions() {
     type Definition = EstablishedTerminationMonitor<Observer, WorkerProtocol>;
     fn owning_factory<F>(factory: F) -> F
     where
-        F: FnMut(&u64) -> Result<WorkerSubmission<Definition, ImmediateActivation>, u64>,
+        F: FnMut(&u64) -> Result<WorkerSubmission<Definition, ImmediateStartup>, u64>,
     {
         factory
     }

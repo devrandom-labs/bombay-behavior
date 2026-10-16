@@ -1,6 +1,6 @@
 //! Reusable, pure actors and behavior compositions built on [`mod@behavior`].
 //!
-//! The public taxonomy follows actor-system semantics: [`atomic`], [`composition`],
+//! The public owners include [`supervisor`], [`pool`], [`proxy`], [`worker`], [`composition`],
 //! [`lifecycle`], [`routing`], [`discovery`], [`time`],
 //! [`persistence`], [`workflow`], and [`operations`]. Every template is a
 //! deterministic fold from one concrete event sum to explicit typed
@@ -57,7 +57,8 @@
 //! ```
 
 mod activation;
-pub mod atomic;
+mod templates;
+pub use templates::{ZeroCapacity, diagnostic, pool, proxy, supervisor, worker};
 pub mod composition;
 pub mod discovery;
 pub mod lifecycle;
@@ -75,23 +76,18 @@ mod watch;
 pub mod workflow;
 
 pub use activation::{Activate, Active, Initialized};
-pub(crate) use atomic::{
-    ActivationPlan, ActorDrainPolicy, DiagnosticAction, DiagnosticDisposition, DiagnosticRoute,
-    InitialWorkerOutcome, InterruptedWorker, ProxyDrain, ProxyInputReceipt, ProxyInputResult,
-    ProxyOperation, ProxyOperationId, ProxyOutcome, ProxyPhase, ReplacementOutcome,
-    RestartReleaseFailure, StableProxy, WorkerAttempt, WorkerChange, WorkerCreationRejection,
-    WorkerStartResult, WorkerSubmission,
-};
 pub use composition::{
     DeliveryRoute, MessageAdapter, MessageAdapterWithRoute, ReplyDeliveries, ReplyDelivery,
     ReplyRoute,
 };
+pub(crate) use diagnostic::{DiagnosticAction, DiagnosticDisposition, DiagnosticRoute};
 pub use discovery::{
     Presence, PresenceEntry, PresenceError, PresenceMessage, PresenceOutcome, PresencePhase,
     PresenceReply, PresenceReport, PresenceSends, PresenceVersion, PubSub, PubSubError,
     PubSubMessage, Registry, RegistryError, RegistryMessage, RegistryResult, Resolution, Resolver,
     ResolverConfigError, ResolverMessage, Topic, TopicError, TopicMembership, TopicMessage,
 };
+pub(crate) use lifecycle::ActorDrainPolicy;
 pub use lifecycle::{
     BeginShutdownPhases, ChildCreationExpectation, ChildShutdownPhases, ChildShutdownPlanError,
     ChildTermination, DeclareShutdownPhase, EstablishedTerminationMonitor,
@@ -129,6 +125,10 @@ pub use protocol::{
     ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, UnwatchPeer,
     established_child,
 };
+pub(crate) use proxy::{
+    InitialWorkerOutcome, ProxyDrain, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
+    ProxyOperationId, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerStartResult,
+};
 pub use routing::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
     AcknowledgementRecord, AcknowledgementState, Acknowledgements, BreakerAttempt,
@@ -150,6 +150,7 @@ pub use routing::{
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
 pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
+pub(crate) use supervisor::directory::{InterruptedWorker, WorkerChange};
 pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,
 };
@@ -158,6 +159,9 @@ pub use time::{
     LeaseSends, LeaseState, OneShot, Periodic, ReceiveTimeout, TimedEvent, TimedReaction,
 };
 pub use watch::{LinkReaction, Watch, WatchEvent, stop_on_abnormal_death};
+pub(crate) use worker::{
+    RestartReleaseFailure, StartupPlan, WorkerAttempt, WorkerCreationRejection, WorkerSubmission,
+};
 pub use workflow::{
     Barrier, BarrierArrival, BarrierConfigError, BarrierError, BarrierGeneration,
     BarrierMembership, BarrierMessage, BarrierReleased, BarrierState, Latch, LatchMessage,

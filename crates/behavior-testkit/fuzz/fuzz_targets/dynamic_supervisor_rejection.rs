@@ -1,6 +1,7 @@
 //! Rejected proxy creation shared by management and shutdown scenarios.
 
-use behavior_actors::atomic::{ImmediateActivation, StableProxy};
+use behavior_actors::proxy::StableProxy;
+use behavior_actors::worker::ImmediateStartup;
 use behavior_core::{
     CreateChild, CreationKind, CreationRejection, CreationSettlement, CreationsSettled,
     ItemSettlement, RoutedCreation, SettledItem,
@@ -9,8 +10,8 @@ use behavior_core::{
 use crate::dynamic_supervisor::{RuntimeAddress, Worker};
 
 pub(super) fn rejected_proxy(
-    created: CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateActivation>>,
-) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateActivation>> {
+    created: CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateStartup>>,
+) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateStartup>> {
     let (creation, proxy, kind) = created.into_parts();
     let request = match kind {
         CreationKind::Birth => CreateChild::birth(creation, proxy),

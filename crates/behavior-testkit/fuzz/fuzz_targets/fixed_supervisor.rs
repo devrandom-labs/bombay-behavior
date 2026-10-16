@@ -2,10 +2,14 @@
 
 use core::convert::Infallible;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, FailureReaction, FixedSupervisor,
-    ImmediateActivation, InitialWorkerOutcome, OrderedRoles, ProxyOutcome, Recovery, StableProxy,
-    WorkerAttempt, WorkerSource, WorkerStartResult, WorkerSubmission, fixed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::proxy::{InitialWorkerOutcome, ProxyOutcome, StableProxy, WorkerStartResult};
+use behavior_actors::supervisor::roster;
+use behavior_actors::supervisor::roster::{FailureReaction, FixedSupervisor, Recovery};
+use behavior_actors::worker::WorkerSource;
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, StartupLimit, WorkerAttempt, WorkerSubmission,
 };
 use behavior_actors::{Activate as _, Active};
 use behavior_core::{
@@ -24,22 +28,22 @@ pub(crate) enum Role {
 
 pub(crate) struct ReadySupervisor<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
     pub(crate) supervisor:
-        Active<FixedSupervisor<Role, Worker, ImmediateActivation, Source, Infallible, Infallible>>,
-    pub(crate) proxy: Active<StableProxy<Worker, ImmediateActivation>>,
+        Active<FixedSupervisor<Role, Worker, ImmediateStartup, Source, Infallible, Infallible>>,
+    pub(crate) proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     pub(crate) proxy_id: CreationId,
     pub(crate) worker: WorkerAttempt,
 }
 
-fn initial_worker(_: &Role) -> WorkerSubmission<Worker, ImmediateActivation> {
+fn initial_worker(_: &Role) -> WorkerSubmission<Worker, ImmediateStartup> {
     WorkerSubmission::immediate(Worker::new(0))
 }
 
 fn committed_proxy(
-    creations: Creations<CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateActivation>>>,
-) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateActivation>> {
+    creations: Creations<CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateStartup>>>,
+) -> CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateStartup>> {
     let creation = creations
         .into_iter()
         .next()
@@ -63,16 +67,18 @@ fn committed_proxy(
 
 pub(crate) fn ready_supervisor<Source>(recovery: Recovery<Source>) -> ReadySupervisor<Source>
 where
-    Source: WorkerSource<Role, Worker, ImmediateActivation>,
+    Source: WorkerSource<Role, Worker, ImmediateStartup>,
 {
-    let initialized = fixed(
+    let initialized = roster::new(
         initial_worker,
         OrderedRoles::new(Role::Search, core::iter::empty()).expect("one role is a valid roster"),
-        ActivationPolicy::new(1).expect("activation capacity is positive"),
-        recovery,
-        FailureReaction::StopSupervisor,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        roster::Config {
+            startup: StartupLimit::new(1).expect("startup capacity is positive"),
+            recovery: recovery,
+            failure: FailureReaction::StopSupervisor,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .build()
     .unwrap_or_else(|_| panic!("the initial worker is prepared"))
@@ -97,7 +103,7 @@ where
     };
     let (proxy_id, control, receipt) = admit_proxy_operation(
         initial,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+        EstablishedActor::<StableProxy<Worker, ImmediateStartup>>::issued(
             crate::stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
         ),
     );

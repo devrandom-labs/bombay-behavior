@@ -11,9 +11,10 @@ use behavior::{
     CreationId, CreationSequence, CreationSettlement, CreationsSettled, EndpointAddress,
     ItemSettlement, Never, NoBirths, Protocol, SettledItem, Step, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationStartRejection, BeginActivation, ProxyControl, ProxyPhase,
-    StableProxy, WorkerActivation, WorkerAttempt, WorkerInitializationOutcome,
+use behavior_actors::proxy::{ProxyControl, ProxyPhase, StableProxy};
+use behavior_actors::worker::{
+    StartWorker, StartupPlan, StartupRejection, WorkerAttempt, WorkerInitializationOutcome,
+    WorkerStartup,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, EstablishedShutdownResolved, Exit, ShutdownId,
@@ -77,11 +78,11 @@ impl Behavior for Worker {
 
 struct Prepare;
 
-impl ActivationPlan for Prepare {
+impl StartupPlan for Prepare {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async { Ok(()) }
@@ -131,11 +132,11 @@ impl Drop for HeldPlan {
     }
 }
 
-impl ActivationPlan for HeldPlan {
+impl StartupPlan for HeldPlan {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async { Ok(()) }
@@ -190,7 +191,7 @@ enum WorkerShutdownCustody {
 }
 
 enum ReturnedActivation {
-    Available(WorkerActivation<Worker, Prepare>),
+    Available(WorkerStartup<Worker, Prepare>),
     Consumed,
 }
 
@@ -278,21 +279,19 @@ impl WorkerShutdownCustody {
 }
 
 impl ReturnedActivation {
-    fn take(&mut self) -> WorkerActivation<Worker, Prepare> {
+    fn take(&mut self) -> WorkerStartup<Worker, Prepare> {
         match core::mem::replace(self, Self::Consumed) {
-            Self::Available(activation) => activation,
-            Self::Consumed => panic!("the model supplied the affine activation return twice"),
+            Self::Available(startup) => startup,
+            Self::Consumed => panic!("the model supplied the affine startup return twice"),
         }
     }
 }
 
-fn awaiting_activation_proxy<P>(
-    plan: P,
-) -> (Active<StableProxy<Worker, P>>, BeginActivation<Worker, P>)
+fn awaiting_activation_proxy<P>(plan: P) -> (Active<StableProxy<Worker, P>>, StartWorker<Worker, P>)
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -314,27 +313,27 @@ where
         .pop()
         .expect("worker initialization is requested");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("worker initialization authorizes activation");
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("worker initialization authorizes startup");
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("worker activation is requested");
-    (proxy, activation)
+        .expect("worker startup is requested");
+    (proxy, startup)
 }
 
 async fn ready_proxy() -> (Active<StableProxy<Worker, Prepare>>, WorkerAttempt) {
-    let (mut proxy, activation) = awaiting_activation_proxy(Prepare);
-    let worker = activation.worker();
+    let (mut proxy, startup) = awaiting_activation_proxy(Prepare);
+    let worker = startup.worker();
     let admitted = proxy
-        .on(activation.started())
-        .expect("activation starts before it returns");
+        .on(startup.started())
+        .expect("startup starts before it returns");
     assert!(admitted.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
-        .expect("activation readiness opens service");
+        .on(startup.start().await)
+        .expect("startup readiness opens service");
     assert_eq!(proxy.phase(), ProxyPhase::Ready);
     assert_eq!(ready.sends.owner_outcomes.len(), 1);
     (proxy, worker)
@@ -342,34 +341,34 @@ async fn ready_proxy() -> (Active<StableProxy<Worker, Prepare>>, WorkerAttempt) 
 
 fn compare_activation_custody(
     mut proxy: Active<StableProxy<Worker, Prepare>>,
-    activation: WorkerActivation<Worker, Prepare>,
+    startup: WorkerStartup<Worker, Prepare>,
     shutdown: ShutdownId,
     order: &[WorkerShutdownArrival],
 ) {
     let mut custody = WorkerShutdownCustody::AllExpected;
-    let worker = activation.worker().creation();
+    let worker = startup.worker().creation();
     let foreign_worker = foreign_worker_id(worker);
-    let mut activation = ReturnedActivation::Available(activation);
+    let mut startup = ReturnedActivation::Available(startup);
 
     for arrival in order {
         let (next, prediction) = custody.accept(*arrival);
         custody = next;
         let actions = match arrival {
             WorkerShutdownArrival::WorkReturned => proxy
-                .on(activation.take())
-                .expect("the exact activation return is total"),
+                .on(startup.take())
+                .expect("the exact startup return is total"),
             WorkerShutdownArrival::WorkerStopped => proxy
                 .on(worker_stopped(worker))
-                .expect("the exact activation worker stop is total"),
+                .expect("the exact startup worker stop is total"),
             WorkerShutdownArrival::ShutdownReturned => proxy
                 .on(EstablishedShutdownResolved::accepted(shutdown))
-                .expect("the exact activation worker shutdown result is total"),
+                .expect("the exact startup worker shutdown result is total"),
             WorkerShutdownArrival::ForeignWorkerStop => proxy
                 .on(worker_stopped(foreign_worker))
-                .expect("a foreign activation worker stop is returned"),
+                .expect("a foreign startup worker stop is returned"),
             WorkerShutdownArrival::ForeignShutdownReturn => proxy
                 .on(EstablishedShutdownResolved::accepted(ShutdownId(999)))
-                .expect("a foreign activation shutdown result is returned"),
+                .expect("a foreign startup shutdown result is returned"),
         };
         match prediction {
             Prediction::Wait => {
@@ -396,25 +395,25 @@ fn compare_activation_custody(
 }
 
 fn waiting_activation_follows(order: &[WorkerShutdownArrival]) {
-    let (mut proxy, activation) = awaiting_activation_proxy(Prepare);
+    let (mut proxy, startup) = awaiting_activation_proxy(Prepare);
     let draining = proxy
         .on(ProxyControl::shutdown())
-        .expect("shutdown closes activation admission");
+        .expect("shutdown closes startup admission");
     let shutdown = draining
         .sends
         .worker_shutdowns
         .into_requests()
         .pop()
-        .expect("waiting activation shutdown emits one worker shutdown");
-    let returned = activation.start_rejected(ActivationStartRejection::OwnerStopped);
+        .expect("waiting startup shutdown emits one worker shutdown");
+    let returned = startup.start_rejected(StartupRejection::OwnerStopped);
     compare_activation_custody(proxy, returned, shutdown.id, order);
 }
 
 async fn running_activation_follows(order: &[WorkerShutdownArrival]) {
-    let (mut proxy, activation) = awaiting_activation_proxy(Prepare);
+    let (mut proxy, startup) = awaiting_activation_proxy(Prepare);
     let admitted = proxy
-        .on(activation.started())
-        .expect("activation admission is total");
+        .on(startup.started())
+        .expect("startup admission is total");
     assert!(admitted.sends.owner_outcomes.is_empty());
     let draining = proxy
         .on(ProxyControl::shutdown())
@@ -424,8 +423,8 @@ async fn running_activation_follows(order: &[WorkerShutdownArrival]) {
         .worker_shutdowns
         .into_requests()
         .pop()
-        .expect("running activation shutdown emits one worker shutdown");
-    let returned = activation.activate().await;
+        .expect("running startup shutdown emits one worker shutdown");
+    let returned = startup.start().await;
     compare_activation_custody(proxy, returned, shutdown.id, order);
 }
 
@@ -461,20 +460,20 @@ async fn completed_replacement_follows(order: &[WorkerShutdownArrival]) {
         .pop()
         .expect("successor initialization is requested");
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .expect("successor initialization authorizes activation");
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .expect("successor initialization authorizes startup");
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("successor activation is requested");
+        .expect("successor startup is requested");
     let admitted = proxy
-        .on(activation.started())
-        .expect("successor activation starts");
+        .on(startup.started())
+        .expect("successor startup starts");
     assert!(admitted.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .expect("successor readiness waits for predecessor return");
     assert!(ready.sends.owner_outcomes.is_empty());
     assert_eq!(proxy.phase(), ProxyPhase::Replacing);
@@ -534,7 +533,7 @@ async fn completed_replacement_follows(order: &[WorkerShutdownArrival]) {
 }
 
 fn initialization_follows(order: &[WorkerShutdownArrival]) {
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -568,7 +567,7 @@ fn initialization_follows(order: &[WorkerShutdownArrival]) {
         .pop()
         .expect("the committed worker receives one shutdown");
     let mut initialization =
-        Some(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation));
+        Some(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup));
     let mut custody = WorkerShutdownCustody::AllExpected;
 
     for arrival in order {
@@ -609,7 +608,7 @@ fn initialization_follows(order: &[WorkerShutdownArrival]) {
             }
         }
         assert!(actions.sends.owner_outcomes.is_empty());
-        assert!(actions.sends.worker_activations.is_empty());
+        assert!(actions.sends.worker_startups.is_empty());
         assert!(actions.sends.worker_shutdowns.is_empty());
         assert!(actions.creates.is_empty());
     }
@@ -791,7 +790,7 @@ proptest! {
 #[test]
 fn stopped_proxy_retains_initialized_plan_until_behavior_retirement() {
     let drops = Arc::new(AtomicUsize::new(0));
-    let initialized = StableProxy::activated()
+    let initialized = StableProxy::new()
         .initialize()
         .expect("proxy initialization is pure");
     let mut proxy = initialized.behavior;
@@ -826,9 +825,9 @@ fn stopped_proxy_retains_initialized_plan_until_behavior_retirement() {
         .pop()
         .expect("the worker receives one shutdown");
     let returned = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("the initialized plan returns after admission closes");
-    assert!(returned.sends.worker_activations.is_empty());
+    assert!(returned.sends.worker_startups.is_empty());
     let waiting = proxy
         .on(ChildStopped::new(worker, Ok(Exit::Normal), Instant::now()))
         .expect("worker stop waits for shutdown return");
@@ -847,11 +846,11 @@ fn stopped_proxy_retains_initialized_plan_until_behavior_retirement() {
 #[test]
 fn stopped_proxy_retains_unaccepted_activation_request_until_behavior_retirement() {
     let drops = Arc::new(AtomicUsize::new(0));
-    let (mut proxy, activation) = awaiting_activation_proxy(HeldPlan(Arc::clone(&drops)));
-    let worker = activation.worker().creation();
+    let (mut proxy, startup) = awaiting_activation_proxy(HeldPlan(Arc::clone(&drops)));
+    let worker = startup.worker().creation();
     let draining = proxy
         .on(ProxyControl::shutdown())
-        .expect("shutdown closes activation admission");
+        .expect("shutdown closes startup admission");
     let shutdown = draining
         .sends
         .worker_shutdowns
@@ -859,8 +858,8 @@ fn stopped_proxy_retains_unaccepted_activation_request_until_behavior_retirement
         .pop()
         .expect("the worker receives one shutdown");
     let returned = proxy
-        .on(activation.start_rejected(ActivationStartRejection::OwnerStopped))
-        .expect("the unaccepted activation request returns whole");
+        .on(startup.start_rejected(StartupRejection::OwnerStopped))
+        .expect("the unaccepted startup request returns whole");
     assert!(returned.sends.owner_outcomes.is_empty());
     let waiting = proxy
         .on(EstablishedShutdownResolved::accepted(shutdown.id))

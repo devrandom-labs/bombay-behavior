@@ -1,12 +1,14 @@
+use behavior_actors::pool::RecoveryPolicy;
 use core::ops::ControlFlow;
 use std::convert::Infallible;
 use std::sync::Arc;
 
 use behavior::Never;
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, DiagnosticDisposition, ImmediateActivation, WorkerSource,
-    fifo,
-};
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::worker::WorkerSource;
+use behavior_actors::worker::{ImmediateStartup, StartupLimit};
 use behavior_actors::{Activate, ObserveChild};
 
 use super::{WorkerInitializationOutcome, created_worker};
@@ -92,9 +94,11 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                     Interruption::Fail,
                     PoolRecovery::permanent(
                         FallibleSearchSource,
-                        RestartLimit::new(3, Duration::from_secs(10)),
-                        RestartRelease::immediate(),
-                        failure,
+                        RecoveryPolicy {
+                            limit: RestartLimit::new(3, Duration::from_secs(10)),
+                            delay: RestartRelease::immediate(),
+                            failure: failure,
+                        },
                     ),
                 )
                 .await;
@@ -111,7 +115,7 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                 assert!(stopped.creates.is_empty());
                 assert!(stopped.sends.worker_observations.is_empty());
                 assert!(stopped.sends.worker_initializations.is_empty());
-                assert!(stopped.sends.worker_activations.is_empty());
+                assert!(stopped.sends.worker_startups.is_empty());
                 assert!(stopped.sends.customer_outcomes.as_slice().is_empty());
                 assert!(stopped.sends.worker_assignments.is_empty());
                 assert_eq!(stopped.sends.worker_preparations.len(), 1);
@@ -135,7 +139,7 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                         assert!(draining.creates.is_empty());
                         assert!(draining.sends.worker_observations.is_empty());
                         assert!(draining.sends.worker_initializations.is_empty());
-                        assert!(draining.sends.worker_activations.is_empty());
+                        assert!(draining.sends.worker_startups.is_empty());
                         assert!(draining.sends.customer_outcomes.as_slice().is_empty());
                         assert!(draining.sends.worker_assignments.is_empty());
                         assert!(draining.sends.worker_preparations.is_empty());
@@ -182,7 +186,7 @@ async fn recovery_desk_matches_every_preparation_disposition() {
                     .unwrap_or_else(|error| panic!("worker preparation input failed: {error}"));
 
                 assert!(acted.sends.worker_initializations.is_empty());
-                assert!(acted.sends.worker_activations.is_empty());
+                assert!(acted.sends.worker_startups.is_empty());
                 assert!(acted.sends.customer_outcomes.as_slice().is_empty());
                 assert!(acted.sends.worker_assignments.is_empty());
                 assert!(acted.sends.worker_preparations.is_empty());
@@ -231,7 +235,7 @@ pub(super) struct SearchDesk {
 
 pub(super) struct SearchRecoverySource;
 
-impl WorkerSource<SearchDesk, SearchWorker, ImmediateActivation> for SearchRecoverySource {
+impl WorkerSource<SearchDesk, SearchWorker, ImmediateStartup> for SearchRecoverySource {
     type WorkerRejection = Arc<Vec<u8>>;
     type SourceRejection = Vec<u8>;
 }
@@ -241,20 +245,24 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     let name = vec![31, 47, 59];
     let name_allocation = name.as_ptr();
     let roles = OrderedRoles::new(SearchDesk { name }, []).unwrap_or_else(|_| panic!("one role"));
-    let pool = fifo(
+    let pool = queue::new(
         |_: &SearchDesk| Ok::<_, Never>(WorkerSubmission::immediate(SearchWorker)),
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation")),
-        PoolRecovery::permanent(
-            SearchRecoverySource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup")),
+            recovery: PoolRecovery::permanent(
+                SearchRecoverySource,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
+            ),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("infallible worker declaration"));
     let initialized = pool
@@ -266,7 +274,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(initial.creates.len(), 1);
     assert_eq!(initial.sends.worker_observations.len(), 1);
     assert_eq!(initial.sends.worker_initializations.len(), 0);
-    assert_eq!(initial.sends.worker_activations.len(), 0);
+    assert_eq!(initial.sends.worker_startups.len(), 0);
     assert_eq!(initial.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(initial.sends.worker_assignments.len(), 0);
     assert_eq!(initial.sends.worker_preparations.len(), 0);
@@ -288,7 +296,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(committed.creates.len(), 0);
     assert_eq!(committed.sends.worker_observations.len(), 0);
     assert_eq!(committed.sends.worker_initializations.len(), 1);
-    assert_eq!(committed.sends.worker_activations.len(), 0);
+    assert_eq!(committed.sends.worker_startups.len(), 0);
     assert_eq!(committed.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(committed.sends.worker_assignments.len(), 0);
     assert_eq!(committed.sends.worker_preparations.len(), 0);
@@ -302,13 +310,13 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     let previous = initialization.worker();
     assert_eq!(previous.creation(), child);
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization: {error}"));
     assert!(matches!(initialized_worker.become_, Step::Continue));
     assert_eq!(initialized_worker.creates.len(), 0);
     assert_eq!(initialized_worker.sends.worker_observations.len(), 0);
     assert_eq!(initialized_worker.sends.worker_initializations.len(), 0);
-    assert_eq!(initialized_worker.sends.worker_activations.len(), 1);
+    assert_eq!(initialized_worker.sends.worker_startups.len(), 1);
     assert_eq!(
         initialized_worker.sends.customer_outcomes.as_slice().len(),
         0
@@ -318,18 +326,16 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(initialized_worker.sends.restart_schedules.len(), 0);
     assert_eq!(initialized_worker.sends.worker_shutdowns.len(), 0);
     assert_eq!(initialized_worker.sends.diagnostics.len(), 0);
-    let mut activations = initialized_worker.sends.worker_activations.into_requests();
-    let activation = activations
-        .pop()
-        .unwrap_or_else(|| panic!("one activation"));
+    let mut activations = initialized_worker.sends.worker_startups.into_requests();
+    let startup = activations.pop().unwrap_or_else(|| panic!("one startup"));
     let activation_started = pool
-        .on(activation.started())
+        .on(startup.started())
         .unwrap_or_else(|error| panic!("start: {error}"));
     assert!(matches!(activation_started.become_, Step::Continue));
     assert_eq!(activation_started.creates.len(), 0);
     assert_eq!(activation_started.sends.worker_observations.len(), 0);
     assert_eq!(activation_started.sends.worker_initializations.len(), 0);
-    assert_eq!(activation_started.sends.worker_activations.len(), 0);
+    assert_eq!(activation_started.sends.worker_startups.len(), 0);
     assert_eq!(
         activation_started.sends.customer_outcomes.as_slice().len(),
         0
@@ -339,7 +345,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(activation_started.sends.restart_schedules.len(), 0);
     assert_eq!(activation_started.sends.worker_shutdowns.len(), 0);
     assert_eq!(activation_started.sends.diagnostics.len(), 0);
-    let active = activation.activate().await;
+    let active = startup.start().await;
     let activated = pool
         .on(active)
         .unwrap_or_else(|error| panic!("activate: {error}"));
@@ -347,7 +353,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(activated.creates.len(), 0);
     assert_eq!(activated.sends.worker_observations.len(), 0);
     assert_eq!(activated.sends.worker_initializations.len(), 0);
-    assert_eq!(activated.sends.worker_activations.len(), 0);
+    assert_eq!(activated.sends.worker_startups.len(), 0);
     assert_eq!(activated.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(activated.sends.worker_assignments.len(), 0);
     assert_eq!(activated.sends.worker_preparations.len(), 0);
@@ -362,7 +368,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(stopping.creates.len(), 0);
     assert_eq!(stopping.sends.worker_observations.len(), 0);
     assert_eq!(stopping.sends.worker_initializations.len(), 0);
-    assert_eq!(stopping.sends.worker_activations.len(), 0);
+    assert_eq!(stopping.sends.worker_startups.len(), 0);
     assert_eq!(stopping.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(stopping.sends.worker_assignments.len(), 0);
     assert_eq!(stopping.sends.worker_preparations.len(), 1);
@@ -381,7 +387,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(started.creates.len(), 0);
     assert_eq!(started.sends.worker_observations.len(), 0);
     assert_eq!(started.sends.worker_initializations.len(), 0);
-    assert_eq!(started.sends.worker_activations.len(), 0);
+    assert_eq!(started.sends.worker_startups.len(), 0);
     assert_eq!(started.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(started.sends.worker_assignments.len(), 0);
     assert_eq!(started.sends.worker_preparations.len(), 0);
@@ -401,7 +407,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(returned.creates.len(), 0);
     assert_eq!(returned.sends.worker_observations.len(), 0);
     assert_eq!(returned.sends.worker_initializations.len(), 0);
-    assert_eq!(returned.sends.worker_activations.len(), 0);
+    assert_eq!(returned.sends.worker_startups.len(), 0);
     assert_eq!(returned.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(returned.sends.worker_assignments.len(), 0);
     assert_eq!(returned.sends.worker_preparations.len(), 0);
@@ -436,7 +442,7 @@ async fn source_rejection_consumes_exact_fifo_inputs() {
     assert_eq!(replayed.creates.len(), 0);
     assert_eq!(replayed.sends.worker_observations.len(), 0);
     assert_eq!(replayed.sends.worker_initializations.len(), 0);
-    assert_eq!(replayed.sends.worker_activations.len(), 0);
+    assert_eq!(replayed.sends.worker_startups.len(), 0);
     assert_eq!(replayed.sends.customer_outcomes.as_slice().len(), 0);
     assert_eq!(replayed.sends.worker_assignments.len(), 0);
     assert_eq!(replayed.sends.worker_preparations.len(), 0);

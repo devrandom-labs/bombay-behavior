@@ -2,11 +2,13 @@
 
 ## Status and authority
 
-This document is the AA-20 independent semantic model for one dynamic
-supervisor. It is a non-production falsification oracle. It does not select
-Rust types, define another behavior algebra, implement a supervisor, or mark a
-production coverage row implemented. `docs/engineering/atomic-actor-solution.md` remains
-the production design authority.
+This is an independent semantic model for one dynamic supervisor, retained as a
+requirements and falsification oracle. Historical blocked/completed labels below
+belong to the original research snapshot; they are not current implementation
+status. Verify representation and support from owner source and executable tests.
+The [DevX PRD](../engineering/developer-experience-prd.md) requires law-by-law
+reconciliation before condensing this model. Deleted design ledgers in Git
+history are not production authority.
 
 Fresh allocation is the actor-model law used here: every accepted entry owns a
 fresh stable proxy, and every worker behind that proxy is a fresh actor.
@@ -1095,10 +1097,9 @@ AA-20 records these findings for governing-document reconciliation:
    applied. An executable design must infer and hide that composition without
    cloning, reconstructing, or asking users to spell the product.
 
-These findings do not authorize production surface. The solution, feature
-catalogue, type inventory, coverage matrix, DevX contract, retained-core
-decision, and research audit must be reconciled before an executable task
-relies on a changed law.
+These findings do not authorize production surface. Reconcile the feature
+requirements, this model and the DevX PRD with current owner/interpreter source
+and independent tests before an executable task relies on a changed law.
 
 This specification is ready to compare with the FIFO and keyed-pool models. It
 does not make AA-21 eligible: executable dynamic supervision still depends on

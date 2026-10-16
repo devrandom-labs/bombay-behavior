@@ -7,11 +7,15 @@ use behavior::{
     CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, ItemSettlement,
     MessageProtocol, Never, Protocol, Recipient, SettledItem, Step,
 };
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, DiagnosticDisposition,
-    FifoCommand, FifoEvent, FifoOutcome, ImmediateActivation, Interruption, OrderedRoles,
-    PoolFailureReaction, PoolRecovery, SubmissionId, WorkerSubmission, fifo, pool_worker,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::pool::queue::{FifoCommand, FifoEvent, FifoOutcome};
+use behavior_actors::pool::{
+    Assignment, BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery, SubmissionId,
+    pool_worker,
 };
+use behavior_actors::worker::{ImmediateStartup, OrderedRoles, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate, StopOnShutdown};
 
 use assignment_delivery::accepted_assignment;
@@ -88,7 +92,7 @@ impl SearchWorker {
 
 fn prepare_worker(
     _: &SearchRole,
-) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }
 
@@ -133,15 +137,17 @@ fn main() {
 async fn measure() -> f64 {
     let roles = OrderedRoles::new(SearchRole::Primary, core::iter::empty())
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a FIFO pool"));
 
@@ -183,26 +189,26 @@ async fn measure() -> f64 {
         .unwrap_or_else(|| panic!("created worker requires initialization"));
     let initialized = pool
         .on(initialization
-            .resolve(behavior_actors::atomic::WorkerInitializationOutcome::ReadyForActivation))
+            .resolve(behavior_actors::worker::WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("initialized worker requires activation"));
-    let started = activation.started();
-    let ready = activation.activate().await;
+        .unwrap_or_else(|| panic!("initialized worker requires startup"));
+    let started = startup.started();
+    let ready = startup.start().await;
     let admitted = pool
         .on(started)
-        .unwrap_or_else(|error| panic!("activation admission failed: {error}"));
+        .unwrap_or_else(|error| panic!("startup admission failed: {error}"));
     if !admitted.sends.worker_assignments.is_empty()
         || !admitted.sends.customer_outcomes.as_slice().is_empty()
         || !admitted.creates.is_empty()
         || !matches!(admitted.become_, Step::Continue)
     {
-        panic!("activation admission must not emit application work");
+        panic!("startup admission must not emit application work");
     }
     let ready = pool
         .on(ready)
@@ -270,7 +276,7 @@ async fn measure() -> f64 {
             completed.sends.worker_assignments.len(),
             completed.sends.worker_observations.len(),
             completed.sends.worker_initializations.len(),
-            completed.sends.worker_activations.len(),
+            completed.sends.worker_startups.len(),
             completed.sends.worker_preparations.len(),
             completed.sends.restart_schedules.len(),
             completed.sends.worker_shutdowns.len(),

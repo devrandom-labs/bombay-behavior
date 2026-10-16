@@ -89,8 +89,8 @@ asynchronous interpretation requires `Send` only for transported values.
 The full capability and lifecycle contract is in
 [Established capabilities](docs/established-capabilities.md).
 
-The [actor-template composition audit](docs/engineering/template-composition-audit.md)
-and [Behavior Actors template law audit](docs/engineering/template-law-audit.md)
+The [actor-template composition audit](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-composition-audit.md)
+and [Behavior Actors template law audit](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-law-audit.md)
 preserve historical design evidence. The [repository quality checklist](docs/engineering/repository-quality-audit.md)
 tracks current verification gaps; retained source and normalized actor laws
 govern current behavior.
@@ -225,8 +225,8 @@ The distinct direct-pool contracts are documented in [FIFO pool](docs/fifo-pool.
 and [keyed pool](docs/keyed-pool.md). Correctness-sensitive actor arrangements
 are documented in [Actor composition](docs/composition-recipes.md).
 Historical catalogue classification and adversarial tests are recorded in the
-[composition](docs/engineering/template-composition-audit.md) and
-[template-law](docs/engineering/template-law-audit.md) engineering records.
+[composition](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-composition-audit.md) and
+[template-law](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-law-audit.md) engineering records.
 
 ## Development
 

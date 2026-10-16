@@ -37,22 +37,24 @@ reporting are Bombay policies.
 The canonical constructor is:
 
 ```rust,ignore
-dynamic(
-    entries,
-    activation,
-    unexpected_exit,
-    actor_drain,
-    lifecycle,
-    diagnostics,
+behavior_actors::supervisor::directory::new(
+    behavior_actors::supervisor::directory::Config {
+        entries,
+        startup,
+        exit,
+        shutdown,
+        lifecycle,
+        diagnostics,
+    },
 )
 ```
 
-`entries` is a validated `EntryCapacity`; `activation` is a validated
-`ActivationPolicy`. Both have checked constructors from `usize`, return
-`ZeroCapacity` for zero, and cannot be exchanged accidentally. Every other
-argument is a distinct required policy or typed capability. There is no default,
-callback, marker, empty route, structural path, application alias, or public
-proxy factory.
+`entries` is a validated `EntryCapacity`; `startup` is a validated
+`StartupLimit`. Both reject zero, and their values cannot be exchanged.
+The configuration owns simultaneous policy choices and the two distinct typed
+routes. Construction consumes it into the actor's existing fields without
+preparing workers or performing runtime effects. There are no defaults, staged
+builder, empty routes or public proxy factory.
 
 The complete application syntax and public products are owned by
 [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md).

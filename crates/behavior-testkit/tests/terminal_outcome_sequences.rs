@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use behavior_actors::atomic::RestartReleaseFailure;
+use behavior_actors::worker::RestartReleaseFailure;
 use behavior_actors::{
     Activate as _, ChildStopped, Crash, Exit, ObserveChild, PropagateTermination,
     ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalDisposition,

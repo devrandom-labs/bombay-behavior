@@ -38,15 +38,10 @@ mode flag shared with another aggregate.
 
 ## Construction
 
-`fixed(...)` is the sole construction path. Applications provide:
-
-- a function that prepares the initial `WorkerSubmission` for each role;
-- validated `OrderedRoles`;
-- `ActivationPolicy`;
-- `Recovery`;
-- `FailureReaction`;
-- `ActorDrainPolicy`; and
-- `DiagnosticDisposition`.
+`roster::new(factory, roles, config)` is the sole construction path. The factory
+prepares an initial `WorkerSubmission` for each role, and `OrderedRoles` owns the
+validated roster. `roster::Config` names the remaining choices: `activation`,
+`recovery`, `failure`, `shutdown`, and `diagnostics`.
 
 Lifecycle publication is the builder's only optional transformation. Every
 semantic policy is explicit; no no-op recipient or placeholder callback is
@@ -59,7 +54,7 @@ settlement returns the worker source, prepared submissions, rejection, and
 untouched role names without an application callback inside the actor.
 
 Construction either returns one supervisor owning every prepared role and
-submission, or returns `FixedConstructionRejected`. Its `workers` value is the
+submission, or returns `FixedConstructionRejected`. Its `config` field returns every original choice unchanged. Its `workers` value is the
 shared `InitialWorkerRejection`: the function, accepted prefix, rejected role
 and reason, and unexamined suffix. The shared representation is owned by
 [`atomic-actor-architecture.md`](engineering/atomic-actor-architecture.md); this document
@@ -89,7 +84,7 @@ request for every declared role. Creation results are accepted only for the
 expected creation ID and kind. A rejected creation leaves that role without a
 proxy; a foreign or stale result is returned unchanged.
 
-`ActivationPolicy` limits unresolved proxy operations, not actor count. The
+`StartupLimit` limits unresolved proxy operations, not actor count. The
 supervisor authorizes waiting roles in declaration order while capacity exists.
 An exact accepted proxy-operation settlement is required before the matching
 proxy outcome is admissible. Capacity is released when the admitted outcome
@@ -311,3 +306,11 @@ driver, detached task, mailbox, settlement adapter, or callback.
 Canonical construction and application syntax are owned by
 [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). Verification ownership is mapped
 in [`atomic-actor-verification.md`](engineering/atomic-actor-verification.md).
+
+## Constructor migration
+
+Move the former five positional settings into `roster::Config`. The optional
+`.publish_lifecycle(route).build()` sequence retains its existing behavior.
+Construction rejection now owns `config`; inspect `rejection.config.activation`,
+`recovery`, `failure`, `shutdown` and `diagnostics` alongside `workers` and
+`lifecycle`. The running supervisor retains its existing flat storage.

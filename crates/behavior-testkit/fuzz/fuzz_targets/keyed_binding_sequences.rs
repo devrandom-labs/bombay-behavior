@@ -4,16 +4,20 @@
 #[path = "installed_control.rs"]
 mod installed_control;
 
+use behavior_actors::pool::router;
 use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, BindingCapacity,
-    BindingEvidence, BindingExpectation, BindingGeneration, BindingRejection, BindingReply,
-    BindingRequestId, Completion, DiagnosticDisposition, ImmediateActivation, Interruption,
-    KeyedCommand, KeyedPool, OrderedRoles, PoolFailureReaction, PoolRecovery, WorkerSubmission,
-    keyed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, BindingEvidence, BindingExpectation, BindingGeneration, BindingRejection,
+    BindingReply, BindingRequestId, KeyedCommand, KeyedPool,
 };
+use behavior_actors::pool::{
+    Assignment, BacklogCapacity, Completion, Interruption, PoolFailureReaction, PoolRecovery,
+};
+use behavior_actors::worker::{ImmediateStartup, OrderedRoles, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate, Active, ReplyDelivery, StopOnShutdown};
 use behavior_core::{
     Actions, ActiveTurn, Address, Behavior, BehaviorActed, BehaviorBase, Creations, Delivery,
@@ -69,7 +73,7 @@ type BindingPool = Active<
     KeyedPool<
         Role,
         SearchWorker,
-        ImmediateActivation,
+        ImmediateStartup,
         Never,
         fn(&Account) -> Role,
         Infallible,
@@ -111,7 +115,7 @@ impl Behavior for SearchWorker {
     }
 }
 
-fn prepare_worker(_: &Role) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+fn prepare_worker(_: &Role) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }
 
@@ -123,17 +127,19 @@ fn pool() -> (
     BindingPool,
     Creations<behavior_core::CreateChild<RuntimeAddress, StopOnShutdown<SearchWorker>>>,
 ) {
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         OrderedRoles::new(Role::Primary, [Role::Replica]).expect("roles are unique"),
         selected_role as fn(&Account) -> Role,
-        ActivationPolicy::new(2).expect("two activations are valid"),
-        PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).expect("one binding is valid"),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).expect("two activations are valid"),
+            recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).expect("one binding is valid"),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool

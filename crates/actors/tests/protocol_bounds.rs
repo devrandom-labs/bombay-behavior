@@ -4,7 +4,7 @@ use behavior::{
     Address, BehaviorBase, EndpointAddress, MailAddr, MessageProtocol, Never, Protocol, Recipient,
     Step,
 };
-use behavior_actors::atomic::FifoError;
+use behavior_actors::pool::queue::FifoError;
 use behavior_actors::{
     AcknowledgementMessage, AcknowledgementOutcome, Acknowledgements, Activate as _, Barrier,
     BarrierMessage, BarrierReleased, Cache, CacheResult, Configuration, ConfigurationMessage,

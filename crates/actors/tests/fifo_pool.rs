@@ -1,4 +1,5 @@
 use behavior::{Here, InterpretationProgress};
+use behavior_actors::pool::RecoveryPolicy;
 mod installed_control;
 
 macro_rules! start_worker_preparation {
@@ -6,7 +7,7 @@ macro_rules! start_worker_preparation {
         let (receipt, starting) = $request.start();
         let actions = $pool
             .transition(
-                behavior_actors::atomic::FifoEvent::WorkerPreparationStarted(
+                behavior_actors::pool::queue::FifoEvent::WorkerPreparationStarted(
                     behavior::SettledItem::Attempted(behavior::ItemSettlement::Accepted(receipt)),
                 ),
             )
@@ -31,15 +32,23 @@ use behavior::{
     InterpreterRequests, ItemSettlement, LogicalHostRequirements, MessageProtocol, Never,
     NoBirthProtocols, NoBirths, Protocol, Recipient, ReportToParent, SettledItem, Step, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, ActivationPolicy, ActivationStartRejection, ActorDrainPolicy,
-    AdmissionRejection, AssignWorker, AssignedReturnReason, Assignment, BacklogCapacity,
-    BeginActivation, Completion, DiagnosticAction, DiagnosticDisposition, FifoCommand, FifoEvent,
-    FifoOutcome, FifoOutcomeKind, FifoPool, ImmediateActivation, Interruption, JobId, OrderedRoles,
-    PoolFailureReaction, PoolRecovery, PrepareWorkers, QueuedReturnReason, RestartLimit,
-    RestartRelease, SubmissionId, WorkerInitializationFailure, WorkerInitializationOutcome,
-    WorkerSource, WorkerSubmission, fifo,
+use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::pool::queue::{
+    AdmissionRejection, AssignedReturnReason, FifoCommand, FifoEvent, FifoOutcome, FifoOutcomeKind,
+    FifoPool, QueuedReturnReason,
 };
+use behavior_actors::pool::{
+    AssignWorker, Assignment, BacklogCapacity, Completion, Interruption, JobId,
+    PoolFailureReaction, PoolRecovery, SubmissionId,
+};
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, RestartLimit, RestartRelease, StartWorker, StartupLimit,
+    StartupPlan, StartupRejection, WorkerInitializationFailure, WorkerInitializationOutcome,
+    WorkerSubmission,
+};
+use behavior_actors::worker::{PrepareWorkers, WorkerSource};
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, EstablishedShutdownResolved, Exit, ReplyDelivery,
     ScheduleAfter, ScheduleAfterRejection, ShutdownRejection, StopOnShutdown,
@@ -67,7 +76,7 @@ mod retirement;
 
 #[test]
 fn fifo_pool_projects_its_customer_host_from_real_behavior_sends() {
-    type Pool = FifoPool<Role, SearchWorker, ImmediateActivation, Never, Infallible, u8, u16>;
+    type Pool = FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16>;
     type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>;
     type Expected = BirthProtocol<Customer, NoBirthProtocols>;
 
@@ -148,14 +157,14 @@ impl Behavior for SearchWorker {
 
 fn prepare_search_worker(
     _: &Role,
-) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }
 
 #[derive(Debug, Eq, PartialEq)]
 struct SearchSource;
 
-impl WorkerSource<Role, SearchWorker, ImmediateActivation> for SearchSource {
+impl WorkerSource<Role, SearchWorker, ImmediateStartup> for SearchSource {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -173,7 +182,7 @@ enum SearchSourceRejection {
 #[derive(Debug, Eq, PartialEq)]
 struct FallibleSearchSource;
 
-impl WorkerSource<Role, SearchWorker, ImmediateActivation> for FallibleSearchSource {
+impl WorkerSource<Role, SearchWorker, ImmediateStartup> for FallibleSearchSource {
     type WorkerRejection = SearchWorkerRejection;
     type SourceRejection = SearchSourceRejection;
 }
@@ -194,7 +203,7 @@ impl Drop for TrackedSourceRejection {
     }
 }
 
-impl WorkerSource<Role, SearchWorker, ImmediateActivation> for TrackedSearchSource {
+impl WorkerSource<Role, SearchWorker, ImmediateStartup> for TrackedSearchSource {
     type WorkerRejection = Never;
     type SourceRejection = TrackedSourceRejection;
 }
@@ -222,22 +231,22 @@ impl Drop for SearchActivationRejection {
 
 struct RejectedSearchActivation(Arc<AtomicUsize>);
 
-impl ActivationPlan for RejectedSearchActivation {
+impl StartupPlan for RejectedSearchActivation {
     type Ready = Never;
     type Rejection = SearchActivationRejection;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Err(SearchActivationRejection(self.0)))
     }
 }
 
-impl ActivationPlan for HeldActivation {
+impl StartupPlan for HeldActivation {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         async move {
@@ -271,9 +280,9 @@ fn created_worker(
 
 struct ReadySearchPool<Source>
 where
-    Source: WorkerSource<Role, SearchWorker, ImmediateActivation>,
+    Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
-    pool: Active<FifoPool<Role, SearchWorker, ImmediateActivation, Source, Infallible, u8, u16>>,
+    pool: Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
     workers: Vec<CreationId>,
 }
 
@@ -284,7 +293,7 @@ async fn ready_search_pool<Source>(
     recovery: PoolRecovery<Source>,
 ) -> ReadySearchPool<Source>
 where
-    Source: WorkerSource<Role, SearchWorker, ImmediateActivation>,
+    Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
     ready_search_pool_with_drain(
         roles,
@@ -304,17 +313,19 @@ async fn ready_search_pool_with_drain<Source>(
     actor_drain: ActorDrainPolicy,
 ) -> ReadySearchPool<Source>
 where
-    Source: WorkerSource<Role, SearchWorker, ImmediateActivation>,
+    Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        recovery,
-        backlog,
-        interruption,
-        actor_drain,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: recovery,
+            backlog: backlog,
+            interruption: interruption,
+            shutdown: actor_drain,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -334,20 +345,20 @@ where
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         workers.push(initialization.worker().creation());
         let initialized_worker = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized_worker
+        let startup = initialized_worker
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let activation_started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("startup start failed: {error}"));
         assert!(activation_started.sends.worker_assignments.is_empty());
         let worker_ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(worker_ready.sends.worker_assignments.is_empty());
     }
@@ -355,33 +366,33 @@ where
 }
 
 fn pending_search_activation<P>(
-    activation: P,
+    startup: P,
 ) -> (
     Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16>>,
     CreationId,
-    BeginActivation<SearchWorker, P>,
+    StartWorker<SearchWorker, P>,
 )
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
-    pending_search_activation_with_drain(activation, ActorDrainPolicy::WaitForActorGraph)
+    pending_search_activation_with_drain(startup, ActorDrainPolicy::WaitForActorGraph)
 }
 
 fn pending_search_activation_with_drain<P>(
-    activation: P,
+    startup: P,
     actor_drain: ActorDrainPolicy,
 ) -> (
     Active<FifoPool<Role, SearchWorker, P, Never, Infallible, u8, u16>>,
     CreationId,
-    BeginActivation<SearchWorker, P>,
+    StartWorker<SearchWorker, P>,
 )
 where
-    P: ActivationPlan,
+    P: StartupPlan,
 {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let mut submission = Some(WorkerSubmission::activated(SearchWorker, activation));
-    let pool = fifo(
+    let mut submission = Some(WorkerSubmission::with_startup(SearchWorker, startup));
+    let pool = queue::new(
         move |_: &Role| {
             Ok::<_, Never>(
                 submission
@@ -390,12 +401,14 @@ where
             )
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        actor_drain,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: actor_drain,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -419,25 +432,25 @@ where
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
-    (pool, worker, activation)
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
+    (pool, worker, startup)
 }
 
 async fn pool_awaiting_worker_preparation<Source>(
     source: Source,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateActivation, Source, Infallible, u8, u16>>,
-    PrepareWorkers<Source, Role, SearchWorker, ImmediateActivation>,
+    Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
+    PrepareWorkers<Source, Role, SearchWorker, ImmediateStartup>,
 )
 where
-    Source: WorkerSource<Role, SearchWorker, ImmediateActivation>,
+    Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
     let roles = OrderedRoles::new(Role::Search, [Role::Index])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
@@ -450,9 +463,11 @@ where
         Interruption::Fail,
         PoolRecovery::permanent(
             source,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -496,13 +511,11 @@ where
 }
 
 fn stop_search_worker<Source>(
-    pool: &mut Active<
-        FifoPool<Role, SearchWorker, ImmediateActivation, Source, Infallible, u8, u16>,
-    >,
+    pool: &mut Active<FifoPool<Role, SearchWorker, ImmediateStartup, Source, Infallible, u8, u16>>,
     worker: CreationId,
-) -> PrepareWorkers<Source, Role, SearchWorker, ImmediateActivation>
+) -> PrepareWorkers<Source, Role, SearchWorker, ImmediateStartup>
 where
-    Source: WorkerSource<Role, SearchWorker, ImmediateActivation>,
+    Source: WorkerSource<Role, SearchWorker, ImmediateStartup>,
 {
     pool.on(ChildStopped::new(worker, Ok(Exit::Normal), Instant::now()))
         .unwrap_or_else(|error| panic!("worker exit input failed: {error}"))
@@ -517,7 +530,7 @@ fn assert_search_pool_unavailable<P, Source>(
     pool: &mut Active<FifoPool<Role, SearchWorker, P, Source, Infallible, u8, u16>>,
     submission: u64,
 ) where
-    P: ActivationPlan,
+    P: StartupPlan,
     Source: WorkerSource<Role, SearchWorker, P>,
 {
     let customer = Recipient::<MessageProtocol<RuntimeAddr, FifoOutcome<Role, u8, u16>>>::global(
@@ -547,7 +560,7 @@ fn assert_search_pool_unavailable<P, Source>(
 }
 
 async fn scheduling_search_replacement() -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateActivation, SearchSource, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
     ScheduleAfter,
 ) {
     scheduling_search_replacement_with_drain(ActorDrainPolicy::WaitForActorGraph).await
@@ -556,7 +569,7 @@ async fn scheduling_search_replacement() -> (
 async fn scheduling_search_replacement_with_drain(
     actor_drain: ActorDrainPolicy,
 ) -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateActivation, SearchSource, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
     ScheduleAfter,
 ) {
     let roles = OrderedRoles::new(Role::Search, [])
@@ -570,10 +583,12 @@ async fn scheduling_search_replacement_with_drain(
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
         actor_drain,
     )
@@ -602,7 +617,7 @@ async fn scheduling_search_replacement_with_drain(
 }
 
 async fn draining_search_restart_schedule() -> (
-    Active<FifoPool<Role, SearchWorker, ImmediateActivation, SearchSource, Infallible, u8, u16>>,
+    Active<FifoPool<Role, SearchWorker, ImmediateStartup, SearchSource, Infallible, u8, u16>>,
     ScheduleAfter,
 ) {
     let (mut pool, schedule) = scheduling_search_replacement().await;
@@ -622,25 +637,27 @@ fn pending_creation_with_deadline(
 ) {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let mut activation = Some(HeldActivation(activation_drops));
-    let pool = fifo(
+    let mut startup = Some(HeldActivation(activation_drops));
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
-                activation
+                startup
                     .take()
                     .unwrap_or_else(|| panic!("one-role fixture prepares one worker")),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::RetireActorGraphAfter {
-            deadline: Duration::from_secs(2),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::RetireActorGraphAfter {
+                deadline: Duration::from_secs(2),
+            },
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-        DiagnosticDisposition::<Infallible>::terminate(),
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -667,15 +684,17 @@ fn pending_creation_with_deadline(
 fn canonical_fifo_domain_surface_exists_without_structural_types() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -705,9 +724,9 @@ fn construction_rejection_returns_the_worker_roster() {
         [WorkerRole::Index, WorkerRole::Spellcheck],
     )
     .unwrap_or_else(|_| panic!("worker roles are unique"));
-    let activation = ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid"));
+    let startup = StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid"));
 
-    let mut rejection = match fifo(
+    let mut rejection = match queue::new(
         move |role: &WorkerRole| {
             factory_calls.borrow_mut().push(*role);
             match role {
@@ -718,12 +737,14 @@ fn construction_rejection_returns_the_worker_roster() {
             }
         },
         roles,
-        activation,
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(4),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: startup,
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(4),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     ) {
         Ok(_) => panic!("index worker preparation must reject"),
         Err(rejection) => rejection,
@@ -745,20 +766,22 @@ fn initialization_stop_completes_drain_without_a_second_stop_observation() {
     let factory_drops = Arc::clone(&activation_drops);
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 HeldActivation(Arc::clone(&factory_drops)),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -807,7 +830,7 @@ fn initialization_stop_completes_drain_without_a_second_stop_observation() {
 
     assert!(matches!(retired.become_, Step::Stop(_)));
     assert_eq!(retired.sends.diagnostics.len(), 1);
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert!(retired.sends.worker_shutdowns.is_empty());
     assert!(retired.creates.is_empty());
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
@@ -817,7 +840,7 @@ fn initialization_stop_completes_drain_without_a_second_stop_observation() {
 
 #[tokio::test]
 async fn drain_advances_started_activation_without_restoring_eligibility() {
-    let (mut pool, worker, activation) = pending_search_activation(ImmediateActivation);
+    let (mut pool, worker, startup) = pending_search_activation(ImmediateStartup);
 
     let draining = pool
         .receive(RuntimeAddr(7), FifoCommand::shutdown())
@@ -835,21 +858,21 @@ async fn drain_advances_started_activation_without_restoring_eligibility() {
         .unwrap_or_else(|error| panic!("shutdown settlement failed: {error}"));
     assert!(matches!(awaiting_exit.become_, Step::Continue));
 
-    let first_started = activation.started();
-    let duplicate_started = activation.started();
+    let first_started = startup.started();
+    let duplicate_started = startup.started();
     let started = pool
         .on(first_started)
-        .unwrap_or_else(|error| panic!("late activation start failed: {error}"));
+        .unwrap_or_else(|error| panic!("late startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
     assert!(started.sends.worker_assignments.is_empty());
     let duplicate = pool
         .on(duplicate_started)
-        .unwrap_or_else(|error| panic!("duplicate activation start failed: {error}"));
+        .unwrap_or_else(|error| panic!("duplicate startup start failed: {error}"));
     assert_eq!(duplicate.sends.diagnostics.len(), 1);
     assert!(duplicate.sends.worker_assignments.is_empty());
     let ready = pool
-        .on(activation.activate().await)
-        .unwrap_or_else(|error| panic!("late activation readiness failed: {error}"));
+        .on(startup.start().await)
+        .unwrap_or_else(|error| panic!("late startup readiness failed: {error}"));
     assert_eq!(ready.sends.diagnostics.len(), 1);
     assert!(ready.sends.worker_assignments.is_empty());
 
@@ -862,9 +885,9 @@ async fn drain_advances_started_activation_without_restoring_eligibility() {
 
 #[tokio::test]
 async fn foreign_drain_activation_cannot_advance_the_worker() {
-    let (mut pool, worker, activation) = pending_search_activation(ImmediateActivation);
+    let (mut pool, worker, startup) = pending_search_activation(ImmediateStartup);
     let (_foreign_pool, _foreign_worker, foreign_activation) =
-        pending_search_activation(ImmediateActivation);
+        pending_search_activation(ImmediateStartup);
 
     let draining = pool
         .receive(RuntimeAddr(7), FifoCommand::shutdown())
@@ -878,13 +901,13 @@ async fn foreign_drain_activation_cannot_advance_the_worker() {
 
     let foreign = pool
         .on(foreign_activation.started())
-        .unwrap_or_else(|error| panic!("foreign activation input failed: {error}"));
+        .unwrap_or_else(|error| panic!("foreign startup input failed: {error}"));
     assert_eq!(foreign.sends.diagnostics.len(), 1);
     assert!(foreign.sends.worker_assignments.is_empty());
 
     let exact = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("exact activation input failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("exact startup input failed: {error}"));
     assert!(exact.sends.diagnostics.is_empty());
     assert!(exact.sends.worker_assignments.is_empty());
 
@@ -902,7 +925,7 @@ async fn foreign_drain_activation_cannot_advance_the_worker() {
 
 #[tokio::test]
 async fn drain_retains_activation_start_rejection_without_assigning_work() {
-    let (mut pool, worker, activation) = pending_search_activation(ImmediateActivation);
+    let (mut pool, worker, startup) = pending_search_activation(ImmediateStartup);
 
     let draining = pool
         .receive(RuntimeAddr(7), FifoCommand::shutdown())
@@ -915,8 +938,8 @@ async fn drain_retains_activation_start_rejection_without_assigning_work() {
         .unwrap_or_else(|| panic!("shutdown emits one exact worker request"));
 
     let rejected = pool
-        .on(activation.start_rejected(ActivationStartRejection::OwnerStopped))
-        .unwrap_or_else(|error| panic!("activation start rejection failed: {error}"));
+        .on(startup.start_rejected(StartupRejection::OwnerStopped))
+        .unwrap_or_else(|error| panic!("startup start rejection failed: {error}"));
     assert_eq!(rejected.sends.diagnostics.len(), 1);
     assert!(rejected.sends.worker_assignments.is_empty());
 
@@ -935,12 +958,12 @@ async fn drain_retains_activation_start_rejection_without_assigning_work() {
 #[tokio::test]
 async fn drain_retains_activation_plan_rejection_without_assigning_work() {
     let rejection_drops = Arc::new(AtomicUsize::new(0));
-    let (mut pool, worker, activation) =
+    let (mut pool, worker, startup) =
         pending_search_activation(RejectedSearchActivation(Arc::clone(&rejection_drops)));
 
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
     let draining = pool
         .receive(RuntimeAddr(7), FifoCommand::shutdown())
@@ -953,8 +976,8 @@ async fn drain_retains_activation_plan_rejection_without_assigning_work() {
         .unwrap_or_else(|| panic!("shutdown emits one exact worker request"));
 
     let rejected = pool
-        .on(activation.activate().await)
-        .unwrap_or_else(|error| panic!("activation rejection failed: {error}"));
+        .on(startup.start().await)
+        .unwrap_or_else(|error| panic!("startup rejection failed: {error}"));
     assert_eq!(rejected.sends.diagnostics.len(), 1);
     assert!(rejected.sends.worker_assignments.is_empty());
     assert_eq!(rejection_drops.load(Ordering::SeqCst), 0);
@@ -1005,9 +1028,11 @@ async fn preparation_start_commits_before_shutdown_and_late_worker_return() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -1315,9 +1340,9 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
     let mut initial = Some(HeldActivation(Arc::clone(&initial_drops)));
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 initial
                     .take()
@@ -1325,18 +1350,22 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::constant(Duration::from_secs(1))
+                        .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                    failure: PoolFailureReaction::RetireRole,
+                },
+            ),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -1360,20 +1389,20 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
     assert_eq!(initial_drops.load(Ordering::SeqCst), 1);
@@ -1386,9 +1415,12 @@ async fn cancelled_restart_keeps_the_uncommitted_activation_until_diagnostic_del
         .into_items()
         .pop()
         .unwrap_or_else(|| panic!("permanent stop prepares one replacement"));
-    let ControlFlow::Break(prepared) = start_worker_preparation!(pool, preparation).accept(
-        WorkerSubmission::activated(SearchWorker, HeldActivation(Arc::clone(&replacement_drops))),
-    ) else {
+    let ControlFlow::Break(prepared) =
+        start_worker_preparation!(pool, preparation).accept(WorkerSubmission::with_startup(
+            SearchWorker,
+            HeldActivation(Arc::clone(&replacement_drops)),
+        ))
+    else {
         panic!("one selected role completes in one preparation")
     };
     let schedule = pool
@@ -1468,15 +1500,17 @@ async fn orderly_retirement_releases_role_history_before_the_pool_is_dropped() {
     let role_owner = Arc::new(());
     let roles = OrderedRoles::new(Arc::clone(&role_owner), [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         |_: &Arc<()>| Ok::<_, Never>(WorkerSubmission::immediate(SearchWorker)),
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -1500,20 +1534,20 @@ async fn orderly_retirement_releases_role_history_before_the_pool_is_dropped() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
 
@@ -1730,7 +1764,7 @@ async fn rejected_drain_deadline_cannot_settle_a_pending_worker_restart() {
 #[test]
 fn forced_retirement_keeps_external_activation_owned_outside_the_pool() {
     let activation_drops = Arc::new(AtomicUsize::new(0));
-    let (mut pool, worker, activation) = pending_search_activation_with_drain(
+    let (mut pool, worker, startup) = pending_search_activation_with_drain(
         HeldActivation(Arc::clone(&activation_drops)),
         ActorDrainPolicy::RetireActorGraphAfter {
             deadline: Duration::from_secs(2),
@@ -1771,7 +1805,7 @@ fn forced_retirement_keeps_external_activation_owned_outside_the_pool() {
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
     drop(pool);
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
-    drop(activation);
+    drop(startup);
     assert_eq!(activation_drops.load(Ordering::SeqCst), 1);
 }
 
@@ -1789,9 +1823,11 @@ async fn forced_retirement_keeps_worker_source_owned_by_its_pending_request() {
         Interruption::Fail,
         PoolRecovery::permanent(
             TrackedSearchSource(Arc::clone(&source_drops)),
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
         ActorDrainPolicy::RetireActorGraphAfter {
             deadline: Duration::from_secs(2),
@@ -1948,15 +1984,17 @@ fn assignment_completion_source_shape_needs_no_pool_machinery() {
 async fn stop_before_creation_settlement_never_advertises_the_worker() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -1987,10 +2025,10 @@ async fn stop_before_creation_settlement_never_advertises_the_worker() {
         .pop()
         .unwrap_or_else(|| panic!("committed worker returns its initialization outcome"));
     let retired = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
 
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert!(retired.sends.worker_assignments.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_search_pool_unavailable(&mut pool, 50);
@@ -2000,15 +2038,17 @@ async fn stop_before_creation_settlement_never_advertises_the_worker() {
 async fn stop_during_initialization_is_retained_once_until_initialization_returns() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2046,9 +2086,9 @@ async fn stop_during_initialization_is_retained_once_until_initialization_return
     assert!(duplicate.sends.worker_preparations.is_empty());
 
     let retired = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_search_pool_unavailable(&mut pool, 51);
 }
@@ -2057,15 +2097,17 @@ async fn stop_during_initialization_is_retained_once_until_initialization_return
 async fn stop_while_waiting_for_activation_retires_the_exact_role() {
     let roles = OrderedRoles::new(Role::Search, [Role::Index])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2088,16 +2130,16 @@ async fn stop_while_waiting_for_activation_retires_the_exact_role() {
     }
     let first = initializations.remove(0);
     let first_initialized = pool
-        .on(first.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(first.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("first worker initialization failed: {error}"));
-    assert_eq!(first_initialized.sends.worker_activations.len(), 1);
+    assert_eq!(first_initialized.sends.worker_startups.len(), 1);
 
     let waiting = initializations.remove(0);
     let waiting_worker = waiting.worker().creation();
     let second_initialized = pool
-        .on(waiting.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(waiting.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("second worker initialization failed: {error}"));
-    assert!(second_initialized.sends.worker_activations.is_empty());
+    assert!(second_initialized.sends.worker_startups.is_empty());
 
     let retired = pool
         .on(ChildStopped::new(
@@ -2106,12 +2148,12 @@ async fn stop_while_waiting_for_activation_retires_the_exact_role() {
             Instant::now(),
         ))
         .unwrap_or_else(|error| panic!("waiting worker stop failed: {error}"));
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert!(retired.sends.worker_preparations.is_empty());
     let mut diagnostics = retired.sends.diagnostics.into_requests();
     let diagnostic = match diagnostics
         .pop()
-        .unwrap_or_else(|| panic!("retiring a waiting worker retains its activation values"))
+        .unwrap_or_else(|| panic!("retiring a waiting worker retains its startup values"))
     {
         DiagnosticAction::Terminal { diagnostic } => diagnostic,
         DiagnosticAction::Deliver { .. } => panic!("the test selects terminal diagnostics"),
@@ -2123,15 +2165,17 @@ async fn stop_while_waiting_for_activation_retires_the_exact_role() {
 async fn stop_before_activation_start_releases_capacity_only_after_start_returns() {
     let roles = OrderedRoles::new(Role::Search, [Role::Index])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2155,53 +2199,55 @@ async fn stop_before_activation_start_releases_capacity_only_after_start_returns
     let first = initializations.remove(0);
     let first_worker = first.worker().creation();
     let first_initialized = pool
-        .on(first.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(first.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("first worker initialization failed: {error}"));
-    let activation = first_initialized
+    let startup = first_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("first worker occupies activation capacity"));
+        .unwrap_or_else(|| panic!("first worker occupies startup capacity"));
     let second = initializations.remove(0);
     let second_initialized = pool
-        .on(second.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(second.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("second worker initialization failed: {error}"));
-    assert!(second_initialized.sends.worker_activations.is_empty());
+    assert!(second_initialized.sends.worker_startups.is_empty());
 
     let stopped = ChildStopped::new(first_worker, Ok(Exit::Normal), Instant::now());
     let waiting = pool
         .on(stopped)
-        .unwrap_or_else(|error| panic!("activation-dispatched worker stop failed: {error}"));
+        .unwrap_or_else(|error| panic!("startup-dispatched worker stop failed: {error}"));
     assert!(waiting.sends.diagnostics.is_empty());
-    assert!(waiting.sends.worker_activations.is_empty());
+    assert!(waiting.sends.worker_startups.is_empty());
 
     let duplicate = pool
         .on(stopped)
-        .unwrap_or_else(|error| panic!("duplicate activation worker stop failed: {error}"));
+        .unwrap_or_else(|error| panic!("duplicate startup worker stop failed: {error}"));
     assert_eq!(duplicate.sends.diagnostics.len(), 1);
-    assert!(duplicate.sends.worker_activations.is_empty());
+    assert!(duplicate.sends.worker_startups.is_empty());
 
     let released = pool
-        .on(activation.start_rejected(ActivationStartRejection::OwnerStopped))
-        .unwrap_or_else(|error| panic!("activation rejection failed: {error}"));
+        .on(startup.start_rejected(StartupRejection::OwnerStopped))
+        .unwrap_or_else(|error| panic!("startup rejection failed: {error}"));
     assert_eq!(released.sends.diagnostics.len(), 1);
-    assert_eq!(released.sends.worker_activations.len(), 1);
+    assert_eq!(released.sends.worker_startups.len(), 1);
 }
 
 #[tokio::test]
 async fn stop_before_activation_start_remains_owned_until_late_readiness() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2225,31 +2271,31 @@ async fn stop_before_activation_start_remains_owned_until_late_readiness() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let stopped = pool
         .on(ChildStopped::new(worker, Ok(Exit::Normal), Instant::now()))
-        .unwrap_or_else(|error| panic!("activation-dispatched worker stop failed: {error}"));
+        .unwrap_or_else(|error| panic!("startup-dispatched worker stop failed: {error}"));
     assert!(stopped.sends.diagnostics.is_empty());
     assert!(stopped.sends.worker_preparations.is_empty());
 
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("late activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("late startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
     assert!(started.sends.worker_preparations.is_empty());
 
     let retired = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("late readiness failed: {error}"));
     assert!(retired.sends.worker_assignments.is_empty());
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_search_pool_unavailable(&mut pool, 52);
 }
@@ -2258,15 +2304,17 @@ async fn stop_before_activation_start_remains_owned_until_late_readiness() {
 async fn initialization_reported_stop_retires_without_a_separate_stop_input() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2299,7 +2347,7 @@ async fn initialization_reported_stop_retires_without_a_separate_stop_input() {
         )
         .unwrap_or_else(|error| panic!("initialization stop failed: {error}"));
 
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert!(retired.sends.worker_preparations.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_search_pool_unavailable(&mut pool, 53);
@@ -2311,20 +2359,22 @@ async fn initialization_rejection_after_stop_retires_without_losing_the_plan() {
     let factory_drops = Arc::clone(&activation_drops);
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 HeldActivation(Arc::clone(&factory_drops)),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2359,7 +2409,7 @@ async fn initialization_rejection_after_stop_retires_without_losing_the_plan() {
             )),
         )
         .unwrap_or_else(|error| panic!("initialization rejection failed: {error}"));
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert!(retired.sends.worker_preparations.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
@@ -2374,20 +2424,22 @@ async fn activation_rejection_after_stop_never_restores_worker_eligibility() {
     let factory_drops = Arc::clone(&rejection_drops);
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 RejectedSearchActivation(Arc::clone(&factory_drops)),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2411,17 +2463,17 @@ async fn activation_rejection_after_stop_never_restores_worker_eligibility() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
     let stopped = pool
         .on(ChildStopped::new(worker, Ok(Exit::Normal), Instant::now()))
@@ -2429,10 +2481,10 @@ async fn activation_rejection_after_stop_never_restores_worker_eligibility() {
     assert!(stopped.sends.diagnostics.is_empty());
 
     let retired = pool
-        .on(activation.activate().await)
-        .unwrap_or_else(|error| panic!("activation rejection input failed: {error}"));
+        .on(startup.start().await)
+        .unwrap_or_else(|error| panic!("startup rejection input failed: {error}"));
     assert!(retired.sends.worker_assignments.is_empty());
-    assert!(retired.sends.worker_activations.is_empty());
+    assert!(retired.sends.worker_startups.is_empty());
     assert_eq!(retired.sends.diagnostics.len(), 1);
     assert_eq!(rejection_drops.load(Ordering::SeqCst), 0);
     drop(retired);
@@ -2443,20 +2495,24 @@ async fn activation_rejection_after_stop_never_restores_worker_eligibility() {
 async fn permanent_pre_ready_stop_requests_replacement_only_after_initialization_returns() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
+            ),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2485,9 +2541,9 @@ async fn permanent_pre_ready_stop_requests_replacement_only_after_initialization
     assert!(stopped.sends.worker_preparations.is_empty());
 
     let recovering = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    assert!(recovering.sends.worker_activations.is_empty());
+    assert!(recovering.sends.worker_startups.is_empty());
     assert_eq!(recovering.sends.worker_preparations.len(), 1);
     assert_eq!(recovering.sends.diagnostics.len(), 1);
 }
@@ -2496,15 +2552,17 @@ async fn permanent_pre_ready_stop_requests_replacement_only_after_initialization
 async fn foreign_stop_during_initialization_cannot_retire_the_worker() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2539,9 +2597,9 @@ async fn foreign_stop_during_initialization_cannot_retire_the_worker() {
     assert_eq!(rejected.sends.diagnostics.len(), 1);
 
     let activated = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    assert_eq!(activated.sends.worker_activations.len(), 1);
+    assert_eq!(activated.sends.worker_startups.len(), 1);
     assert!(activated.sends.worker_preparations.is_empty());
 }
 
@@ -2551,25 +2609,29 @@ async fn initialization_failure_stops_the_worker_before_permanent_recovery() {
     let factory_drops = Arc::clone(&activation_drops);
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 HeldActivation(Arc::clone(&factory_drops)),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::permanent(
-            SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
-        ),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::permanent(
+                SearchSource,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
+            ),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2600,7 +2662,7 @@ async fn initialization_failure_stops_the_worker_before_permanent_recovery() {
             )),
         )
         .unwrap_or_else(|error| panic!("initialization failure input failed: {error}"));
-    assert!(failed.sends.worker_activations.is_empty());
+    assert!(failed.sends.worker_startups.is_empty());
     assert!(failed.sends.worker_preparations.is_empty());
     assert_eq!(failed.sends.diagnostics.len(), 1);
     assert_eq!(activation_drops.load(Ordering::SeqCst), 0);
@@ -2632,20 +2694,22 @@ async fn activation_failure_releases_capacity_but_waits_for_worker_exit() {
     let factory_drops = Arc::clone(&rejection_drops);
     let roles = OrderedRoles::new(Role::Search, [Role::Index])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         move |_: &Role| {
-            Ok::<_, Never>(WorkerSubmission::activated(
+            Ok::<_, Never>(WorkerSubmission::with_startup(
                 SearchWorker,
                 RejectedSearchActivation(Arc::clone(&factory_drops)),
             ))
         },
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2669,29 +2733,29 @@ async fn activation_failure_releases_capacity_but_waits_for_worker_exit() {
     let first = initializations.remove(0);
     let first_worker = first.worker().creation();
     let first_initialized = pool
-        .on(first.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(first.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("first worker initialization failed: {error}"));
-    let activation = first_initialized
+    let startup = first_initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("first worker occupies activation capacity"));
+        .unwrap_or_else(|| panic!("first worker occupies startup capacity"));
     let second = initializations.remove(0);
     let second_initialized = pool
-        .on(second.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(second.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("second worker initialization failed: {error}"));
-    assert!(second_initialized.sends.worker_activations.is_empty());
+    assert!(second_initialized.sends.worker_startups.is_empty());
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(started.sends.diagnostics.is_empty());
 
     let failed = pool
-        .on(activation.activate().await)
-        .unwrap_or_else(|error| panic!("activation failure input failed: {error}"));
+        .on(startup.start().await)
+        .unwrap_or_else(|error| panic!("startup failure input failed: {error}"));
     assert_eq!(failed.sends.diagnostics.len(), 1);
-    assert_eq!(failed.sends.worker_activations.len(), 1);
+    assert_eq!(failed.sends.worker_startups.len(), 1);
     assert!(failed.sends.worker_preparations.is_empty());
     assert_eq!(rejection_drops.load(Ordering::SeqCst), 0);
     let shutdown = failed
@@ -2699,7 +2763,7 @@ async fn activation_failure_releases_capacity_but_waits_for_worker_exit() {
         .worker_shutdowns
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("activation failure stops its installed worker"));
+        .unwrap_or_else(|| panic!("startup failure stops its installed worker"));
 
     let waiting = pool
         .on(EstablishedShutdownResolved::<SearchWorker>::accepted(
@@ -2724,15 +2788,17 @@ async fn activation_failure_releases_capacity_but_waits_for_worker_exit() {
 async fn activation_start_rejection_stops_the_installed_worker() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
@@ -2756,20 +2822,20 @@ async fn activation_start_rejection_stops_the_installed_worker() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
 
     let failed = pool
-        .on(activation.start_rejected(ActivationStartRejection::OwnerStopped))
-        .unwrap_or_else(|error| panic!("activation start rejection failed: {error}"));
+        .on(startup.start_rejected(StartupRejection::OwnerStopped))
+        .unwrap_or_else(|error| panic!("startup start rejection failed: {error}"));
     assert_eq!(failed.sends.diagnostics.len(), 1);
-    assert!(failed.sends.worker_activations.is_empty());
+    assert!(failed.sends.worker_startups.is_empty());
     assert!(failed.sends.worker_preparations.is_empty());
     let shutdown = failed
         .sends
@@ -2794,15 +2860,17 @@ async fn activation_start_rejection_stops_the_installed_worker() {
 async fn delivery_and_completion_orders_complete_once() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -2827,20 +2895,20 @@ async fn delivery_and_completion_orders_complete_once() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
 
@@ -3001,15 +3069,17 @@ async fn delivery_and_completion_orders_complete_once() {
 async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -3034,20 +3104,20 @@ async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
 
@@ -3162,15 +3232,17 @@ async fn rejected_assignment_is_requeued_and_its_worker_is_quarantined() {
 async fn rejected_quarantine_shutdown_waits_for_worker_exit() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -3195,20 +3267,20 @@ async fn rejected_quarantine_shutdown_waits_for_worker_exit() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
 
@@ -3485,9 +3557,11 @@ async fn permanent_worker_stop_emits_one_affine_source_request() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3524,9 +3598,11 @@ async fn transient_normal_stop_retires_without_preparation() {
             Interruption::Fail,
             PoolRecovery::transient(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
         )
         .await;
@@ -3589,9 +3665,11 @@ async fn transient_abnormal_stop_emits_one_affine_source_request() {
             Interruption::Fail,
             PoolRecovery::transient(
                 SearchSource,
-                RestartLimit::new(3, Duration::from_secs(10)),
-                RestartRelease::immediate(),
-                PoolFailureReaction::RetireRole,
+                RecoveryPolicy {
+                    limit: RestartLimit::new(3, Duration::from_secs(10)),
+                    delay: RestartRelease::immediate(),
+                    failure: PoolFailureReaction::RetireRole,
+                },
             ),
         )
         .await;
@@ -3619,9 +3697,11 @@ async fn concurrent_stops_do_not_duplicate_the_affine_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3658,9 +3738,11 @@ async fn accepted_preparation_starts_one_immediate_replacement() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3705,9 +3787,11 @@ async fn returned_source_prepares_the_first_waiting_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3767,10 +3851,12 @@ async fn delayed_replacement_waits_for_schedule_and_timer() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3836,9 +3922,11 @@ async fn restart_limit_denial_retires_the_role_without_creation() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(0, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(0, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3882,9 +3970,11 @@ async fn restart_limit_keeps_a_charge_at_the_inclusive_cutoff() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(1, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(1, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -3929,20 +4019,20 @@ async fn restart_limit_keeps_a_charge_at_the_inclusive_cutoff() {
         .unwrap_or_else(|| panic!("the replacement awaits initialization"));
     let replacement = initialization.worker().creation();
     let initialized = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("replacement initialization failed: {error}"));
-    let activation = initialized
+    let startup = initialized
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("the replacement begins activation"));
+        .unwrap_or_else(|| panic!("the replacement begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("replacement activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("replacement startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let replacement_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("replacement readiness failed: {error}"));
     assert!(replacement_ready.sends.worker_assignments.is_empty());
 
@@ -3985,10 +4075,12 @@ async fn rejected_restart_schedule_retires_without_creation() {
         Interruption::Fail,
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::constant(Duration::from_secs(1))
-                .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::constant(Duration::from_secs(1))
+                    .unwrap_or_else(|error| panic!("positive restart delay rejected: {error}")),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4046,9 +4138,11 @@ async fn rejected_preparation_restores_source_for_next_waiting_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4096,9 +4190,11 @@ async fn rejected_preparation_preserves_source_and_reason_custody() {
         Interruption::Fail,
         PoolRecovery::permanent(
             TrackedSearchSource(Arc::clone(&source_drops)),
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4138,9 +4234,11 @@ async fn worker_preparation_rejection_retires_the_role() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4175,9 +4273,11 @@ async fn preparation_failure_can_stop_the_pool_and_drain_surviving_workers() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::StopPool,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::StopPool,
+            },
         ),
     )
     .await;
@@ -4208,9 +4308,11 @@ async fn corrupt_preparation_retires_the_role_without_losing_its_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4248,9 +4350,11 @@ async fn unattempted_preparation_retires_the_role_without_losing_its_source() {
         Interruption::Fail,
         PoolRecovery::permanent(
             FallibleSearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         ),
     )
     .await;
@@ -4279,9 +4383,11 @@ async fn foreign_preparation_cannot_advance_another_pool() {
     let recovery = || {
         PoolRecovery::permanent(
             SearchSource,
-            RestartLimit::new(3, Duration::from_secs(10)),
-            RestartRelease::immediate(),
-            PoolFailureReaction::RetireRole,
+            RecoveryPolicy {
+                limit: RestartLimit::new(3, Duration::from_secs(10)),
+                delay: RestartRelease::immediate(),
+                failure: PoolFailureReaction::RetireRole,
+            },
         )
     };
     let ReadySearchPool {
@@ -4436,15 +4542,17 @@ async fn restart_schedule_and_timer_require_exact_correlation_once() {
 async fn worker_exit_waits_for_delivery_then_retries_the_same_job() {
     let roles = OrderedRoles::new(Role::Search, [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -4469,20 +4577,20 @@ async fn worker_exit_waits_for_delivery_then_retries_the_same_job() {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let worker_ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(worker_ready.sends.worker_assignments.is_empty());
 
@@ -4564,15 +4672,17 @@ async fn worker_exit_waits_for_delivery_then_retries_the_same_job() {
 async fn worker_exit_after_delivery_returns_the_job_under_fail_policy() {
     let roles = OrderedRoles::new(Role::Search, [Role::Index])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_search_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
 
@@ -4593,20 +4703,20 @@ async fn worker_exit_after_delivery_returns_the_job_under_fail_policy() {
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         workers.push(initialization.worker().creation());
         let initialized_worker = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized_worker
+        let startup = initialized_worker
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let activation_started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("startup start failed: {error}"));
         assert!(activation_started.sends.worker_assignments.is_empty());
         let worker_ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(worker_ready.sends.worker_assignments.is_empty());
     }

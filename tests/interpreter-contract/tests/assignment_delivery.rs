@@ -10,11 +10,18 @@ use behavior::{
     InterpretationProgress, InterpreterRequests, ItemSettlement, MessageProtocol, Never, NoBirths,
     Protocol, Recipient, ReportToParent, SettledItem, User,
 };
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, AssignWorker, Assignment, BacklogCapacity, Completion,
-    DiagnosticDisposition, FifoCommand, FifoEvent, FifoOutcome, FifoOutcomeKind, FifoPool,
-    ImmediateActivation, Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery,
-    QueuedReturnReason, SubmissionId, WorkerInitializationOutcome, WorkerSubmission, fifo,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::pool::queue::{
+    FifoCommand, FifoEvent, FifoOutcome, FifoOutcomeKind, FifoPool, QueuedReturnReason,
+};
+use behavior_actors::pool::{
+    AssignWorker, Assignment, BacklogCapacity, Completion, Interruption, PoolFailureReaction,
+    PoolRecovery, SubmissionId,
+};
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, StartupLimit, WorkerInitializationOutcome, WorkerSubmission,
 };
 use behavior_actors::{
     Activate, Active, ChildStopped, EstablishedShutdownResolved, Exit, ReplyDelivery,
@@ -89,10 +96,10 @@ impl Behavior for Worker {
     }
 }
 
-type Pool = FifoPool<Role, Worker, ImmediateActivation, Never, Infallible, Box<str>, u16>;
+type Pool = FifoPool<Role, Worker, ImmediateStartup, Never, Infallible, Box<str>, u16>;
 type Customer = MessageProtocol<RuntimeAddr, FifoOutcome<Role, Box<str>, u16>>;
 
-fn prepare_worker(_: &Role) -> Result<WorkerSubmission<Worker, ImmediateActivation>, Never> {
+fn prepare_worker(_: &Role) -> Result<WorkerSubmission<Worker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(Worker))
 }
 
@@ -119,15 +126,17 @@ fn committed_worker(
 
 async fn ready_pool() -> (Active<Pool>, CreationId) {
     let roles = OrderedRoles::new(Role::Worker, []).expect("one worker role");
-    let pool: Pool = fifo(
+    let pool: Pool = queue::new(
         prepare_worker,
         roles,
-        ActivationPolicy::new(1).expect("one worker may activate"),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).expect("one worker may activate"),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the declared worker constructs the pool"));
     let initialized = pool.initialize().expect("pool initialization");
@@ -147,17 +156,17 @@ async fn ready_pool() -> (Active<Pool>, CreationId) {
         .expect("worker initialization request");
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .expect("worker initialization settlement");
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("worker activation request");
-    let started = pool.on(activation.started()).expect("activation starts");
+        .expect("worker startup request");
+    let started = pool.on(startup.started()).expect("startup starts");
     assert!(started.sends.worker_assignments.is_empty());
-    let ready = pool.on(activation.activate().await).expect("worker ready");
+    let ready = pool.on(startup.start().await).expect("worker ready");
     assert!(ready.sends.worker_assignments.is_empty());
     (pool, worker)
 }

@@ -4,19 +4,25 @@
 #[path = "installed_control.rs"]
 mod installed_control;
 
+use behavior_actors::pool::router;
 use core::future::Future;
 use core::task::{Context, Poll, Waker};
 use std::collections::{BTreeSet, VecDeque};
 use std::convert::Infallible;
 use std::time::Instant;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, AssignWorker, Assignment, AssignmentReceipt,
-    BacklogCapacity, BindingCapacity, BindingEvidence, BindingGeneration, Completion,
-    CustomerDelivery, DiagnosticDisposition, ImmediateActivation, Interruption,
-    KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome, KeyedPool,
-    KeyedQueuedReturnReason, OrderedRoles, PoolFailureReaction, PoolRecovery, SubmissionId,
-    WorkerInitializationOutcome, WorkerSubmission, keyed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, BindingEvidence, BindingGeneration, KeyedAssignedReturnReason, KeyedCommand,
+    KeyedEvent, KeyedOutcome, KeyedPool, KeyedQueuedReturnReason,
+};
+use behavior_actors::pool::{
+    AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, Completion, CustomerDelivery,
+    Interruption, PoolFailureReaction, PoolRecovery, SubmissionId,
+};
+use behavior_actors::worker::{
+    ImmediateStartup, OrderedRoles, StartupLimit, WorkerInitializationOutcome, WorkerSubmission,
 };
 use behavior_actors::{
     Activate as _, Active, ChildStopped, Crash, EstablishedShutdownResolved, ShutdownId,
@@ -82,7 +88,7 @@ type SearchPool = Active<
     KeyedPool<
         Role,
         SearchWorker,
-        ImmediateActivation,
+        ImmediateStartup,
         Never,
         fn(&Account) -> Role,
         Infallible,
@@ -119,7 +125,7 @@ impl Behavior for SearchWorker {
     }
 }
 
-fn prepare_worker(_: &Role) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+fn prepare_worker(_: &Role) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }
 
@@ -149,17 +155,19 @@ fn created_worker(
 }
 
 fn ready_pool() -> (SearchPool, CreationId) {
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         OrderedRoles::new(Role::Search, core::iter::empty()).expect("one role is a valid roster"),
         selected_role as fn(&Account) -> Role,
-        ActivationPolicy::new(1).expect("one activation is valid"),
-        PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        BindingCapacity::new(1).expect("one binding is valid"),
-        Interruption::Fail,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::<Infallible>::terminate(),
+        router::Config {
+            startup: StartupLimit::new(1).expect("one startup is valid"),
+            recovery: PoolRecovery::<Never>::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            bindings: BindingCapacity::new(1).expect("one binding is valid"),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
     let initialized = pool
@@ -183,27 +191,27 @@ fn ready_pool() -> (SearchPool, CreationId) {
         .expect("created worker awaits initialization");
     let worker = initialization.worker().creation();
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|_| panic!("worker initialization commits"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .expect("initialized worker begins activation");
+        .expect("initialized worker begins startup");
     let started = pool
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("worker activation starts"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("worker startup starts"));
     assert!(started.sends.worker_assignments.is_empty());
-    let mut future = core::pin::pin!(activation.activate());
+    let mut future = core::pin::pin!(startup.start());
     let mut context = Context::from_waker(Waker::noop());
     let ready = match future.as_mut().poll(&mut context) {
         Poll::Ready(ready) => ready,
-        Poll::Pending => panic!("immediate activation cannot remain pending"),
+        Poll::Pending => panic!("immediate startup cannot remain pending"),
     };
     let activated = pool
         .on(ready)
-        .unwrap_or_else(|_| panic!("worker activation commits"));
+        .unwrap_or_else(|_| panic!("worker startup commits"));
     assert!(activated.sends.worker_assignments.is_empty());
     (pool, worker)
 }
@@ -538,7 +546,7 @@ impl Scenario {
         assert!(acted.creates.is_empty());
         assert!(acted.sends.worker_observations.is_empty());
         assert!(acted.sends.worker_initializations.is_empty());
-        assert!(acted.sends.worker_activations.is_empty());
+        assert!(acted.sends.worker_startups.is_empty());
         assert!(acted.sends.binding_replies.as_slice().is_empty());
         assert!(acted.sends.worker_assignments.is_empty());
         assert!(acted.sends.worker_preparations.is_empty());

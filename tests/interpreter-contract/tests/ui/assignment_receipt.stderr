@@ -4,7 +4,7 @@ error[E0624]: method `receipt` is private
 8 |     request.receipt()
   |             ^^^^^^^ private method
   |
- ::: $BEHAVIOR_ACTORS/src/atomic/pool/assignment.rs
+ ::: $BEHAVIOR_ACTORS/src/templates/pool/assignment.rs
   |
-  |     pub(in crate::atomic) fn receipt(&self) -> AssignmentReceipt {
-  |     ------------------------------------------------------------ private method defined here
+  |     pub(in crate::templates) fn receipt(&self) -> AssignmentReceipt {
+  |     --------------------------------------------------------------- private method defined here

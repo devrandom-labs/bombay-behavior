@@ -1,14 +1,17 @@
 #![no_main]
 //! Cancellation, proxy retirement, and same-key reuse through DynamicSupervisor.
 
+use behavior_actors::supervisor::directory;
 use std::time::Instant;
 
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, CancelAuthority, CancellationOutcome, CancellationReceipt,
-    DiagnosticDisposition, DynamicCommand, DynamicDiagnostic, DynamicLifecycle, DynamicStatus,
-    EntryCapacity, EntryRetirement, ImmediateActivation, StartRejection, UnexpectedExit,
-    WorkerChange, WorkerSubmission, dynamic,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::supervisor::directory::EntryCapacity;
+use behavior_actors::supervisor::directory::{
+    CancelAuthority, CancellationOutcome, CancellationReceipt, DynamicCommand, DynamicDiagnostic,
+    DynamicLifecycle, DynamicStatus, EntryRetirement, StartRejection, UnexpectedExit, WorkerChange,
 };
+use behavior_actors::worker::{ImmediateStartup, StartupLimit, WorkerSubmission};
 use behavior_actors::{Activate as _, ChildStopped, Exit, ReplyDelivery, ReplyRoute};
 use behavior_core::{MessageProtocol, Recipient, Step};
 use libfuzzer_sys::fuzz_target;
@@ -45,19 +48,19 @@ impl CreationResult {
 
 fuzz_target!(|input: &[u8]| {
     let lifecycle = Recipient::<
-        MessageProtocol<RuntimeAddress, DynamicLifecycle<ServiceKey, Worker, ImmediateActivation>>,
+        MessageProtocol<RuntimeAddress, DynamicLifecycle<ServiceKey, Worker, ImmediateStartup>>,
     >::global(RuntimeAddress);
     let diagnostics = Recipient::<
-        MessageProtocol<RuntimeAddress, DynamicDiagnostic<ServiceKey, Worker, ImmediateActivation>>,
+        MessageProtocol<RuntimeAddress, DynamicDiagnostic<ServiceKey, Worker, ImmediateStartup>>,
     >::global(RuntimeAddress);
-    let initialized = dynamic(
-        EntryCapacity::new(1).expect("one entry is valid"),
-        ActivationPolicy::new(1).expect("one activation is valid"),
-        UnexpectedExit::KeepEmpty,
-        ActorDrainPolicy::WaitForActorGraph,
-        lifecycle,
-        DiagnosticDisposition::deliver_to(diagnostics),
-    )
+    let initialized = directory::new(directory::Config {
+        entries: EntryCapacity::new(1).expect("one entry is valid"),
+        startup: StartupLimit::new(1).expect("one startup is valid"),
+        exit: UnexpectedExit::KeepEmpty,
+        shutdown: ActorDrainPolicy::WaitForActorGraph,
+        lifecycle: lifecycle,
+        diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
+    })
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     let mut supervisor = initialized.behavior;
@@ -143,7 +146,7 @@ fuzz_target!(|input: &[u8]| {
                 ReplyDelivery::Logical(delivery)
                     if matches!(
                         delivery.message,
-                        behavior_actors::atomic::QueryReply::Known {
+                        behavior_actors::supervisor::directory::QueryReply::Known {
                             status: DynamicStatus::CreatingProxy,
                             ..
                         }
@@ -325,7 +328,7 @@ fuzz_target!(|input: &[u8]| {
         assert!(matches!(
             &queried.sends.query_replies.as_slice()[0],
             ReplyDelivery::Logical(delivery)
-                if matches!(delivery.message, behavior_actors::atomic::QueryReply::Unknown { .. })
+                if matches!(delivery.message, behavior_actors::supervisor::directory::QueryReply::Unknown { .. })
         ));
 
         let stale = supervisor

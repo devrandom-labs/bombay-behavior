@@ -11,10 +11,8 @@ use behavior::{
     Never, NoBirths, Protocol, ReportToParent, SettledItem, SettlementStatus, User, finish_item,
     prepare_item,
 };
-use behavior_actors::atomic::{
-    BeginActivation, ImmediateActivation, InitializeWorker, ProxyDiagnostic, ProxyEffects,
-    ProxyOutcome, StableProxy,
-};
+use behavior_actors::proxy::{ProxyDiagnostic, ProxyEffects, ProxyOutcome, StableProxy};
+use behavior_actors::worker::{ImmediateStartup, InitializeWorker, StartWorker};
 use behavior_actors::{
     DeliveryOutcomes, LeaseSends, ObserveChild, PresenceSends, ShutdownEstablished, StopOnShutdown,
 };
@@ -154,18 +152,18 @@ impl<RootEvent, Path> InterpretItem<ObserveChild<ProxyWorker, ChildHead>, RootEv
 }
 
 impl<RootEvent, Path>
-    InterpretItem<InitializeWorker<ProxyWorker, ImmediateActivation>, RootEvent, Path>
+    InterpretItem<InitializeWorker<ProxyWorker, ImmediateStartup>, RootEvent, Path>
     for ProxyRuntimeWitness
 {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<InitializeWorker<ProxyWorker, ImmediateActivation>>,
+        input: &'a mut Option<InitializeWorker<ProxyWorker, ImmediateStartup>>,
         received: &'a mut Option<
-            <InitializeWorker<ProxyWorker, ImmediateActivation> as ActionItem>::Reply,
+            <InitializeWorker<ProxyWorker, ImmediateStartup> as ActionItem>::Reply,
         >,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        InitializeWorker<ProxyWorker, ImmediateActivation>: 'a,
+        InitializeWorker<ProxyWorker, ImmediateStartup>: 'a,
     {
         async move {
             if received.is_none() {
@@ -180,19 +178,16 @@ impl<RootEvent, Path>
     }
 }
 
-impl<RootEvent, Path>
-    InterpretItem<BeginActivation<ProxyWorker, ImmediateActivation>, RootEvent, Path>
+impl<RootEvent, Path> InterpretItem<StartWorker<ProxyWorker, ImmediateStartup>, RootEvent, Path>
     for ProxyRuntimeWitness
 {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<BeginActivation<ProxyWorker, ImmediateActivation>>,
-        received: &'a mut Option<
-            <BeginActivation<ProxyWorker, ImmediateActivation> as ActionItem>::Reply,
-        >,
+        input: &'a mut Option<StartWorker<ProxyWorker, ImmediateStartup>>,
+        received: &'a mut Option<<StartWorker<ProxyWorker, ImmediateStartup> as ActionItem>::Reply>,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        BeginActivation<ProxyWorker, ImmediateActivation>: 'a,
+        StartWorker<ProxyWorker, ImmediateStartup>: 'a,
     {
         async move {
             if received.is_none() {
@@ -259,18 +254,18 @@ impl<RootEvent, Path> InterpretItem<EstablishedDelivery<ProxyWorker>, RootEvent,
 }
 
 impl<RootEvent, Path>
-    InterpretItem<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>, RootEvent, Path>
+    InterpretItem<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateStartup>>, RootEvent, Path>
     for ProxyRuntimeWitness
 {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>>,
+        input: &'a mut Option<ReportToParent<ProxyOutcome<ProxyWorker, ImmediateStartup>>>,
         received: &'a mut Option<
-            <ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>> as ActionItem>::Reply,
+            <ReportToParent<ProxyOutcome<ProxyWorker, ImmediateStartup>> as ActionItem>::Reply,
         >,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        ReportToParent<ProxyOutcome<ProxyWorker, ImmediateActivation>>: 'a,
+        ReportToParent<ProxyOutcome<ProxyWorker, ImmediateStartup>>: 'a,
     {
         async move {
             if received.is_none() {
@@ -286,19 +281,18 @@ impl<RootEvent, Path>
 }
 
 impl<RootEvent, Path>
-    InterpretItem<
-        ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>,
-        RootEvent,
-        Path,
-    > for ProxyRuntimeWitness
+    InterpretItem<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateStartup>>, RootEvent, Path>
+    for ProxyRuntimeWitness
 {
     fn interpret_item<'a>(
         &'a mut self,
-        input: &'a mut Option<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>>,
-        received: &'a mut Option<<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>> as ActionItem>::Reply>,
+        input: &'a mut Option<ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateStartup>>>,
+        received: &'a mut Option<
+            <ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateStartup>> as ActionItem>::Reply,
+        >,
     ) -> impl Future<Output = ()> + Send + 'a
     where
-        ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateActivation>>: 'a,
+        ReportToParent<ProxyDiagnostic<ProxyWorker, ImmediateStartup>>: 'a,
     {
         async move {
             if received.is_none() {
@@ -475,7 +469,7 @@ async fn proxy_observations_settle_before_owner_outcomes_and_diagnostics() {
     let sends = ProxyEffects {
         worker_observations: InterpreterRequests::one(Work(5)),
         worker_initializations: InterpreterRequests::one(Work(6)),
-        worker_activations: InterpreterRequests::one(Work(7)),
+        worker_startups: InterpreterRequests::one(Work(7)),
         worker_shutdowns: InterpreterRequests::one(Work(8)),
         worker_deliveries: InterpreterRequests::one(Work(9)),
         owner_outcomes: InterpreterRequests::one(Work(10)),
@@ -505,7 +499,7 @@ async fn proxy_observations_settle_before_owner_outcomes_and_diagnostics() {
         [SettledItem::Attempted(ItemSettlement::Accepted(Work(6)))]
     ));
     assert!(matches!(
-        settlement.worker_activations.as_slice(),
+        settlement.worker_startups.as_slice(),
         [SettledItem::Attempted(ItemSettlement::Accepted(Work(7)))]
     ));
     assert!(matches!(
@@ -534,5 +528,5 @@ fn concrete_proxy_effects_have_one_total_interpretation_path() {
     {
     }
 
-    requires_total::<<StableProxy<ProxyWorker, ImmediateActivation> as Behavior>::Sends>();
+    requires_total::<<StableProxy<ProxyWorker, ImmediateStartup> as Behavior>::Sends>();
 }

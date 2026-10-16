@@ -8,9 +8,8 @@ use behavior::{
     Protocol, User,
 };
 use behavior_actors::ChildStopped;
-use behavior_actors::atomic::{
-    FixedDiagnostic, RecoveryDenialReason, RecoveryDenied, RestartReleaseFailure,
-};
+use behavior_actors::supervisor::roster::{FixedDiagnostic, RecoveryDenialReason, RecoveryDenied};
+use behavior_actors::worker::RestartReleaseFailure;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct RuntimeAddr;
@@ -62,18 +61,18 @@ impl Behavior for SearchWorker {
     }
 }
 
-impl behavior_actors::atomic::ActivationPlan for SearchPlan {
+impl behavior_actors::worker::StartupPlan for SearchPlan {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(()))
     }
 }
 
-impl behavior_actors::atomic::WorkerSource<SearchRole, SearchWorker, SearchPlan> for SearchSource {
+impl behavior_actors::worker::WorkerSource<SearchRole, SearchWorker, SearchPlan> for SearchSource {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }

@@ -5,11 +5,14 @@ use behavior::{
     ActionItemResult, ChildReport, CreationId, ItemSettlement, MessageProtocol, Never, Recipient,
     SettledItem, Step,
 };
-use behavior_actors::atomic::{
-    AdmissionRejection, AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, FifoCommand,
-    FifoEvent, FifoOutcomeKind, FifoPool, ImmediateActivation, Interruption, PoolFailureReaction,
-    PoolRecovery, SubmissionId,
+use behavior_actors::pool::queue::{
+    AdmissionRejection, FifoCommand, FifoEvent, FifoOutcomeKind, FifoPool,
 };
+use behavior_actors::pool::{
+    AssignWorker, Assignment, AssignmentReceipt, BacklogCapacity, Interruption,
+    PoolFailureReaction, PoolRecovery, SubmissionId,
+};
+use behavior_actors::worker::ImmediateStartup;
 use behavior_actors::{Active, ReplyDelivery};
 use proptest::collection::vec;
 use proptest::prelude::{Just, Strategy, any};
@@ -249,7 +252,7 @@ enum DeliveryCustody {
 }
 
 struct PoolWitness {
-    pool: Active<FifoPool<Role, SearchWorker, ImmediateActivation, Never, Infallible, u8, u16>>,
+    pool: Active<FifoPool<Role, SearchWorker, ImmediateStartup, Never, Infallible, u8, u16>>,
     worker: CreationId,
     delivery: DeliveryCustody,
 }
@@ -359,7 +362,7 @@ impl PoolWitness {
         prop_assert!(acted.creates.is_empty());
         prop_assert!(acted.sends.worker_observations.is_empty());
         prop_assert!(acted.sends.worker_initializations.is_empty());
-        prop_assert!(acted.sends.worker_activations.is_empty());
+        prop_assert!(acted.sends.worker_startups.is_empty());
         prop_assert!(acted.sends.worker_preparations.is_empty());
         prop_assert!(acted.sends.restart_schedules.is_empty());
         prop_assert!(acted.sends.worker_shutdowns.is_empty());

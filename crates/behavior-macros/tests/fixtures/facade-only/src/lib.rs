@@ -1,5 +1,5 @@
 use bombay::behavior::{Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient};
-use bombay::atomic::{Assignment, pool_worker};
+use bombay::pool::{Assignment, pool_worker};
 
 struct First;
 struct Second;

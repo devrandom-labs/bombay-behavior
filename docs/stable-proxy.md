@@ -43,8 +43,8 @@ one domain owner each:
 - `worker/mod.rs` owns the proxy's pending and current worker values, creation
   correlation, and shutdown/stop correlation.
 
-The shared `atomic/worker/initialization.rs` and
-`atomic/worker/activation.rs` modules own the worker-host request and result
+The shared `templates/worker/initialization.rs` and
+`templates/worker/startup.rs` modules own the worker-host request and result
 protocol used by every atomic aggregate. They are not StableProxy child files.
 The pending proxy worker stores only creation and activation values; the
 emitted `CreateChild` owns the concrete worker until settlement, so no worker
@@ -74,7 +74,7 @@ Dormant
 Starting {
     Creating { stopped: Option<exact stop> }
   | Initializing { stopped: Option<exact stop> }
-  | Activating { progress: WaitingForStart | Running, stopped: Option<exact stop> }
+  | Starting { progress: WaitingForStart | Running, stopped: Option<exact stop> }
   | ReturningWorker(WorkerStopping)
 }
 Ready
@@ -106,8 +106,8 @@ creation result cannot replace the pending submission.
 Every staged worker creation emits one exact `ObserveChild` request in the same
 `Actions`. A committed worker emits one `InitializeWorker` request.
 Successful initialization returns the original activation plan and one
-non-cloneable `ActivationPermit`; only those values can construct
-`BeginActivation`. Bombay admits `Started` before polling the plan. Only a
+non-cloneable `StartupPermit`; only those values can construct
+`StartWorker`. Bombay admits `Started` before polling the plan. Only a
 matching `Ready` received after matching `Started` opens service routing.
 
 Readiness arriving before `Started` is returned unchanged as a diagnostic. A

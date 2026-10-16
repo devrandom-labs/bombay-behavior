@@ -1,15 +1,20 @@
+use behavior_actors::pool::router;
 use std::time::Instant;
 
 use behavior::{
     ChildCreationOutcome, ChildHead, ChildReport, CreateChild, CreationSettlement,
     CreationsSettled, ItemSettlement, MessageProtocol, Recipient, SettledItem,
 };
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, BacklogCapacity, BindingCapacity, CustomerDelivery,
-    DiagnosticDisposition, Interruption, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent,
-    KeyedOutcome, OrderedRoles, PoolFailureReaction, PoolRecovery, SubmissionId,
-    WorkerInitializationOutcome, keyed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, KeyedAssignedReturnReason, KeyedCommand, KeyedEvent, KeyedOutcome,
 };
+use behavior_actors::pool::{
+    BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction, PoolRecovery,
+    SubmissionId,
+};
+use behavior_actors::worker::{OrderedRoles, StartupLimit, WorkerInitializationOutcome};
 use behavior_actors::{Activate, ChildStopped, Exit, StopOnShutdown};
 
 use super::assignment_delivery::accepted_assignment;
@@ -48,7 +53,7 @@ fn keyed_customer_notice(
     delivery: CustomerDelivery<
         MessageProtocol<RuntimeAddr, KeyedOutcome<Account, SearchRole, SearchJob, SearchResult>>,
     >,
-) -> (DeskNotice, behavior_actors::atomic::BindingGeneration) {
+) -> (DeskNotice, behavior_actors::pool::router::BindingGeneration) {
     let delivery = match delivery {
         CustomerDelivery::Logical { delivery } => delivery,
         CustomerDelivery::Established { .. }
@@ -127,17 +132,20 @@ async fn customer_desk_matches_every_keyed_assignment_exit_and_shutdown_order() 
     for order in input_orders() {
         let roles = OrderedRoles::new(SearchRole::Primary, [])
             .unwrap_or_else(|_| panic!("one role is a valid keyed roster"));
-        let pool = keyed(
+        let pool = router::new(
             prepare_worker,
             roles,
             |_: &Account| SearchRole::Primary,
-            ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
-            PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-            BacklogCapacity::new(0),
-            BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-            Interruption::Fail,
-            ActorDrainPolicy::WaitForActorGraph,
-            DiagnosticDisposition::terminate(),
+            router::Config {
+                startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+                recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+                backlog: BacklogCapacity::new(0),
+                bindings: BindingCapacity::new(1)
+                    .unwrap_or_else(|_| panic!("one binding is valid")),
+                interruption: Interruption::Fail,
+                shutdown: ActorDrainPolicy::WaitForActorGraph,
+                diagnostics: DiagnosticDisposition::terminate(),
+            },
         )
         .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
         let initialized = pool
@@ -161,20 +169,20 @@ async fn customer_desk_matches_every_keyed_assignment_exit_and_shutdown_order() 
             .pop()
             .unwrap_or_else(|| panic!("created worker awaits initialization"));
         let initialized = pool
-            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+            .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
             .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-        let activation = initialized
+        let startup = initialized
             .sends
-            .worker_activations
+            .worker_startups
             .into_requests()
             .pop()
-            .unwrap_or_else(|| panic!("initialized worker begins activation"));
+            .unwrap_or_else(|| panic!("initialized worker begins startup"));
         let started = pool
-            .on(activation.started())
-            .unwrap_or_else(|error| panic!("worker activation start failed: {error}"));
+            .on(startup.started())
+            .unwrap_or_else(|error| panic!("worker startup start failed: {error}"));
         assert!(started.sends.worker_assignments.is_empty());
         let ready = pool
-            .on(activation.activate().await)
+            .on(startup.start().await)
             .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
         assert!(ready.sends.worker_assignments.is_empty());
 

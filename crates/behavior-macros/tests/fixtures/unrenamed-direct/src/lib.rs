@@ -1,4 +1,4 @@
-use behavior_actors::atomic::Assignment;
+use behavior_actors::pool::Assignment;
 
 struct OrdinaryDirect;
 
@@ -11,7 +11,7 @@ impl OrdinaryDirect {
 
 struct OrdinaryWorker;
 
-#[behavior_actors::atomic::pool_worker(addr = behavior::MailAddr, result = u16)]
+#[behavior_actors::pool::pool_worker(addr = behavior::MailAddr, result = u16)]
 impl OrdinaryWorker {
     fn transition(&mut self, assignment: Assignment<u8>) -> WorkerActed<Self> {
         Ok(behavior::Actions::cont().with_send(assignment.complete(5)))

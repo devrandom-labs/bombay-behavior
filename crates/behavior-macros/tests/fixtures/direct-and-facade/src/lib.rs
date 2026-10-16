@@ -1,4 +1,4 @@
-use actors::atomic::Assignment;
+use actors::pool::Assignment;
 use core_behavior::{
     Actions, BehaviorActed, Delivery, MailAddr, MessageProtocol, Recipient, SendEffects,
 };
@@ -43,7 +43,7 @@ fn facade_is_also_present() -> bombay::behavior::MailAddr {
 
 struct DirectWorker;
 
-#[actors::atomic::pool_worker(addr = MailAddr, result = u16)]
+#[actors::pool::pool_worker(addr = MailAddr, result = u16)]
 impl DirectWorker {
     fn transition(&mut self, assignment: Assignment<u8>) -> WorkerActed<Self> {
         Ok(Actions::cont().with_send(assignment.complete(7)))

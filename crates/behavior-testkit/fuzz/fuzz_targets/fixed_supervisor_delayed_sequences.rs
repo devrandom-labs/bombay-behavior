@@ -9,11 +9,13 @@ mod stable_proxy;
 use core::ops::ControlFlow;
 use std::time::Duration;
 
-use behavior_actors::atomic::{
-    CapabilityResult, DiagnosticAction, FixedDiagnostic, FixedSupervisorEvent, ImmediateActivation,
-    Recovery, RestartLimit, RestartRelease, Strategy, UnavailablePhase, WorkerSource,
-    WorkerSubmission,
+use behavior_actors::diagnostic::DiagnosticAction;
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FixedDiagnostic, FixedSupervisorEvent, Recovery, RecoveryPolicy, Strategy,
+    UnavailablePhase,
 };
+use behavior_actors::worker::WorkerSource;
+use behavior_actors::worker::{ImmediateStartup, RestartLimit, RestartRelease, WorkerSubmission};
 use behavior_actors::{
     ScheduleAfterRejection, TimerElapsed, TimerGeneration, TimerId, TimerScheduled,
 };
@@ -25,7 +27,7 @@ use stable_proxy::Worker;
 
 struct DelayedWorkshop;
 
-impl WorkerSource<Role, Worker, ImmediateActivation> for DelayedWorkshop {
+impl WorkerSource<Role, Worker, ImmediateStartup> for DelayedWorkshop {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
@@ -82,9 +84,11 @@ fn exercise(inputs: &[u8]) {
     let delay = Duration::from_secs(3);
     let recovering = search_recovery(Recovery::permanent(
         DelayedWorkshop,
-        Strategy::OneForOne,
-        RestartLimit::new(3, Duration::from_secs(60)),
-        RestartRelease::constant(delay).expect("the delay is positive"),
+        RecoveryPolicy {
+            strategy: Strategy::OneForOne,
+            limit: RestartLimit::new(3, Duration::from_secs(60)),
+            delay: RestartRelease::constant(delay).expect("the delay is positive"),
+        },
     ));
     let mut supervisor = recovering.supervisor;
     let proxy_actor = recovering.proxy;

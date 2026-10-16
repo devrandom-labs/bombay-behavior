@@ -4,9 +4,9 @@ error[E0624]: method `into_parts` is private
 6 |       let _ = request.into_parts();
   |                       ^^^^^^^^^^ private method
   |
- ::: $BEHAVIOR_ACTORS/src/atomic/pool/assignment.rs
+ ::: $BEHAVIOR_ACTORS/src/templates/pool/assignment.rs
   |
-  | /     pub(in crate::atomic) fn into_parts(
+  | /     pub(in crate::templates) fn into_parts(
   | |         self,
   | |     ) -> (EstablishedRecipient<P>, Assignment<Job>, AssignmentReceipt) {
   | |______________________________________________________________________- private method defined here
