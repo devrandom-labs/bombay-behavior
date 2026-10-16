@@ -736,7 +736,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
-| DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: latest PR375 head214d5b0 integrates main67a286c and is mergeable. All13 affected native cases pass debug/release; strict lint/format and two integration reviews pass. All24 native gates pass at06d6fd2 in4820.621s with620 unchanged hashes; these do not certify214d5b0, whose full native/GitHub checks are running. The earlier optimized retry hang remains unexplained. |
+| DX25 | Protected actor-only consumers retain complete custody. Provider repair cd77c8b conserves native actions/assertions and separates Rc cost windows into their existing isolated owner. Two reviews verify48 passing and12 intended failing executions over593 frozen/restored sources and supported compilers. | Open: latest PR375 head214d5b0 integrates main67a286c and is mergeable. All13 affected native cases pass debug/release; strict lint/format and two integration reviews pass. At06d6fd2 Nix reports24 successes/exit0 in4820.621s with620 unchanged hashes, but three unjoined audit-tmpdir classifier segfaults leave path-audit verification incomplete. No gate credit transfers to214d5b0; its exact native/GitHub checks are running. The earlier optimized retry hang remains unexplained. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→99 plus61 domain lines. Assertions move to owning tests. Frozen default-feature counter comparisons show equal allocation/heap products with the interpreter seam; sender/client measurements improve their bounded cases. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.26.0 and macros0.14.2 match207 downloaded owner sources, with owner gates, package preflight and executed Bombay registry consumers. Recorded archive journeys preserve syntax, denials and custody. | Open: policy/other owner publication, final programme consumers/features/renaming, delivery documentation and repository gates. No local patch or old-source pass certifies the final release. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compact contract/evidence reconciliation, compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. |
@@ -3194,8 +3194,8 @@ declarative; neither pool uses the trait to emit or interpret a completion.
 The actual parent interpreter already returns the original report on closure.
 
 Candidate ledger before owner edits: retain one transition authority each,
-FIFO and Keyed states Constructed/Operating/Draining/Stopped/ForcedRetirement
-(5/5). Ownership equation remains Assignment<Job> -> parent Completion<Result>
+FIFO states Constructed/Operating/Draining/Stopped/ForcedRetirement; Keyed
+states Constructed/Operating/Retiring/Stopped/ForcedRetirement (5 each). Ownership equation remains Assignment<Job> -> parent Completion<Result>
 plus independent domain Delivery; constructor rejection returns its existing
 complete factory/prefix/role/reason/suffix/configuration product. Replace only
 constructor eligibility with the existing SendInput<ReportToParent<Completion<R>>,
@@ -3267,5 +3267,38 @@ incoming Export is byte-exact and107 moved assertions survive with three
 existing DevX close checks. Both package graphs retain their identities.
 Head214d5b0 is pushed and mergeable;13 native replay cases pass both profiles,
 strict lint/format pass and two source reviews find no integration veto.
-All24 old06d6fd2 gates pass; exact214d5b0 native/GitHub gates remain running.
+At06d6fd2 all24 named checks report success/exit0, but three real background
+audit-tmpdir classifier segfaults are status-masked; that audit remains incomplete.
+Both review passes confirm this limit. Exact214d5b0 checks remain running.
 No PR375 merge or broad remote-product acceptance is inferred.
+
+Pool composition checkpoint: the exact-source AST census preserves all63 enum
+sums/248 alternatives,75 products,416 function bodies,926 match arms and55 if
+branches across25 pool source files. Every variant field and function body is
+token-identical; pool-census/results.json records each surviving alternative's
+owned values. The two root sums remain five alternatives each (Keyed names its
+drain phase Retiring). Production is+25/-67/net-42 over eight files. Source files
+stay25; the inline sealing module and its private trait disappear. Three
+unrestricted pub declarations disappear, including private-module Sealed; the
+application contract loses exactly CompletesAssignments and its associated type.
+No public declaration is added. Two constructor-local Path parameters express
+existing SendInput selection and never enter runtime types or storage.
+
+All five native cases pass current1.99/minimum1.96 debug/release (20 executions,
+zero ignores), retaining the closed-auditor original rejection independently of
+parent completion. Frozen native-profile-{sources,results}.json bind the archive
+and owners; later edits only clarify constructor rustdoc. Retained external
+contracts pass pinned owner1.95 debug/release: both inferred constructors and
+four exact missing/ambiguous completion denials. Both independent fixture
+reviews pass; the compiler-only test visibility correction uses existing
+pub(super) macro visibility, with no production widening. Constructor tests
+claim initialization only; native archive cases own execution/custody evidence.
+
+Residue: no new state, cause, history, cardinality, transition authority,
+semantic boolean, stored route or structural user syntax. Reused Actions,
+SendInput, FIFO/keyed assignment joins, parent-report interpretation and normal
+retirement preserve the existing laws; cross-check fifo-pool/keyed-pool actor
+laws and normalized atomic-actor architecture/features/devx/verification.
+Disposition: pass for this bounded composition model. Repository-wide gates,
+actual package consumers, final-source integration and broad catalogue/cost
+acceptance remain open. No publication authorization is inferred.
