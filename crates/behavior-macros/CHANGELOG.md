@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Generated send contracts avoid capturing caller parameters and referenced
+  type names, including raw names and already occupied fallback names.
+  `SendProduct` and nominal actor lanes keep their existing public spellings,
+  bounds, insertion, interpretation and settlement contracts. Callers need no
+  renaming or migration for this fix.
+
 - Generic `SendProduct` derives preserve inferred `with_send` insertion through
   nested fields and wrappers. Repeated or aliased request capabilities still
   require explicit selection; absent capabilities remain unavailable. No

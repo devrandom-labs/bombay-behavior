@@ -149,6 +149,11 @@ wrapper-owned selection is now `(Own, Path)` and inner selection is
 This is a source break for explicit wrapper proofs. Interpretation order,
 emitter ingress, request rejection and settlement custody are unchanged.
 
+Caller generic parameters and referenced type aliases need no reserved macro
+prefix. Private generated parameters avoid those names, including raw spellings;
+public actor product and lane names stay unchanged. No migration is needed for
+this naming repair.
+
 Generic `SendProduct` derives forward each field's existing `SendInput`
 capability, including nested nominal actor lanes. Ordinary callers continue to
 write `Actions::cont().with_send(request)` when exactly one lane accepts that
