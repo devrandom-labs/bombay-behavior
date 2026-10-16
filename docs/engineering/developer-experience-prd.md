@@ -721,10 +721,10 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX07 | The existing actor/worker expansion remains authoritative. Pure births, aliases, renamed paths and a self-creating Entity actor execute against published macros0.14.2; empty-alias fix91/97 is delivered. | Open: complete generic/private/public, sibling-target and duplicate-role corpus. |
 | DX08 | Published owners preserve selected send lanes through wrappers and static denials. PR104 reached main through merged PR102 (its a1772ab tree equals tested5b24f03) and extends FIFO/keyed construction to ordinary named completion/business products, with four retained denials, five native cases across supported compilers/profiles and actual packaged consumers. | Open: complete named-lane catalogue and unrelated-template/order evidence. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
-| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98, stash99 and startup/pool102 are merged on main. Release105/b204637 preserves their contracts and passes ten native gates,987 tests,118 doctests and four-workspace preflight; fresh release CI is pending. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
+| DX10 | Feature owners roster/directory/queue/router use Config and distinct recovery policies; direct/fallible factories infer types. Policy98, stash99 and startup/pool102 are merged on main. Release105/b204637 preserves their contracts and passes ten native gates,987 tests,118 doctests and four-workspace preflight. All14 final GitHub checks pass; it merged asb8307d1, with main CI/publication pending. Isolated reply refinement removes ordinary reply aliases and unused hosts; a deferred startup closure removes the worker alias, startup struct and associated declarations in copied real callers. Sixteen focused owner tests pass their recorded matrix; the prior startup06a640a proof remains source-bound; combined repair evidence is recorded below. Matched named/closure plans each occupy16bytes on the measured host. | Open: policy registry delivery, compact delivery docs, final caller/cost evidence and policy-name/necessity audit. Retry, recovery and drain choices stay explicit; no parallel builder or hidden defaults. |
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
-| DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
+| DX13 | Distinct named timer wrappers run natively. No-ID syntax is RED; blanket occurrence scoping breaks named replacement and was removed. A disjoint-key probe passes both compilers/profiles and its collision inverse. Bounded native panic-custody fixa54a303 is draft Bombay PR383; its seven-case current/minimum debug/release matrix passes, with full gates pending. | Open: prove automatic identity through actual typed requests/wrappers/interpreter without narrowing named ports; complete reorder/cancel/zero/stale/rejection/exhaustion corpus. Probe success is not an implemented API. |
 | DX14 | Stash/Machine restrictions remain. PR99 head403a4f1 moves the sealed infallibility denial to construction; both valid error forms, owner runtime/model tests, supported compilers, archives and ten Nix gates pass. | Open: authorized release105 publication, registry adoption, bounds audit and bounded-retention/overflow witnesses. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: final integrated runtime/repository/archive gates, configured-service costs and delivery. Earlier child-oracle/work-entry falsifiers and their corrected evidence remain bounded; focused passes do not close the programme. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: authorized release105 delivery, two-template/wrapper composition, catalogue migration, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
@@ -1220,10 +1220,31 @@ pinned1.99 debug/release (5.551/8.895s); all preceding custody/receipt checks
 pass. Two oracle reviews remove a vacuous cause check and strengthen the
 independent accepted receipt. This proves schedule-value custody, not opaque
 panic-cause identity or prefix queue delivery. Earlier fixture import/product
-compile failures are retained without RED credit. Bombay production remains
-unchanged; user prioritizes Behavior delivery before this bounded runtime fix.
-Evidence: TIMER-CUSTODY-RED-DEBUG-V4 and TIMER-CUSTODY-RED-RELEASE.
-Automatic identity, wrapper migration and complete DX13 acceptance remain open.
+compile failures are retained without RED credit. After102/100 merge and the
+combined owner release source/gates pass, the bounded isolated runtime fix
+copies the existing Copy requests and retains the outside slot until settlement.
+Final lint-clean source passes all seven new and existing custody, timer/shutdown,
+fairness and Stash/reminder cases on current1.99 and minimum1.96 debug/release
+(1.056/3.288/1.511/3.705s); all418 selected source/configuration/driver hashes
+remain exact. Independent reviews verify all seven exact names and outcomes,
+not only aggregate counts. First strict lint fails on fixture spellings; corrected
+pure panic predicate,24-hour duration and empty Never equality preserve the
+oracle, and final strict Clippy passes0.885s. Two source/oracle reviews pass: production
+186→190 lines (+6/-2); one module, two methods, three matches/ten total arms,
+two if guards, TimerError3 alternatives and public surface remain unchanged.
+No history, duplicated cause, semantic boolean, nested transition authority or
+structural caller syntax is added. Cross-check D-RETIRE-1, outside ActionItem
+custody, named timer ports, Copy request and Timers020 queue laws. This is
+net-positive custody correction; complete DX13 acceptance remains open.
+Final ledger: production+6/-2/net4, test+288/-0, configuration+2/-0; five
+changed files including coordination, public types/spellings+0/-0. Commita54a303
+is pushed as draft Bombay PR383. Fresh24-check native Nix runs on that exact
+clean source; full gate review remains pending. Current upstream main is still
+5e9bcd1 on the fresh fetch. Authorized cleanup removes only completed build
+caches, preserving package archive hashes, sources and evidence.
+Evidence: TIMER-CUSTODY-RED-DEBUG-V4/RED-RELEASE and FINAL-{SOURCES,RESULTS,
+MATRIX} receipts. Automatic identity, wrapper migration and complete DX13
+acceptance remain open.
 
 #### Exact termination decoration — DX09 (pre-edit)
 
@@ -3464,9 +3485,22 @@ and its Nix log contains classifier crash P97817 despite exit0; that obsolete
 receipt is not a clean check and does not certifyb204637. The underlying Darwin
 hook issue is not declared permanently fixed.
 
-Official PR105 now carriesb204637 with the breaking label and accurate versions,
-changelogs and installation guidance. Fresh exact-head GitHub checks, normal
-post-merge main CI/publication, registry archives/tags and final real downstream
-adoption remain required. No local package, older head or planned release closes
+Normal186 Release38854499407 generates duplicate106/00fcfbf and closes105
+while its checks run. The final merge state guard rejects CLOSED; no merge is
+attempted. Independent review proves106 adds no production Rust absent from
+b204 but restores known-broken143 and omits isolated locks, README and historical
+compatibility guard. Reopen unchanged official105 and close duplicate106,
+retaining all14 original successful b204 checks and requiring the fresh reopened
+CI38855918652 to pass too. No force push, gate bypass or workflow edit is used.
+The API major-release job reports0 checks/260 skipped per owner; that class is
+not extra compatibility proof. Linux Nix runs987/118, external29+11 per profile
+and builds fuzz targets; no fuzz campaign is claimed.
+
+All14 latest checks pass again in reopened CI38855918652; both original and
+reopened runs remain recorded. Official PR105 merges without bypass asb8307d1
+at05:40:04UTC, under the existing explicit authorization. Its entire tree equals
+b204637/9630ee4, including all reviewed release fixes. Normal post-merge main
+CI38856964869 is running; normal publication, registry archives/tags and final
+real downstream adoption remain required. No local package, older head or planned release closes
 DX27. Raw receipts: RELEASE-027-015-FINAL-*, MACRO-COMPATIBILITY-* and
 MACRO-ARCHIVE-GUARD-* under the existing evidence root.
