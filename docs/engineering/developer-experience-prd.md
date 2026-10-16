@@ -3104,5 +3104,8 @@ pushed as draft PR102, stacked on PR98/186266e. Commits a46cfbe (byte-identical
 PR101 custody),1a22a9a (startup plus rustdoc/migration guidance) and422e840
 (reply inference plus original consumer migration) preserve all732 frozen hashes.
 Post-commit evaluation matches the exact ten gated Nix derivations. The owner
-results binding is migration-owner-results.json. GitHub checks have not yet
-reported for this stacked draft; this is neither merge nor publication approval.
+results binding is migration-owner-results.json. Explicit CI run38830157300
+passes at422e840: Nix, published-API audit, eight mutation shards and their join
+(11 jobs). Main-only CodeQL/dependency workflows do not trigger for this stacked
+base and remain required at main integration. This is neither merge nor
+publication approval.
