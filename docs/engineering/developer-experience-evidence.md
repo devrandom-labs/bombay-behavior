@@ -4,11 +4,11 @@ Companion to the [PRD](developer-experience-prd.md). Source references are pinne
 
 Current implementation additions are tracked in the owning PRD's single
 checklist. Published Behavior/Actors0.28.0 is verified at d9237dde; it does not
-contain finite holding. Candidate [PR114/a863633](https://github.com/devrandom-labs/bombay-behavior/pull/114)
+contain finite holding. Candidate [PR114/aafd1e9](https://github.com/devrandom-labs/bombay-behavior/pull/114)
 owns finite admission and replay-panic custody in stash/{queue,limit}.rs, with
 executable owner tests in stash.rs/stash_limits.rs and real source-selected
-Bombay retirement witnesses. [PR113/3389c00](https://github.com/devrandom-labs/bombay-behavior/pull/113)
-owns generic send insertion. Both remain unpublished; the pinned inventory below
+Bombay retirement witnesses. [PR113/809e7b3](https://github.com/devrandom-labs/bombay-behavior/pull/113)
+owns generic send insertion and private-parameter naming. Both remain unpublished; the pinned inventory below
 is the initial source inventory, not a claim about their current spellings.
 
 ## Source evidence
