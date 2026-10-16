@@ -1177,7 +1177,9 @@ missing/ambiguous denials pass in both profiles without snapshot changes.
 These times are observations, not a controlled compile-performance comparison.
 New blanket impls can overlap hand-written field witnesses; migration guidance
 requires removing those duplicates. Interpretation and runtime storage are
-unchanged; no global memory/latency claim follows.
+unchanged; no global memory/latency claim follows. Draft PR113 at3389c00 now has all14
+current GitHub checks passing after its required breaking classification. The
+superseded minor-classification failure remains in the original run record.
 
 The finite candidate is lowered again using this common fix. Seven focused
 pure tests pass debug/release, including both actual timeout orders and repeated
@@ -1187,9 +1189,15 @@ cases pass both profiles, including the new initialization/creation and replay
 stop-prefix/suffix cuts; only six old unlimited constructor names change there.
 Native accepted/closed-refusal journeys pass both supported compilers/profiles
 (eight executions), with the exact three owner paths and unchanged397 nonowner
-records. These are source-selected proofs; native static controls, independent
-loss/order/limit inversions, resource models, migration and full final-source
-gates remain open. The initial outer test wrongly expected Release to override
+records. Six native static fixtures pass strict verification under both
+compilers/profiles (24 fixture executions): finite and explicit-unlimited
+construction succeed; wrong payload/address, missing logical host, inhabited
+error and open phase fail for their own single intended cause. All five canonical
+diagnostics agree between compilers. Snapshot generation occurred only in private
+copies before strict, immutable runs; all2,741 frozen inputs stayed unchanged
+through those runs. Only the five reviewed diagnostic files were then adopted.
+These are source-selected proofs; independent loss/order/limit inversions,
+resource models, migration and full final-source gates remain open. The initial outer test wrongly expected Release to override
 its pure selector; the authoritative unchanged replay correctly reholds that
 input. The oracle was corrected, without a production change. A whole-product
 Debug-only assertion was replaced by the same complete PartialEq observation,
@@ -1360,6 +1368,24 @@ or callback result. Cancelling its observer does not cancel the directory task;
 missing publication cannot forge completion. Moving its report module did not
 remove callback/associated-type ceremony. Machine Clone and bounded Stash overflow
 remain the separate open changes already specified above.
+
+Official release PR112 is prepared at d4d39bf for Core/Actors0.28.0 with
+Macros0.15.0. Its five-file repair updates only six local owner-version records
+in three nested locks, three README mentions and Core's shared-version notice;
+all327 Rust files and all25/31/36 nonowner records remain exact. The unmodified
+release skill preflight reproduces the original three --locked failures and
+two stale installation selectors, then passes at the clean repair across all
+four workspaces plus two archive consumers in7.476s. All11 native checks are
+freshly realized in260.766s; authoritative flake rerun passes in6.431s with834
+inputs/HEAD conserved and exact rooted deriver/hash metadata. They execute996
+nextest,120 doctests and50 reference controls. Actual archives contain248
+regular members and224 exact Rust files at clean d4d39bf. The native audit's60
+unavailable offline yank checks and eight deny warnings remain explicit;
+a separate online audit against65 dependencies and advisory commit f28da8c5
+(October16,1,329 advisories) returns zero vulnerabilities, empty warnings and
+empty ignores. All14 exact-head GitHub checks pass. The explicit breaking label
+matches the acknowledged API changes. Neither merge nor publication is assumed
+or authorized by this verification; the concrete merge/publication request is pending.
 
 #### Timer ownership — DX13/16/25–27
 
