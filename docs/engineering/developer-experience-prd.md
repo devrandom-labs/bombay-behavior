@@ -1186,6 +1186,18 @@ copy now; it is outside the pending24-file caller-only approval and remains a
 separately counted adoption prerequisite. Do not weaken the version assertion
 or rewrite historical evidence as current-source execution.
 
+A separate DX07 hygiene audit must check generic send products before their
+normal publication: changing only valid caller generic parameter spellings must
+not change construction, inferred insertion, effects or runtime obligations.
+Use a real Bombay facade actor with two exact delivery lanes and Application
+construction, with plain-name control versus names matching generated send
+parameters. Both own the same concrete move-only business inputs. A valid caller
+must not reserve macro implementation names. A compile failure here would be an
+independent owner witness, not justification for renaming the consumer or adding
+bounds. Reuse the existing derive/nominal generation; no production change is
+proposed until the consumer isolates the gap. Keep this audit separate from the
+pending native caller migration and preserve its completed proofs.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
