@@ -837,8 +837,8 @@ implicit compiler branches. No repeated cause, lifecycle authority, late check,
 semantic flag or structural caller syntax is introduced. The primitive,
 application capacity and Driver contracts cross-check unchanged; source/model
 checkpoint:pass. The actual registry graph remains exact (270/270/150,
-Address030, Communication016, Timers020; workspace Observe). The25 required
-Bombay Nix gates are running on cleane629464; no full-gate pass is claimed yet.
+Address030, Communication016, Timers020; workspace Observe). The complete
+Bombay Nix run fails on cleane629464; its exact disposition is recorded below.
 Expanded resource/cost accounting and final combined-source delivery remain
 with DX06/26. Ready owner PR heads remain unchanged.
 
@@ -992,22 +992,53 @@ The durable archive fixture/preflight must reject an unused *compatible* patch;
 version labels, a locally compiled owner or a planned release do not prove
 publication or downstream compatibility.
 
-The fresh registry-only e629464 Nix run separately reproduces the protected
-consumer's stale nested lock: its vendor contains026 while the path dependency
-requires027. Before any transfer, prepare one private copy with the same actual
-root and refresh only Behavior/Actors026→027 and macros142→150. These versions
-are already published; no candidate patch, manifest change or nonowner update
-is selected. This is build-coherence policy, not a new actor law. Expected
-retained scope: nested Cargo.lock plus coordination, production/public types+0.
-Preserve all322 nonowner package records, source, existing protected assertion
-sets and ignore policy. Prove locked default/protected consumers and the required
-Nix gate before recording registry acceptance. The original full run stays
-unchanged and cannot pass after an in-flight dependency edit.
+The fresh registry-only e629464 Nix run reproduces the protected consumer's
+stale nested lock: its vendor contains026 while the path dependency requires027.
+The pre-edit build-coherence law atd419486 precedes fixdbefc2b in a separate
+`codex/devx-protected-lock` worktree. Only the nested lock's Behavior/Actors026→027
+and macros142→150 records change, exactly matching the already published root
+versions/checksums/dependencies. All322 nonowner records, root Cargo files, Rust
+source and certificates remain unchanged; no patch or manifest edit is selected.
+Scope: lock plus coordination, production/tests/public types+0; no state,
+transition, module, capability or custody representation changes.
+
+The private exact-source consumer matrix passes53 default and68 protected cases
+on Rust1.99/1.96 debug/release:484 executions. Four reports of the existing query
+ignore are retained. That exact ignored case then executes explicitly through
+20 existing campaign modes:128 topology/layout/provider combinations and320
+successful role-process runs. Router roles exercise their existing connection
+fixture, not an additional business query. Four selected binaries are reused
+from the completed consumer builds; process runs are new. All1253 bound sources,
+seven certificates, selected binaries and child logs preserve their hashes.
+Strict current Clippy passes both feature configurations. Both independent
+reviews verify exact case sets, process provenance and bounded custody scope;
+these unchanged tests do not prove universal custody or explain the old hang.
+Receipts: `protected-registry/{RESULTS,TERMINAL-CHECKPOINT,NATIVE-AUDIT}.json`.
+The protected Nix gate passes on cleandbefc2b in526.250s with624 source files and
+HEAD conserved. Its132 outer executions exclude the two child-stop cases and
+controlled TLS query case, covered separately above. Both strict Clippy phases
+and formatting pass. Registered output, exact derivation and raw command results
+pass both independent audits, with no reported signing/disk/classifier failure.
+The original e629464 full run finishes with unchanged source and its dependency
+failure intact. This one repaired gate does not certify the full programme.
+
+Bombay mainf4aa3b3 lands our already-integrated timer-custody commits; merge6c0361
+preserves the exact tree. The combined branch applies the focused mailbox and
+lock repairs atd272d637 without reverting candidate timer/adapter/inventory or
+root Cargo bytes. Only five paths differ; mailbox source, tests and nested lock
+match the reviewed repairs. Both coordination records and current usage remain.
+Actual packaged7644735 owners then pass108 checks on1.99/1.96 debug/release:
+52 native journeys,12 pure capacity cases and44 inventory checks. All1498 bound
+inputs remain exact through the matrix, formatting and strict current Clippy
+for all five targets; both independent transfer/terminal reviews pass. Receipts:
+`adapters/combined/{RESULTS,TERMINAL-CHECKPOINT,POSTLINT-CHECKPOINT}.json`.
+This archive-selected integration is not publication or complete feature gates.
 
 #### Verification, costs and delivery — DX19/25–28
 
 | Exact source | Verified result | Limit |
 | --- | --- | --- |
+| Bombaye629464, actual registry270/150 | Fresh full `nix flake check --keep-going --max-jobs 1 --cores 2 --no-update-lock-file -L` exits1 in2598.452s:16 gates pass, nine fail; all624 source files and HEAD stay exact. Explicit25 Nix verdicts agree with nonnull registered outputs/exact derivations at the completion audit. | Eight fail on supervisor/pool factory inference awaiting PR107 publication/adoption: build, Clippy, supervisor/pool examples, owner coverage, panic-unwind, remote-debug and test. Protected-counter fails its stale nested lock; the separate dbef repair passes above. No reported signing/disk failure; no full pass, other-platform or permanent repair claim. Axum compiles zero tests and earns no runtime credit. `mailboxes/NATIVE-{VERDICTS,TERMINAL-AUDIT}.json` and nine raw failed-build logs retain exact failures; later store availability is separate. |
 | Owner50348d7 | Eleven native Nix checks,987 nextest/118 doctests/50 audit controls, four-workspace archive preflight and all14 exact-head GitHub checks pass. Actual extracted owner consumers and external contracts retain their supported-compiler/profile evidence. | PR107 plus audit PR108 remain open; normal reviewed publication is pending. Sandbox yank lookups were unavailable; separate online audit succeeds. |
 | Bombayb8c2e6f, registry026/142 | All25 fresh native aarch64-Darwin checks pass in4750.519s with623 conserved hashes:776 outer tests/132 UI fixtures, selected remote debug/release422 outer+20 UI, owner coverage and50 audit controls. Two independent audits pass. | PR383; no reported classifier crash. Not the270 catalogue graph, all-systems proof or automatic-timer implementation. Axum example gate compiles but executes zero tests. |
 | Cataloguece12436 with source-selected503 |31 identical caller tests in seven targets pass1.99/1.96 debug/release; separate protected held-startup/sibling-progress retirement passes all four configurations;397 root and322 protected nonowner records remain exact. | Same747 original assertions plus Released; no final registry delivery, exhaustive custody or new readiness proof. Earlier inaccurate inverse matcher remains a failed matcher, separately attributed. |
