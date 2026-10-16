@@ -1107,6 +1107,20 @@ initialization/creation/stop-prefix and static-denial cuts still precede lowerin
 Production remains byte-identical to the baseline. The initial missing private
 native driver and pre-format check are setup failures, with no proof credit.
 
+Complete the effect witnesses in the existing algebra test using its existing
+ExplicitInitialization and StashRecording actors, including ReceiveTimeout's
+real initialization/replay schedules. No new actor/protocol fixture family is
+needed. This adds algebra.rs and the composition export file to the owner scope.
+The same-event send law requires the chosen route's concrete SendsFor<B::Event>
+proof at construction/Behavior and the facade; keep that bound at those ports,
+not on stored queue values or borrowed observations. The queue exposes only
+pure selection and receipt of an already selected original User to finite
+admission; replay remains wholly at the old queue owner. Native static fixtures
+must distinguish wrong refusal payload/address, fallible/open-phase replay,
+and a real exact-only positive without a logical host. These are the remaining
+focused test edits, not permission for catalogue migration before the native
+accepted/closed-recipient journeys pass.
+
 #### Policy construction and startup — DX10/11/19/24/27
 
 Owning modules are supervisor/roster, supervisor/directory, pool/queue,
