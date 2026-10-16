@@ -147,8 +147,8 @@ For standalone families, use the owning `supervisor::roster::new`,
 `proxy::StableProxy::new` constructors. Policy-heavy constructors take their
 owning `Config`; automatic recovery takes the owning `RecoveryPolicy`. These
 consume real choices into existing actor storage. No parallel builder or
-same-actor extension method is selected for a standalone actor. Keep `MessageAdapterWithRoute::new` for the
-standalone protocol hop, with its concrete destination determining routing.
+same-actor extension method is selected for a standalone actor. Use `MessageAdapter::new(destination, map)` for the standalone protocol hop,
+with its concrete destination determining routing.
 Progressive disclosure is the caller contract: start with familiar actor,
 message, queue, worker and supervisor terms, inferred types and explicit real
 policy choices. Each lower layer exposes additional control over the same
@@ -706,6 +706,26 @@ Use ordinary Rust and the existing selected crates. The bounded
 requested registry and stable-language comparisons, not another API proposal.
 
 ## Completion and change record
+
+The adapter now has one owning constructor, `MessageAdapter::new(destination,
+map)`, for logical, established and mixed reply routes. Its existing route-aware
+implementation is unchanged; the specialized alias is removed. Explicit logical
+types use `MessageAdapter<Input, Recipient<Protocol>>`. Focused native delivery
+and refusal tests retain original payload allocations, unread inputs, exact
+rejections, all retirement fields, one terminal Stop and both notifications.
+The two logical unit cases and43 complete integration cases pass debug/release;
+70 Actors doctests retain child-route and wrong-protocol compile denials. The
+mixed adapter test executes both route variants through the existing interpreter.
+Both independent reviews preserve every original integration assertion. Owner
+production is +10/-17/net-7 across three existing modules; control/subordinate
+states and transition branches remain zero, owned fields remain destination plus
+mapper, and public adapter spellings fall two to one (one alias removed).
+No history state, repeated cause, semantic flag, bound, protocol, interpreter or
+structural caller path is added; source/model checkpoint passes. Existing
+composition/lifecycle/normalized atomic laws stay unchanged. Native witnesses
+exercise shutdown decoration only; no arbitrary wrapper-order claim follows.
+Supported-compiler, package and full verification remain required. The full
+pre-edit law and source-bound controls belong to the owning programme branch.
 
 ### Requirement checklist
 

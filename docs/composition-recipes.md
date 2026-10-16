@@ -282,6 +282,22 @@ logical stable protocol, not a stale exact worker incarnation. Different
 destination protocols remain different actors and are connected with typed
 `MessageAdapter`s; `Topic` never erases them into a common envelope.
 
+## Protocol adapters
+
+Use `MessageAdapter::new(destination, map)` for one ordinary actor hop between
+protocols. The actual destination selects logical, established or mixed reply
+routing. The pure mapper runs once per input; the adapter emits one typed
+communication and keeps running. Use the ordinary shutdown decoration when the
+application needs to stop it. Delivery rejection retains the complete mapped
+message and its original destination capability; it cannot reconstruct an input
+that the mapper consumed.
+
+Construction is inferred. For an explicitly named logical type, write
+`MessageAdapter<Input, Recipient<Destination>>`; the second parameter names the
+route rather than repeating its protocol. This replaces the logical-only alias
+and the competing `MessageAdapterWithRoute` name. No child-route capability is
+added: a standalone adapter has no creation namespace of its own.
+
 ## Root shutdown
 
 Use `StopOnShutdown<B>` when a shutdown request means that this actor stops

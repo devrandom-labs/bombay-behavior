@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Use `MessageAdapter::new(destination, map)` for logical, established and mixed
+  reply destinations. Remove `MessageAdapterWithRoute`; the concrete route-aware
+  actor now owns the canonical name. Explicit logical adapter types change from
+  `MessageAdapter<Input, Protocol>` to `MessageAdapter<Input, Recipient<Protocol>>`.
+  Inferred calls keep their shape. Delivery, initialization and rejection laws
+  are unchanged.
+
 - Remove the `TimerId` argument from `OneShot`, `Periodic`, `Deadline` and
   `ReceiveTimeout` constructors. Each wrapper owns its timer occurrence.
   Custom wrapper interpreters use `OwnedScheduleAt`, `OwnedScheduleAfter`,

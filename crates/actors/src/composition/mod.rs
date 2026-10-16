@@ -13,4 +13,4 @@ pub use crate::activation::{Activate, Active, Initialized};
 pub use crate::machine::{Machine, Move};
 pub use crate::stash::{Stash, StashRoute, StashStatus};
 pub use delivery_route::{DeliveryRoute, ReplyDeliveries, ReplyDelivery, ReplyRoute};
-pub use message_adapter::{MessageAdapter, MessageAdapterWithRoute};
+pub use message_adapter::MessageAdapter;
