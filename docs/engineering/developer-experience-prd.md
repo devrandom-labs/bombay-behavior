@@ -3270,6 +3270,17 @@ files match13951b8. Six original public custody tests pass registry1.95 debug/
 release (initial debug resolves; release is locked/offline). The original actual
 native failure/retirement journey passes locked current1.99 debug/release against
 registry0.26.1 owners/macros0.14.2, with858 conserved inputs and no owner patches.
+Owner reconciliation before further delivery: refresh policy PR98/186266e
+against published main13951b8 in an isolated feature worktree, then propagate
+only proven integration through the dependent102/104 stack. Preserve published
+rejected-reply custody and all policy semantics; reuse their existing failing
+regressions, constructor/transition tests, native consumers and archive checks.
+No new abstraction, actor state, protocol or interpreter port is authorized by
+this merge stage. Inspect and record conflicts before resolving them; rerun
+owner/package/consumer gates at each retained combined source. Earlier green
+feature checks do not certify these new combinations. Main merges/publication
+of98/102/104 remain separately subject to approval.
+
 Both registry reviews pass. Evidence: worker-effects/registry-0261 and
 release-0261-published.json. Bombay's delivery branch still selects0.26.0;
 current-main adoption and the other owner releases remain separate obligations.
