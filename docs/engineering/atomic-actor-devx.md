@@ -37,6 +37,15 @@ drain and diagnostic disposition. No-op sources, unused routes and guessed
 nonces are not policy choices. Temporary recovery has no unused automatic
 source; immediate startup has no dummy asynchronous plan.
 
+Ordinary factories let Rust infer the composed worker type. Pass startup work
+as `WorkerSubmission::with_startup(worker, move || async move { ... })`; its
+actual `Result` determines readiness and rejection. This avoids naming the
+wrapped worker, a startup struct or its associated types. Construction stores
+the closure; the existing initialization-authorized startup operation calls it
+once. Do not invoke it while constructing the submission. Named `StartupPlan`
+implementations remain available when a separate domain plan is useful.
+A closure covered by this implementation cannot also implement the trait itself.
+
 ## Ownership obligations
 
 A worker completes the assignment it receives; it does not choose the pool's
