@@ -69,7 +69,7 @@ This operation performs no replay or actor effect. Unread runtime mailbox
 inputs have their own retirement custody and must also be consumed.
 
 The current stash has no capacity limit; recovery does not add one. Executable
-[recovery and wrapper-order tests](../crates/actors/tests/stash.rs) cover both
+[recovery and wrapper-order tests](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs) cover both
 shutdown orders and preserve a machine's separate deferrals and future replay.
 
 ### Timer ownership
