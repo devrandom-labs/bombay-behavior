@@ -14,242 +14,45 @@ pub use established::{
     ShutdownRejection, established_child,
 };
 
-use std::time::Duration;
-
 use std::time::Instant;
 
 use crate::{Crash, Exit};
 
 pub use behavior::CreationRejection;
 use behavior::{
-    ActionItem, Address, InterpretationProgress, ItemSettlement, Protocol, SourceAction,
-    finish_item, prepare_item,
+    ActionItem, Address, InterpretationProgress, ItemSettlement, Protocol, finish_item,
+    prepare_item,
 };
 use behavior::{CreationId, CreationKind};
 
-/// Exact timer correlation accepted by the local scheduler.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TimerScheduled {
-    /// Actor-local timer identity supplied by the behavior.
-    pub id: TimerId,
-    /// Behavior-owned generation returned without reinterpretation.
-    pub generation: TimerGeneration,
-}
+pub mod timer;
 
-/// Exact reason an absolute timer request was rejected before scheduling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum ScheduleAtRejection {
-    /// The timer queue cannot issue another internal generation.
-    #[error("timer queue generation exhausted")]
-    QueueGenerationExhausted,
-    /// The timer queue cannot issue another stable insertion sequence.
-    #[error("timer queue insertion sequence exhausted")]
-    QueueSequenceExhausted,
-}
+pub use timer::{ScheduleAfterRejection, ScheduleAtRejection, TimerGeneration, TimerId};
 
-/// Exact reason a relative timer request was rejected before scheduling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum ScheduleAfterRejection {
-    /// Adding the delay to the interpreter's current instant overflowed.
-    #[error("timer deadline overflowed")]
-    DeadlineOverflow,
-    /// The timer queue cannot issue another internal generation.
-    #[error("timer queue generation exhausted")]
-    QueueGenerationExhausted,
-    /// The timer queue cannot issue another stable insertion sequence.
-    #[error("timer queue insertion sequence exhausted")]
-    QueueSequenceExhausted,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TimerId(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TimerGeneration(pub u64);
-
-impl From<u64> for TimerId {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-
-impl From<TimerId> for u64 {
-    fn from(value: TimerId) -> Self {
-        value.0
-    }
-}
-
-impl From<u64> for TimerGeneration {
-    fn from(value: u64) -> Self {
-        Self(value)
-    }
-}
-
-impl From<TimerGeneration> for u64 {
-    fn from(value: TimerGeneration) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ScheduleAt {
-    pub id: TimerId,
-    pub generation: TimerGeneration,
-    pub at: Instant,
-}
-
-impl ScheduleAt {
-    #[must_use]
-    pub const fn new(id: TimerId, generation: TimerGeneration, at: Instant) -> Self {
-        Self { id, generation, at }
-    }
-}
-
-impl From<(TimerId, TimerGeneration, Instant)> for ScheduleAt {
-    fn from((id, generation, at): (TimerId, TimerGeneration, Instant)) -> Self {
-        Self::new(id, generation, at)
-    }
-}
-
-impl behavior::InterpreterRequest for ScheduleAt {
-    type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
-    type LogicalProtocols = behavior::NoBirthProtocols;
-}
-
-impl ActionItem for ScheduleAt {
-    type Custody = (Option<Self>, Option<Self::Reply>);
-    type Input<'a>
-        = &'a mut Option<Self>
-    where
-        Self: 'a;
-    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
-
-    fn prepare_interpretation(
-        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
-    ) {
-        prepare_item::<Self>(progress);
-    }
-
-    fn interpretation_input<'a>(
-        custody: &'a mut Self::Custody,
-    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
-    where
-        Self: 'a,
-    {
-        match custody {
-            (input @ Some(_), received @ None) => Some((input, received)),
-            _ => None,
-        }
-    }
-
-    fn finish_interpretation(
-        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
-    ) {
-        finish_item::<Self>(progress);
-    }
-
-    type Accepted = TimerScheduled;
-    type Rejection = ScheduleAtRejection;
-    type Prerequisite = behavior::Never;
-}
-
-impl SourceAction for ScheduleAt {
-    type Source = Self;
-}
-
-/// Request scheduling relative to the interpreter's clock.
+/// An absolute request in the actor-wide named replacement namespace.
+pub type ScheduleAt = timer::ScheduleAt<TimerId>;
+/// A relative request in the actor-wide named replacement namespace.
+pub type ScheduleAfter = timer::ScheduleAfter<TimerId>;
+/// Receipt retaining a named timer and its exact generation.
+pub type TimerScheduled = timer::TimerScheduled<TimerId>;
+/// Elapsed fact for an explicitly named timer.
+pub type TimerElapsed = timer::TimerElapsed<TimerId>;
+/// Absolute request owned by the emitting timer wrapper's exact ingress.
+pub type OwnedScheduleAt = timer::ScheduleAt<behavior::Here>;
+/// Relative request owned by the emitting timer wrapper's exact ingress.
+pub type OwnedScheduleAfter = timer::ScheduleAfter<behavior::Here>;
+/// Receipt retaining the timer owner's ingress and exact generation.
+pub type OwnedTimerScheduled = timer::TimerScheduled<behavior::Here>;
+/// Elapsed fact for one timer owner's exact event occurrence.
 ///
-/// Constructing this value does not observe a clock. The interpreter resolves
-/// `after` only when it interprets the successful transition that emitted the
-/// request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ScheduleAfter {
-    pub id: TimerId,
-    pub generation: TimerGeneration,
-    pub after: Duration,
-}
-
-impl ScheduleAfter {
-    #[must_use]
-    pub const fn new(id: TimerId, generation: TimerGeneration, after: Duration) -> Self {
-        Self {
-            id,
-            generation,
-            after,
-        }
-    }
-}
-
-impl From<(TimerId, TimerGeneration, Duration)> for ScheduleAfter {
-    fn from((id, generation, after): (TimerId, TimerGeneration, Duration)) -> Self {
-        Self::new(id, generation, after)
-    }
-}
-
-impl behavior::InterpreterRequest for ScheduleAfter {
-    type ReturnToEmitter = behavior::ReturnsToEmitter<TimerElapsed, behavior::Here>;
-    type LogicalProtocols = behavior::NoBirthProtocols;
-}
-
-impl ActionItem for ScheduleAfter {
-    type Custody = (Option<Self>, Option<Self::Reply>);
-    type Input<'a>
-        = &'a mut Option<Self>
-    where
-        Self: 'a;
-    type Reply = ItemSettlement<Self, Self::Accepted, Self::Rejection, Self::Prerequisite>;
-
-    fn prepare_interpretation(
-        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
-    ) {
-        prepare_item::<Self>(progress);
-    }
-
-    fn interpretation_input<'a>(
-        custody: &'a mut Self::Custody,
-    ) -> Option<(Self::Input<'a>, &'a mut Option<Self::Reply>)>
-    where
-        Self: 'a,
-    {
-        match custody {
-            (input @ Some(_), received @ None) => Some((input, received)),
-            _ => None,
-        }
-    }
-
-    fn finish_interpretation(
-        progress: &mut Option<InterpretationProgress<Self, Self::Custody, Self::Reply>>,
-    ) {
-        finish_item::<Self>(progress);
-    }
-
-    type Accepted = TimerScheduled;
-    type Rejection = ScheduleAfterRejection;
-    type Prerequisite = behavior::Never;
-}
-
-impl SourceAction for ScheduleAfter {
-    type Source = Self;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TimerElapsed {
-    pub id: TimerId,
-    pub generation: TimerGeneration,
-}
-
-impl TimerElapsed {
-    #[must_use]
-    pub const fn new(id: TimerId, generation: TimerGeneration) -> Self {
-        Self { id, generation }
-    }
-}
-
-impl From<(TimerId, TimerGeneration)> for TimerElapsed {
-    fn from((id, generation): (TimerId, TimerGeneration)) -> Self {
-        Self::new(id, generation)
-    }
-}
+/// A named timer event cannot enter an occurrence-owned timer protocol.
+///
+/// ```compile_fail,E0308
+/// fn owned(event: behavior_actors::TimerElapsed) -> behavior_actors::OwnedTimerElapsed {
+///     event
+/// }
+/// ```
+pub type OwnedTimerElapsed = timer::TimerElapsed<behavior::Here>;
 
 /// Ask the local interpreter to observe the exact peer incarnation selected at
 /// `peer` when this request is interpreted.

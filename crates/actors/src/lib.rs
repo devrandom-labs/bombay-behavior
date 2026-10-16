@@ -114,12 +114,14 @@ pub use operations::{
 pub use persistence::{
     Cache, CacheConfigError, CacheConfiguration, CacheEntry, CacheMessage, CacheResult, CacheState,
 };
+pub use protocol::timer;
 pub use protocol::{
     CancelObservation, ChildShutdownRejected, ChildShutdownRejection, ChildStopped,
     CreationResolved, EstablishedChild, EstablishedObservation, EstablishedShutdownResolved,
     InterpretEstablishedObservation, InterpretEstablishedShutdown, ObservationAuthority,
     ObservationId, ObservationOperation, ObservationRejection, ObservationRelationship,
     ObserveChild, ObserveCreation, ObserveEstablished, ObserveEstablishedCreation, ObservePeer,
+    OwnedScheduleAfter, OwnedScheduleAt, OwnedTimerElapsed, OwnedTimerScheduled,
     PeerObservationRejection, PeerStopped, ScheduleAfter, ScheduleAfterRejection, ScheduleAt,
     ScheduleAtRejection, ShutdownChild, ShutdownEstablished, ShutdownId, ShutdownRejection,
     ShutdownRequested, TimerElapsed, TimerGeneration, TimerId, TimerScheduled, UnwatchPeer,
