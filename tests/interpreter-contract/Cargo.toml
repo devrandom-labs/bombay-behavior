@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 behavior = { package = "bombay-behavior", path = "../../crates/behavior" }
 behavior_actors = { package = "bombay-behavior-actors", path = "../../crates/actors" }
-tokio = { version = "1.47", features = ["macros", "rt"] }
+tokio = { version = "1.47", features = ["macros", "rt", "sync"] }
 
 [dev-dependencies]
 trybuild = "1.0"

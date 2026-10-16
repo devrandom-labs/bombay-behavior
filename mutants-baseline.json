@@ -133,7 +133,11 @@
     "crates/behavior/src/effects/sending.rs::SourceSettlements<Item>::into_inputs": 1,
     "crates/behavior/src/effects/sending.rs::unattempted_items": 1,
     "crates/behavior/src/user_event.rs::<impl PartialEq for Ingress<Input, Path>>::eq": 1,
-    "crates/behavior/src/user_event.rs::<impl core::fmt::Debug for Ingress<Input, Path>>::fmt": 1
+    "crates/behavior/src/user_event.rs::<impl core::fmt::Debug for Ingress<Input, Path>>::fmt": 1,
+    "crates/behavior/src/effects/sending.rs::<impl ActionItem for Item>::prepare_interpretation": 1,
+    "crates/behavior/src/effects/sending.rs::<impl ActionItem for Item>::interpretation_input": 2,
+    "crates/behavior/src/effects/sending.rs::<impl ActionItem for Item>::finish_interpretation": 1,
+    "crates/behavior/src/effects/sending.rs::<impl ActionItem for Item>::retain_accepted": 1
   },
   "known_zero_viable": [
     "crates/behavior/src/actor/addressing.rs::<impl Clone for Delivery<P>>::clone",
@@ -262,6 +266,7 @@
     "crates/behavior/src/effects/actions.rs::RetirementCreationSettlement<Settlement>::into_settlement",
     "crates/behavior/src/effects/sending.rs::ActionItem::retain_accepted",
     "crates/behavior/src/user_event.rs::<impl ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>>::child_input",
-    "crates/behavior/src/user_event.rs::<impl ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>>::recover_child_input"
+    "crates/behavior/src/user_event.rs::<impl ChildInputIngress<Source, Input> for EventLayer<Owned, Inner>>::recover_child_input",
+    "crates/behavior/src/effects/sending.rs::OwnedItem::retain_accepted"
   ]
 }
