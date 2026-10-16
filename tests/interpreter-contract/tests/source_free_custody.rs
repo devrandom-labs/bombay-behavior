@@ -5,7 +5,7 @@ use behavior::{
     ItemSettlement, MailAddr, MessageProtocol, ReportToParent, SettledItem, SourceCustody,
     SourceProgress, SourceSettlementCustody, finish_item, prepare_item,
 };
-use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
+use behavior_actors::diagnostic::{DiagnosticAccepted, DiagnosticAction};
 
 struct OwnedRequest(Box<str>);
 

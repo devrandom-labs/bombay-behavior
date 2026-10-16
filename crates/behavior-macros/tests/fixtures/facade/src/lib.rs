@@ -22,9 +22,9 @@
 //!
 //! ```
 //! struct Worker;
-//! #[bombay::atomic::pool_worker(addr = bombay::behavior::MailAddr, result = u16)]
+//! #[bombay::pool::pool_worker(addr = bombay::behavior::MailAddr, result = u16)]
 //! impl Worker {
-//!     fn transition(&mut self, assignment: bombay::atomic::Assignment<u8>)
+//!     fn transition(&mut self, assignment: bombay::pool::Assignment<u8>)
 //!         -> WorkerActed<Self>
 //!     {
 //!         Ok(bombay::behavior::Actions::cont().with_send(assignment.complete(7)))
@@ -32,5 +32,5 @@
 //! }
 //! ```
 
-pub use catalog::atomic;
+pub use catalog::pool;
 pub use foundation as behavior;

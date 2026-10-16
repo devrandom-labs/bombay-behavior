@@ -10,11 +10,13 @@ use behavior::{
     ChildNamespaceExhausted, CreationId, CreationSequence, CreationSettlement, CreationsSettled,
     EndpointAddress, ItemSettlement, Never, NoBirths, Protocol, SettledItem, Step, User,
 };
-use behavior_actors::atomic::{
-    BeginActivation, ImmediateActivation, InitialWorkerOutcome, InitializeWorker, ProxyControl,
-    ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerActivation,
-    WorkerCreationRejection, WorkerInitializationOutcome, WorkerInitializationReport,
+use behavior_actors::proxy::{
+    InitialWorkerOutcome, ProxyControl, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy,
     WorkerStartResult,
+};
+use behavior_actors::worker::{
+    ImmediateStartup, InitializeWorker, StartWorker, WorkerCreationRejection,
+    WorkerInitializationOutcome, WorkerInitializationReport, WorkerStartup,
 };
 use behavior_actors::{Activate, Active, ChildStopped, EstablishedShutdownResolved, Exit};
 
@@ -80,27 +82,27 @@ fn first_creation() -> CreationId {
         .unwrap_or_else(|| panic!("a new sequence issues its first creation ID"))
 }
 
-async fn ready_proxy() -> (Active<StableProxy<Worker, ImmediateActivation>>, CreationId) {
+async fn ready_proxy() -> (Active<StableProxy<Worker, ImmediateStartup>>, CreationId) {
     let (mut proxy, id, initialization) = initializing_proxy();
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("worker initialization authorizes activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("worker initialization authorizes startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("one worker activation is requested"));
+        .unwrap_or_else(|| panic!("one worker startup is requested"));
     let started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("worker activation starts"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("worker startup starts"));
     assert!(matches!(started.become_, Step::Continue));
     assert!(started.sends.owner_outcomes.is_empty());
 
     let ready = proxy
-        .on(activation.activate().await)
-        .unwrap_or_else(|_| panic!("worker activation makes the proxy ready"));
+        .on(startup.start().await)
+        .unwrap_or_else(|_| panic!("worker startup makes the proxy ready"));
     assert!(matches!(ready.become_, Step::Continue));
     assert_eq!(ready.sends.owner_outcomes.len(), 1);
 
@@ -109,9 +111,9 @@ async fn ready_proxy() -> (Active<StableProxy<Worker, ImmediateActivation>>, Cre
 }
 
 fn initializing_proxy() -> (
-    Active<StableProxy<Worker, ImmediateActivation>>,
+    Active<StableProxy<Worker, ImmediateStartup>>,
     CreationId,
-    InitializeWorker<Worker, ImmediateActivation>,
+    InitializeWorker<Worker, ImmediateStartup>,
 ) {
     let initialized = StableProxy::immediate()
         .initialize()
@@ -153,23 +155,23 @@ fn initializing_proxy() -> (
 }
 
 fn activating_proxy() -> (
-    Active<StableProxy<Worker, ImmediateActivation>>,
+    Active<StableProxy<Worker, ImmediateStartup>>,
     CreationId,
-    BeginActivation<Worker, ImmediateActivation>,
+    StartWorker<Worker, ImmediateStartup>,
 ) {
     let (mut proxy, worker, initialization) = initializing_proxy();
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("worker initialization authorizes activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("worker initialization authorizes startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("one worker activation is requested"));
+        .unwrap_or_else(|| panic!("one worker startup is requested"));
 
-    (proxy, worker, activation)
+    (proxy, worker, startup)
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
@@ -182,15 +184,15 @@ enum InitializationShutdownKind {
 use InitializationShutdownKind::{Initialization, Shutdown, Stop};
 
 enum InitializationShutdownEvent {
-    Initialized(WorkerInitializationReport<Worker, ImmediateActivation>),
+    Initialized(WorkerInitializationReport<Worker, ImmediateStartup>),
     ShutdownResolved(EstablishedShutdownResolved<Worker>),
     WorkerStopped(ChildStopped<RuntimeAddress>),
 }
 
 fn admit_initialization_shutdown(
-    proxy: &mut Active<StableProxy<Worker, ImmediateActivation>>,
+    proxy: &mut Active<StableProxy<Worker, ImmediateStartup>>,
     input: InitializationShutdownEvent,
-) -> BehaviorActed<StableProxy<Worker, ImmediateActivation>> {
+) -> BehaviorActed<StableProxy<Worker, ImmediateStartup>> {
     match input {
         InitializationShutdownEvent::Initialized(initialized) => proxy.on(initialized),
         InitializationShutdownEvent::ShutdownResolved(resolved) => proxy.on(resolved),
@@ -225,7 +227,7 @@ fn initialization_shutdown_accepts_every_arrival_order() {
             (
                 Initialization,
                 InitializationShutdownEvent::Initialized(
-                    initialization.resolve(WorkerInitializationOutcome::ReadyForActivation),
+                    initialization.resolve(WorkerInitializationOutcome::ReadyForStartup),
                 ),
             ),
             (
@@ -274,17 +276,17 @@ enum ActivationShutdownKind {
 use ActivationShutdownKind::{ActivationReady, ActivationStarted, ShutdownResolved, WorkerStopped};
 
 enum ActivationShutdownEvent {
-    Activation(WorkerActivation<Worker, ImmediateActivation>),
+    Activation(WorkerStartup<Worker, ImmediateStartup>),
     ShutdownResolved(EstablishedShutdownResolved<Worker>),
     WorkerStopped(ChildStopped<RuntimeAddress>),
 }
 
 fn admit_activation_shutdown(
-    proxy: &mut Active<StableProxy<Worker, ImmediateActivation>>,
+    proxy: &mut Active<StableProxy<Worker, ImmediateStartup>>,
     input: ActivationShutdownEvent,
-) -> BehaviorActed<StableProxy<Worker, ImmediateActivation>> {
+) -> BehaviorActed<StableProxy<Worker, ImmediateStartup>> {
     match input {
-        ActivationShutdownEvent::Activation(activation) => proxy.on(activation),
+        ActivationShutdownEvent::Activation(startup) => proxy.on(startup),
         ActivationShutdownEvent::ShutdownResolved(resolved) => proxy.on(resolved),
         ActivationShutdownEvent::WorkerStopped(stopped) => proxy.on(stopped),
     }
@@ -368,10 +370,10 @@ async fn activation_shutdown_waiting_for_start_accepts_every_lawful_arrival_orde
     ];
 
     for order in orders {
-        let (mut proxy, worker, activation) = activating_proxy();
+        let (mut proxy, worker, startup) = activating_proxy();
         let shutdown = begin_shutdown(&mut proxy);
-        let started = activation.started();
-        let ready = activation.activate().await;
+        let started = startup.started();
+        let ready = startup.start().await;
         let mut inputs = BTreeMap::from([
             (
                 ActivationStarted,
@@ -425,13 +427,13 @@ async fn activation_shutdown_running_accepts_every_arrival_order() {
     ];
 
     for order in orders {
-        let (mut proxy, worker, activation) = activating_proxy();
+        let (mut proxy, worker, startup) = activating_proxy();
         let started = proxy
-            .on(activation.started())
-            .unwrap_or_else(|_| panic!("worker activation starts"));
+            .on(startup.started())
+            .unwrap_or_else(|_| panic!("worker startup starts"));
         assert!(matches!(started.become_, Step::Continue));
         let shutdown = begin_shutdown(&mut proxy);
-        let ready = activation.activate().await;
+        let ready = startup.start().await;
         let mut inputs = BTreeMap::from([
             (ActivationReady, ActivationShutdownEvent::Activation(ready)),
             (
@@ -470,7 +472,7 @@ async fn activation_shutdown_running_accepts_every_arrival_order() {
 }
 
 fn begin_shutdown(
-    proxy: &mut Active<StableProxy<Worker, ImmediateActivation>>,
+    proxy: &mut Active<StableProxy<Worker, ImmediateStartup>>,
 ) -> behavior_actors::ShutdownId {
     proxy
         .on(ProxyControl::shutdown())
@@ -487,16 +489,16 @@ fn begin_shutdown(
 #[test]
 fn owner_control_uses_a_creation_id_not_a_runtime_route() {
     let _input: ChildInput<
-        StableProxy<Worker, ImmediateActivation>,
-        StableProxy<Worker, ImmediateActivation>,
-        ProxyControl<Worker, ImmediateActivation>,
+        StableProxy<Worker, ImmediateStartup>,
+        StableProxy<Worker, ImmediateStartup>,
+        ProxyControl<Worker, ImmediateStartup>,
         behavior::ChildHead,
     > = ChildInput::after(first_creation(), ProxyControl::start(Worker(4)));
 }
 
 #[test]
 fn never_started_proxy_stops_without_runtime_work() {
-    let initialized = StableProxy::<Worker, ImmediateActivation>::immediate()
+    let initialized = StableProxy::<Worker, ImmediateStartup>::immediate()
         .initialize()
         .unwrap_or_else(|_| panic!("proxy initialization is pure"));
     let mut proxy = initialized.behavior;
@@ -561,13 +563,13 @@ fn namespace_rejection_returns_the_worker_and_closes_initial_start() {
                     result:
                         WorkerStartResult::CreationRejected {
                             rejection: WorkerCreationRejection::NamespaceExhausted { worker },
-                            activation,
+                            startup,
                             stopped: None,
                         },
                 },
         } => {
             assert_eq!(worker, Worker(1));
-            assert_eq!(activation, ImmediateActivation);
+            assert_eq!(startup, ImmediateStartup);
         }
         _ => panic!("namespace rejection returned a different owner outcome"),
     }
@@ -671,21 +673,21 @@ async fn replacement_report_waits_for_the_predecessor_shutdown_result() {
         .next()
         .unwrap_or_else(|| panic!("successor initialization is requested"));
     let activating = proxy
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
-        .unwrap_or_else(|_| panic!("successor initialization permits activation"));
-    let activation = activating
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
+        .unwrap_or_else(|_| panic!("successor initialization permits startup"));
+    let startup = activating
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .into_iter()
         .next()
-        .unwrap_or_else(|| panic!("successor activation is requested"));
+        .unwrap_or_else(|| panic!("successor startup is requested"));
     let started = proxy
-        .on(activation.started())
-        .unwrap_or_else(|_| panic!("successor activation starts"));
+        .on(startup.started())
+        .unwrap_or_else(|_| panic!("successor startup starts"));
     assert!(started.sends.owner_outcomes.is_empty());
     let ready = proxy
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|_| panic!("successor becomes ready"));
 
     assert!(ready.sends.owner_outcomes.is_empty());

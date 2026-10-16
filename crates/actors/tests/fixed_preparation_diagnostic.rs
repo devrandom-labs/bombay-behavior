@@ -4,10 +4,12 @@ use behavior::{
     ActiveTurn, Address, Behavior, BehaviorActed, EndpointAddress, InterpreterFault,
     MessageProtocol, Never, NoBirths, NoSends, Protocol, Recipient, User,
 };
-use behavior_actors::atomic::{
-    ActivationPlan, FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
-    WorkerSource,
+use behavior_actors::composition::replies::MixedReplies;
+use behavior_actors::supervisor::roster::{
+    FixedDiagnostic, WorkerPreparationFailure, WorkerPreparationFailureReason,
 };
+use behavior_actors::worker::StartupPlan;
+use behavior_actors::worker::WorkerSource;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);
@@ -60,11 +62,11 @@ impl Behavior for SearchWorker {
 
 struct SearchPlan;
 
-impl ActivationPlan for SearchPlan {
+impl StartupPlan for SearchPlan {
     type Ready = ();
     type Rejection = Never;
 
-    fn activate(
+    fn start(
         self,
     ) -> impl core::future::Future<Output = Result<Self::Ready, Self::Rejection>> + Send {
         core::future::ready(Ok(()))
@@ -122,7 +124,14 @@ fn diagnostic_route_names_only_domain_types() {
     let route: Recipient<
         MessageProtocol<
             RuntimeAddr,
-            FixedDiagnostic<SearchRole, SearchWorker, SearchPlan, SearchSource>,
+            FixedDiagnostic<
+                SearchRole,
+                SearchWorker,
+                SearchPlan,
+                SearchSource,
+                MixedReplies,
+                MixedReplies,
+            >,
         >,
     > = Recipient::global(RuntimeAddr(8));
     assert_eq!(route.address(), RuntimeAddr(8));

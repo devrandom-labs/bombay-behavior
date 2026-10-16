@@ -1,9 +1,9 @@
 //! Exact proxy-control admission for interpreter-facing fuzz fixtures.
 
-use behavior_actors::atomic::{
-    ActivationPlan, ProxyControl, ProxyControlAdmission, ProxyInputReceipt, ProxyOperation,
-    StableProxy,
+use behavior_actors::proxy::{
+    ProxyControl, ProxyControlAdmission, ProxyInputReceipt, ProxyOperation, StableProxy,
 };
+use behavior_actors::worker::StartupPlan;
 use behavior_core::{
     Behavior, BehaviorAddr, ChildInputReason, CreationId, EndpointAddress, EstablishedActor,
     InterpretationProgress, ItemSettlement, Never,
@@ -12,7 +12,7 @@ use behavior_core::{
 struct ProxyControlHost<Worker, Plan>
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
@@ -23,7 +23,7 @@ where
 impl<Worker, Plan> ProxyControlAdmission<Worker, Plan> for ProxyControlHost<Worker, Plan>
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
@@ -53,7 +53,7 @@ pub(crate) fn admit_proxy_operation<Source, Worker, Plan>(
 )
 where
     Worker: Behavior,
-    Plan: ActivationPlan,
+    Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {

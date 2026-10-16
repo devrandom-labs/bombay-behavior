@@ -14,6 +14,11 @@ mod sealed {
 /// The trait is sealed: replay safety depends on the error being genuinely
 /// impossible, so downstream code cannot assert the capability for an
 /// inhabited type.
+#[diagnostic::on_unimplemented(
+    message = "stash replay requires an infallible inner behavior",
+    label = "this error type is not supported for infallible replay",
+    note = "use Never or MachineError<A, M, Never> for the inner transition error; replay cannot undo actions from earlier messages"
+)]
 pub trait StaticallyInfallible: sealed::StaticallyInfallible {}
 
 impl sealed::StaticallyInfallible for Never {}
@@ -58,8 +63,7 @@ pub trait StashStatus {
 ///     }
 /// }
 /// fn route(_: &()) -> behavior_actors::StashRoute { behavior_actors::StashRoute::Release }
-/// fn requires_behavior<B: behavior::Behavior>(_: &B) {}
-/// requires_behavior(&behavior_actors::Stash::new(Fallible, |_, message| route(message)));
+/// let _ = behavior_actors::Stash::new(Fallible, |_, message| route(message));
 /// ```
 pub struct Stash<B: Behavior> {
     inner: B,
@@ -76,7 +80,10 @@ impl<B: Behavior<Ph = Never>> Stash<B> {
     /// Construction performs no transition or runtime
     /// operation.
     #[must_use]
-    pub fn new(inner: B, route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute) -> Self {
+    pub fn new(inner: B, route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute) -> Self
+    where
+        B::Error: StaticallyInfallible,
+    {
         Self {
             inner,
             route,

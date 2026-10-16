@@ -1,7 +1,7 @@
 use behavior::{
     EndpointAddress, EstablishedDelivery, Here, InterpretItem, InterpretationProgress, Protocol,
 };
-use behavior_actors::atomic::{AssignWorker, Assignment};
+use behavior_actors::pool::{AssignWorker, Assignment};
 
 // Borrowed polling can repeat; the same original move-only request cannot enter two owners.
 async fn reuse_original_assignment<P, Job, Host>(request: AssignWorker<P, Job>, host: &mut Host)

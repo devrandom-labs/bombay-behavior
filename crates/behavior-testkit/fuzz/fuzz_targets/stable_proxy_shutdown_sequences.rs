@@ -4,7 +4,7 @@
 mod stable_proxy;
 mod worker_return;
 
-use behavior_actors::atomic::{ProxyControl, ProxyPhase, StableProxy};
+use behavior_actors::proxy::{ProxyControl, ProxyPhase, StableProxy};
 use behavior_actors::{EstablishedShutdownResolved, ShutdownId};
 use behavior_core::Step;
 use libfuzzer_sys::fuzz_target;
@@ -96,7 +96,7 @@ fn exercise(inputs: &[u8]) {
         assert!(actions.creates.is_empty());
         assert!(actions.sends.worker_observations.is_empty());
         assert!(actions.sends.worker_initializations.is_empty());
-        assert!(actions.sends.worker_activations.is_empty());
+        assert!(actions.sends.worker_startups.is_empty());
         assert!(actions.sends.worker_shutdowns.is_empty());
         assert!(actions.sends.worker_deliveries.is_empty());
         assert!(actions.sends.owner_outcomes.is_empty());

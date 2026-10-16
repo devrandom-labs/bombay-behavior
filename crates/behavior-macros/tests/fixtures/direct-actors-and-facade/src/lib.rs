@@ -4,8 +4,8 @@
 //! generated `Completion` path names the instance the facade re-exports
 //! (`bombay::atomic`), not the direct dependency's revision.
 
-use bombay::atomic::{Assignment, pool_worker};
 use bombay::behavior::{Actions, MailAddr};
+use bombay::pool::{Assignment, pool_worker};
 
 struct BothWorker;
 

@@ -198,7 +198,7 @@ capability rejection or prerequisite. Bombay interprets it by locating the
 already existing child host through the supplied established target. Missing
 support is interpreter corruption, not an invented runtime rejection. The host
 calls `InitializeWorker::resolve` with exactly one
-`WorkerInitializationOutcome::ReadyForActivation | EffectsRejected | Stopped` result, which
+`WorkerInitializationOutcome::ReadyForStartup | EffectsRejected | Stopped` result, which
 reunites that result with the affine plan as `WorkerInitializationReport`. The request
 and result run inside the unchanged Driver and retirement barrier.
 
@@ -211,7 +211,7 @@ rejection. When initialization settles, the host returns exactly one Tier-1
 `WorkerInitializationReport` input:
 
 ```text
-ReadyForActivation { worker evidence, original plan, one activation permit }
+ReadyForStartup { worker evidence, original plan, one activation permit }
 EffectsRejected {
     worker evidence,
     original plan,
@@ -465,9 +465,9 @@ existing Driver and both must pass the final atomic integration probe.
 
 H148 historically derived the target source equation independently of Bombay's
 current root-first API: typed lifecycle and diagnostic capabilities enter one
-pure root constructor, the six-policy `dynamic(entries, activation,
-unexpected_exit, actor_drain, lifecycle, diagnostics)` call infers its key,
-worker, and activation types. The real production construction test and five
+pure root constructor, the named `directory::new(directory::Config { entries, startup,
+exit, shutdown, lifecycle, diagnostics })` call infers its key, worker and startup
+types. The real production construction test and five
 command paths now own that contract; H589 removes the superseded facsimile while
 retaining H148's compiler evidence in Git. Removing lifecycle provenance or
 delivering `Stop` without the typed supervisor capability produced E0277/E0308
@@ -484,10 +484,12 @@ workaround. Final end-to-end verification records the upstream revision that
 supplies these five links. H03 authorizes neither a Behavior-side custodian nor
 a second Driver, mailbox, task, or lifecycle service.
 
-Bombay's application facade re-exports only the non-hidden semantic names listed
-by [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md). Interpreter code may import
-the doc-hidden associated request, event, effect, and settlement types through
-`behavior_actors::atomic`; none becomes a second application spelling.
+The owning component groups public contracts under supervisor, pool, proxy and
+worker modules as specified by [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md).
+Applications use domain constructors and commands; interpreter implementations
+use the same owners’ explicit request, event, effect and settlement contracts.
+Internal authority constructors remain private. The isolated Bombay naming
+proof does not claim registry adoption.
 
 ## Required Bombay implementation
 

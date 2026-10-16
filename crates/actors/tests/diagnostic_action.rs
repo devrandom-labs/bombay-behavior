@@ -6,7 +6,7 @@ use behavior::{
     ActionItem, Address, EndpointAddress, EstablishedRecipient, ExactDeliveryReason,
     LogicalDeliveryReason, MessageProtocol, Never, Protocol, Recipient,
 };
-use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
+use behavior_actors::diagnostic::{DiagnosticAccepted, DiagnosticAction};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RuntimeAddr(u64);

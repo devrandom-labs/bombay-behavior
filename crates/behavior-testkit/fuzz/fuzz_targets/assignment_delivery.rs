@@ -2,7 +2,7 @@ use behavior_core::{ActionItem, InterpretationProgress};
 use core::future::{Future, ready};
 use core::task::{Context, Poll, Waker};
 
-use behavior_actors::atomic::{AssignWorker, Assignment, AssignmentReceipt};
+use behavior_actors::pool::{AssignWorker, Assignment, AssignmentReceipt};
 use behavior_core::{
     EndpointAddress, EstablishedDelivery, ExactDeliveryReason, Here, InterpretItem, ItemSettlement,
     Never, Protocol,

@@ -1,6 +1,7 @@
 use super::installed_control::InstalledControl;
 use behavior::{Actions, Address, EndpointAddress, Never, Protocol};
-use behavior_actors::atomic::{Assignment, ImmediateActivation, WorkerSubmission, pool_worker};
+use behavior_actors::pool::{Assignment, pool_worker};
+use behavior_actors::worker::{ImmediateStartup, WorkerSubmission};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct RuntimeAddr(pub(super) u64);
@@ -62,6 +63,6 @@ impl SearchWorker {
 
 pub(super) fn prepare_worker(
     _: &SearchRole,
-) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }

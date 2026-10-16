@@ -4,9 +4,10 @@ use behavior::{
     Behavior, BehaviorAddr, ClassifySettlement, EndpointAddress, InterpretSends, Interpretation,
     InterpretationProgress, SendEffects, SendSettlements, SettlementStatus,
 };
-use behavior_actors::atomic::{
-    DynamicSupervisorRequests, FixedSupervisorRequests, InitializeWorker,
-    WorkerInitializationOutcome, WorkerInitializationReport,
+use behavior_actors::supervisor::directory::DynamicSupervisorRequests;
+use behavior_actors::supervisor::roster::FixedSupervisorRequests;
+use behavior_actors::worker::{
+    InitializeWorker, WorkerInitializationOutcome, WorkerInitializationReport,
 };
 
 #[expect(
@@ -22,12 +23,12 @@ fn worker_initialization_protocol<W, P>(
     BehaviorAddr<W>: EndpointAddress,
 {
     match outcome {
-        WorkerInitializationOutcome::ReadyForActivation
+        WorkerInitializationOutcome::ReadyForStartup
         | WorkerInitializationOutcome::EffectsRejected(_)
         | WorkerInitializationOutcome::Stopped(_) => {}
     }
     match report {
-        WorkerInitializationReport::ReadyForActivation { .. }
+        WorkerInitializationReport::ReadyForStartup { .. }
         | WorkerInitializationReport::EffectsRejected { .. }
         | WorkerInitializationReport::Stopped { .. } => {}
     }

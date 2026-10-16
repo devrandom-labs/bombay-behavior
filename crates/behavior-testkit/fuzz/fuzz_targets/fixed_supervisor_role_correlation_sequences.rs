@@ -15,11 +15,16 @@ use core::ops::ControlFlow;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use behavior_actors::atomic::{
-    CapabilityResult, DiagnosticAction, FixedCommand, FixedDiagnostic, FixedSupervisor,
-    FixedSupervisorEvent, ImmediateActivation, ProxyControl, ProxyInputReceipt, ProxyOutcome,
-    Recovery, RestartLimit, RestartRelease, StableProxy, Strategy, UnavailablePhase, WorkerAttempt,
-    WorkerSource, WorkerSubmission,
+use behavior_actors::composition::replies::MixedReplies;
+use behavior_actors::diagnostic::DiagnosticAction;
+use behavior_actors::proxy::{ProxyControl, ProxyInputReceipt, ProxyOutcome, StableProxy};
+use behavior_actors::supervisor::roster::{
+    CapabilityResult, FixedCommand, FixedDiagnostic, FixedSupervisor, FixedSupervisorEvent,
+    Recovery, RecoveryPolicy, Strategy, UnavailablePhase,
+};
+use behavior_actors::worker::WorkerSource;
+use behavior_actors::worker::{
+    ImmediateStartup, RestartLimit, RestartRelease, WorkerAttempt, WorkerSubmission,
 };
 use behavior_actors::{Active, ReplyDelivery};
 use behavior_core::{
@@ -35,24 +40,24 @@ const ROLES: [Role; 3] = [Role::Search, Role::Index, Role::Spellcheck];
 
 struct Workshop;
 
-impl WorkerSource<Role, Worker, ImmediateActivation> for Workshop {
+impl WorkerSource<Role, Worker, ImmediateStartup> for Workshop {
     type WorkerRejection = Never;
     type SourceRejection = Never;
 }
 
 struct PendingRecovery {
     proxy_id: CreationId,
-    proxy: Active<StableProxy<Worker, ImmediateActivation>>,
+    proxy: Active<StableProxy<Worker, ImmediateStartup>>,
     previous: WorkerAttempt,
     work: ReplacementWork,
 }
 
 enum ReplacementWork {
     AwaitingDelivery {
-        control: ProxyControl<Worker, ImmediateActivation>,
-        receipt: ProxyInputReceipt<Worker, ImmediateActivation>,
+        control: ProxyControl<Worker, ImmediateStartup>,
+        receipt: ProxyInputReceipt<Worker, ImmediateStartup>,
     },
-    AwaitingReport(ProxyOutcome<Worker, ImmediateActivation>),
+    AwaitingReport(ProxyOutcome<Worker, ImmediateStartup>),
     Ready,
 }
 
@@ -123,16 +128,16 @@ fn begin_recovery(
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Workshop,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut member: ReadyMember,
     successor: u8,
@@ -193,7 +198,7 @@ fn begin_recovery(
     };
     let (route, control, receipt) = admit_proxy_operation(
         operation,
-        EstablishedActor::<StableProxy<Worker, ImmediateActivation>>::issued(
+        EstablishedActor::<StableProxy<Worker, ImmediateStartup>>::issued(
             stable_proxy::installed_control::InstalledControl::new(WorkerEndpoint),
         ),
     );
@@ -227,16 +232,16 @@ fn assert_capabilities(
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Workshop,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     recoveries: &BTreeMap<Role, PendingRecovery>,
 ) {
@@ -298,16 +303,16 @@ fn return_receipt(
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Workshop,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut recovery: PendingRecovery,
 ) -> PendingRecovery {
@@ -333,16 +338,16 @@ fn return_report(
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Workshop,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     mut recovery: PendingRecovery,
 ) -> PendingRecovery {
@@ -367,16 +372,16 @@ fn return_cross_report(
         FixedSupervisor<
             Role,
             Worker,
-            ImmediateActivation,
+            ImmediateStartup,
             Workshop,
             EstablishedRecipient<
                 MessageProtocol<
                     RuntimeAddress,
-                    FixedDiagnostic<Role, Worker, ImmediateActivation, Workshop>,
+                    FixedDiagnostic<Role, Worker, ImmediateStartup, Workshop, MixedReplies, MixedReplies>,
                 >,
             >,
             Infallible,
-        >,
+         MixedReplies, MixedReplies>,
     >,
     source_proxy: CreationId,
     mut recovery: PendingRecovery,
@@ -414,9 +419,11 @@ fn return_cross_report(
 fn exercise(inputs: &[u8]) {
     let ready = ready_three_role_roster(Recovery::permanent(
         Workshop,
-        Strategy::OneForOne,
-        RestartLimit::new(3, Duration::from_secs(60)),
-        RestartRelease::immediate(),
+        RecoveryPolicy {
+            strategy: Strategy::OneForOne,
+            limit: RestartLimit::new(3, Duration::from_secs(60)),
+            delay: RestartRelease::immediate(),
+        },
     ));
     let mut supervisor = ready.supervisor;
     let mut recoveries = BTreeMap::new();

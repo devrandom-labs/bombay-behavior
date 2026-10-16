@@ -10,7 +10,7 @@ use behavior::{
     SourceActions, SourceAdmission, SourceCustody, SourceProgress, SourceSettlementCustody,
     SourceSettlements, Step, Stopped, User, finish_item, prepare_item,
 };
-use behavior_actors::atomic::{DiagnosticAccepted, DiagnosticAction};
+use behavior_actors::diagnostic::{DiagnosticAccepted, DiagnosticAction};
 
 mod installed_control;
 

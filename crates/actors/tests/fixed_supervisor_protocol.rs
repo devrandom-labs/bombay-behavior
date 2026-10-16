@@ -1,7 +1,8 @@
 mod installed_control;
 
 use behavior::{Address, EndpointAddress, EstablishedRecipient, Protocol, Recipient};
-use behavior_actors::atomic::FixedCommand;
+use behavior_actors::composition::replies::MixedReplies;
+use behavior_actors::supervisor::roster::FixedCommand;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct RuntimeAddress(u64);
@@ -47,7 +48,8 @@ impl Protocol for SearchService {
     type Msg = u8;
 }
 
-fn accepts(_: FixedCommand<RuntimeAddress, SearchRole, SearchService>) {}
+fn accepts(_: FixedCommand<RuntimeAddress, SearchRole, SearchService, MixedReplies, MixedReplies>) {
+}
 
 #[test]
 fn logical_status_reply_infers_without_a_route_type() {

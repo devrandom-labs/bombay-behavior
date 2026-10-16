@@ -3,7 +3,8 @@
 #[path = "installed_control.rs"]
 pub(super) mod installed_control;
 
-use behavior_actors::atomic::{ImmediateActivation, ProxyInputResult, ProxyOperation, StableProxy};
+use behavior_actors::proxy::{ProxyInputResult, ProxyOperation, StableProxy};
+use behavior_actors::worker::ImmediateStartup;
 use behavior_core::{
     ActiveTurn, Address, Behavior, BehaviorActed, ChildCreationOutcome, CreateChild, CreationId,
     CreationSettlement, CreationsSettled, EndpointAddress, EstablishedActor, ItemSettlement, Never,
@@ -66,10 +67,10 @@ impl Behavior for Worker {
 }
 
 pub(super) fn committed_proxy(
-    created: CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateActivation>>,
+    created: CreateChild<RuntimeAddress, StableProxy<Worker, ImmediateStartup>>,
 ) -> (
     CreationId,
-    CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateActivation>>,
+    CreationsSettled<RuntimeAddress, StableProxy<Worker, ImmediateStartup>>,
 ) {
     let (creation, _proxy, kind) = created.into_parts();
     let settlement = SettledItem::Attempted(ItemSettlement::Accepted(
@@ -90,8 +91,8 @@ pub(super) fn committed_proxy(
 }
 
 pub(super) fn accepted_proxy_input<Source>(
-    operation: ProxyOperation<Source, Worker, ImmediateActivation>,
-) -> ProxyInputResult<Source, Worker, ImmediateActivation> {
+    operation: ProxyOperation<Source, Worker, ImmediateStartup>,
+) -> ProxyInputResult<Source, Worker, ImmediateStartup> {
     let (_, _, receipt) = admit_proxy_operation(
         operation,
         EstablishedActor::issued(installed_control::InstalledControl::new(WorkerEndpoint)),

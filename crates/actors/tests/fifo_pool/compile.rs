@@ -1,10 +1,12 @@
 use behavior::{Actions, Never};
 use behavior_actors::Activate as _;
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, Assignment, BacklogCapacity, DiagnosticDisposition,
-    ImmediateActivation, Interruption, OrderedRoles, PoolFailureReaction, PoolRecovery,
-    WorkerSubmission, fifo, pool_worker,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::queue;
+use behavior_actors::pool::{
+    Assignment, BacklogCapacity, Interruption, PoolFailureReaction, PoolRecovery, pool_worker,
 };
+use behavior_actors::worker::{ImmediateStartup, OrderedRoles, StartupLimit, WorkerSubmission};
 
 use super::RuntimeAddr;
 
@@ -35,7 +37,7 @@ impl SearchWorker {
 
 fn prepare_worker(
     _: &SearchRole,
-) -> Result<WorkerSubmission<SearchWorker, ImmediateActivation>, Never> {
+) -> Result<WorkerSubmission<SearchWorker, ImmediateStartup>, Never> {
     Ok(WorkerSubmission::immediate(SearchWorker))
 }
 
@@ -43,16 +45,20 @@ fn prepare_worker(
 fn canonical_fifo_worker_and_constructor_need_no_structural_types() {
     let roles = OrderedRoles::new(SearchRole::Primary, core::iter::empty())
         .unwrap_or_else(|_| panic!("one role is a valid roster"));
-    let pool = fifo(
+    let pool = queue::new(
         prepare_worker,
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(8),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(8),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
 
     let initialized = pool
@@ -61,12 +67,14 @@ fn canonical_fifo_worker_and_constructor_need_no_structural_types() {
     assert_eq!(initialized.actions.creates.len(), 1);
 }
 
-fn accepts_timed_pool_worker<W>(_: W)
+fn accepts_timed_pool_worker<W, Path>(_: W)
 where
     W: behavior::Behavior + behavior::BehaviorBase,
     W::Protocol: behavior::Protocol<Addr = RuntimeAddr, Msg = Assignment<SearchJob>>,
-    W::Sends: behavior_actors::atomic::CompletesAssignments<WorkerResult = SearchResult>
-        + behavior::SendSettlements,
+    W::Sends: behavior::SendInput<
+            behavior::ReportToParent<behavior_actors::pool::Completion<SearchResult>>,
+            Path,
+        > + behavior::SendSettlements,
 {
 }
 

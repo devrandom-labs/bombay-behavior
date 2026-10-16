@@ -327,6 +327,6 @@ meant to prove.
 ## Audit record
 
 The complete catalogue classification and change ledger are in
-[Actor-template composition audit](engineering/template-composition-audit.md). The broader
+[Actor-template composition audit (historical)](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-composition-audit.md). The broader
 capability and adversarial-test record remains in
-[Behavior Actors template-law audit](engineering/template-law-audit.md).
+[Behavior Actors template-law audit (historical)](https://github.com/devrandom-labs/bombay-behavior/blob/d69f992b371c12ab34e73b18e45b8112c90a1508/docs/engineering/template-law-audit.md).

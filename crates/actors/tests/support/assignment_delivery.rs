@@ -5,7 +5,7 @@ use behavior::{
     EndpointAddress, EstablishedDelivery, ExactDeliveryReason, Here, InterpretItem,
     InterpretationProgress, ItemSettlement, Never, Protocol,
 };
-use behavior_actors::atomic::{AssignWorker, Assignment, AssignmentReceipt};
+use behavior_actors::pool::{AssignWorker, Assignment, AssignmentReceipt};
 
 enum Admission {
     Accept,

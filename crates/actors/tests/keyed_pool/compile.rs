@@ -1,12 +1,18 @@
+use behavior_actors::pool::router;
 use std::collections::BTreeMap;
 
 use behavior::{MessageProtocol, Recipient};
-use behavior_actors::atomic::{
-    ActivationPolicy, ActorDrainPolicy, BacklogCapacity, BindingCapacity, BindingExpectation,
-    BindingRejection, BindingReply, BindingRequestId, CustomerDelivery, DiagnosticDisposition,
-    Interruption, KeyedAdmissionRejection, KeyedCommand, KeyedOutcome, OrderedRoles,
-    PoolFailureReaction, PoolRecovery, SubmissionId, keyed,
+use behavior_actors::diagnostic::DiagnosticDisposition;
+use behavior_actors::lifecycle::ActorDrainPolicy;
+use behavior_actors::pool::router::{
+    BindingCapacity, BindingExpectation, BindingRejection, BindingReply, BindingRequestId,
+    KeyedAdmissionRejection, KeyedCommand, KeyedOutcome,
 };
+use behavior_actors::pool::{
+    BacklogCapacity, CustomerDelivery, Interruption, PoolFailureReaction, PoolRecovery,
+    SubmissionId,
+};
+use behavior_actors::worker::{OrderedRoles, StartupLimit};
 use behavior_actors::{Activate, ReplyDelivery, ReplyRoute};
 
 use super::domain::{Account, RuntimeAddr, SearchJob, SearchResult, SearchRole, prepare_worker};
@@ -96,20 +102,22 @@ impl AccountDirectory {
 fn keyed_construction_and_commands_need_only_domain_types() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |account: &Account| match account.0 % 2 {
             0 => SearchRole::Primary,
             _ => SearchRole::Replica,
         },
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(8),
-        BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(8),
+            bindings: BindingCapacity::new(2).unwrap_or_else(|_| panic!("two bindings are valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     super::keyed_pool_requires_its_customer_and_management_hosts(&pool);
@@ -479,17 +487,19 @@ fn keyed_construction_and_commands_need_only_domain_types() {
 fn rejected_submission_keeps_both_customer_capabilities() {
     let roles = OrderedRoles::new(SearchRole::Primary, [SearchRole::Replica])
         .unwrap_or_else(|_| panic!("two distinct roles are a valid roster"));
-    let pool = keyed(
+    let pool = router::new(
         prepare_worker,
         roles,
         |_: &Account| SearchRole::Primary,
-        ActivationPolicy::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(1),
-        BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
-        Interruption::Retry,
-        ActorDrainPolicy::WaitForActorGraph,
-        DiagnosticDisposition::terminate(),
+        router::Config {
+            startup: StartupLimit::new(2).unwrap_or_else(|_| panic!("two activations are valid")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(1),
+            bindings: BindingCapacity::new(1).unwrap_or_else(|_| panic!("one binding is valid")),
+            interruption: Interruption::Retry,
+            shutdown: ActorDrainPolicy::WaitForActorGraph,
+            diagnostics: DiagnosticDisposition::terminate(),
+        },
     )
     .unwrap_or_else(|_| panic!("the worker declaration constructs a keyed pool"));
     let initialized = pool

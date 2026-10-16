@@ -13,14 +13,15 @@ This guide has three documentation classes:
   authoring syntax, composition laws, and interpreter obligations.
 - **Actor catalogue** documents the current reusable atomic actors and their
   normalized aggregate laws.
-- **Engineering records** preserve research, rejected alternatives, audit
-  evidence, and implementation campaign decisions. They explain why the
-  current design exists but are not an additional public API contract.
+- **Development requirements** retain active proposals and acceptance criteria.
+  Historical implementation campaigns live in Git, outside the user guide.
 
 The generated API references are published alongside this guide:
 
 - [Behavior primitives](../behavior/)
 - [Reusable behavior actors](../behavior_actors/)
 
-When a historical engineering record conflicts with the crate API or a
-canonical contract, the current public types and canonical contract govern.
+Source and executable tests establish what the selected revision implements.
+Contract prose records intended guarantees; conflicts are issues to reconcile,
+not evidence that a feature works. Proposed syntax is never current API merely
+because it appears in a requirement document.

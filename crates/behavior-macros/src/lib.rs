@@ -76,7 +76,7 @@ fn actors_crate() -> Result<TokenStream2> {
     // against. A consumer may carry both the facade and a direct foundational
     // actors dependency, and the two resolve to different revisions whenever
     // the facade pins its own: generated paths must then agree with the
-    // facade-path imports the consumer actually writes (`bombay::atomic`), so
+    // facade-path imports the consumer actually writes (`bombay::pool`), so
     // the facade wins. The foundational crate remains the fallback when no
     // facade is present.
     if let Ok(found) = crate_name("bombay-rs") {
@@ -1607,7 +1607,7 @@ pub fn pool_worker(args: TokenStream, item: TokenStream) -> TokenStream {
             type Protocol = Self;
             type Event = #behavior::User<#addr, #assignment>;
             type Sends = #behavior::InterpreterRequests<
-                #behavior::ReportToParent<#actors::atomic::Completion<#result>>
+                #behavior::ReportToParent<#actors::pool::Completion<#result>>
             >;
             type Ph = #behavior::Never;
             type Error = #behavior::Never;

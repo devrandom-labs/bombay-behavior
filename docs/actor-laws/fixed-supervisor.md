@@ -2,11 +2,13 @@
 
 ## Status and authority
 
-This document is the AA-10 independent semantic model for one fixed
-supervisor. It is a non-production falsification oracle. It does not select
-Rust types, define another behavior algebra, implement a supervisor, or mark a
-row in `docs/engineering/atomic-actor-solution.md` implemented. That document remains the
-production design authority.
+This is an independent semantic model for one fixed supervisor, retained as a
+requirements and falsification oracle. Historical blocked/completed labels below
+belong to the original research snapshot; they are not current implementation
+status. Verify representation and support from owner source and executable tests.
+The [DevX PRD](../engineering/developer-experience-prd.md) requires law-by-law
+reconciliation before condensing this model. Deleted design ledgers in Git
+history are not production authority.
 
 AA-10 is blocked, not complete. The state and transition oracle requires typed
 child terminal/drain settlement to return an emitted install or replacement
@@ -208,8 +210,8 @@ common concrete public protocol. Different public protocols are different
 supervisors, not one erased envelope.
 
 The canonical recovery value is constructed as
-`Recovery::permanent(source, strategy, limit, release)`,
-`Recovery::transient(source, strategy, limit, release)`, or
+`Recovery::permanent(source, RecoveryPolicy { strategy, limit, delay })`,
+`Recovery::transient(source, RecoveryPolicy { strategy, limit, delay })`, or
 `Recovery::temporary()`. The first two variants own the concrete source that
 crosses the worker-preparation action. The temporary alternative has no source,
 strategy, limit, or release field and requires no placeholder or annotation.
@@ -743,8 +745,8 @@ catch-all message envelope. An input rejected by the supervisor becomes an
 arrives through its lane-specific settlement. These are different laws.
 
 This diagnostic-product mismatch is a falsification finding, not a production
-API amendment. A later executable task must reconcile the solution, matrix,
-retained-core decision, and research audit before adding a production lane.
+API amendment. Before adding a production lane, reconcile this requirement
+with current owner source, the feature requirements and independent tests.
 
 The fold still returns the real `Actions` with its next behavior or terminal
 decision. Creation commits before same-action observations or proxy input.
@@ -1401,9 +1403,9 @@ The model records four findings requiring later comparison:
    ownership even when no normal proxy outcome can reach the supervisor.
 
 These are falsification results, not changes to production authority. Before
-an executable task relies on any new mechanism, the solution, matrix,
-retained-core decision, and research audit must be reconciled together or the
-existing real boundary must be proven to express the same law unchanged.
+an executable task relies on a new mechanism, reconcile these requirements
+with current owner source and independent tests, or prove that the existing
+contract expresses the same law unchanged.
 
 This blocked specification may be compared with the independent dynamic
 supervisor, FIFO pool, and keyed pool models, but no comparison may treat its

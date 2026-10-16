@@ -1,5 +1,12 @@
 # Keyed-pool falsification model
 
+This retained model specifies requirements and independent falsification cases.
+Its research statuses, source inventories and test counts are historical, not
+current implementation evidence. Reconcile them with owner source and executed
+tests under the [DevX PRD](../engineering/developer-experience-prd.md) before
+selecting work. Deleted design ledgers do not govern production.
+
+
 ## Status and authority
 
 This document is the AA-40 independent semantic model for one keyed
@@ -312,8 +319,8 @@ BacklogAdmissible =
   | Creating
   | Initializing
   | WaitingForActivationAuthorization
-  | ActivationDispatched
-  | Activating
+  | StartupRequested
+  | Starting
   | ReadyBusy
   | RecoveryAdmitted
   | DrainingPreReady { after_drain: ResumeRecovery }
@@ -353,8 +360,8 @@ Bindable =
   | Creating
   | Initializing
   | WaitingForActivationAuthorization
-  | ActivationDispatched
-  | Activating
+  | StartupRequested
+  | Starting
   | ReadyIdle
   | ReadyBusy
   | RecoveryAdmitted
@@ -466,8 +473,8 @@ KeyedMember =
   | Creating { reservation, kind, prior_stop }
   | Initializing { worker, kind, init_attempt }
   | WaitingForActivationAuthorization { worker, kind, permit, plan }
-  | ActivationDispatched { worker, kind, ticket, begin_attempt }
-  | Activating { worker, kind, ticket, activation_attempt }
+  | StartupRequested { worker, kind, ticket, begin_attempt }
+  | Starting { worker, kind, ticket, activation_attempt }
   | DrainingPreReady { worker, outstanding, cause, after_drain }
   | Idle { worker }
   | Busy { worker, assigned: AssignedJob, join: AssignmentJoin }
@@ -494,7 +501,7 @@ post-commit failure drains before recovery or retirement. This document uses
 that shared value law but does not embed FIFO aggregate state, cursor, or global
 queue behavior.
 
-Activation occupancy is derived from `ActivationDispatched` and `Activating`.
+Activation occupancy is derived from `StartupRequested` and `Starting`.
 Waiting roles are released in immutable roster order. Reserving a ticket,
 moving permit and plan to the activation action, and storing the dispatched
 phase are one transition. Ticket failure drains the installed worker with the
@@ -759,8 +766,8 @@ verdict. These are Bombay policies, not actor-model guarantees.
 | `Prepared`/`Creating` | exact birth join | reject | reject | reject | exact pre-birth join | reject | reject | reject |
 | `Initializing` | reject | accept exact | reject | reject | exact drain | reject | reject | reject |
 | waiting authorization | reject | reject | reject | reject | exact drain | reject | reject | reject |
-| `ActivationDispatched` | reject | reject | accept exact | reject | exact join | reject | reject | reject |
-| `Activating` | reject | reject | reject | accept exact | exact join | reject | reject | reject |
+| `StartupRequested` | reject | reject | accept exact | reject | exact join | reject | reject | reject |
+| `Starting` | reject | reject | reject | accept exact | exact join | reject | reject | reject |
 | `DrainingPreReady` | settle only | settle only | settle only | stale | drain | reject | reject | settle only |
 | `Idle` | reject | reject | reject | reject | interrupt/recover | reject | stale | reject |
 | busy delivery pending | reject | reject | reject | reject | join | join | join | reject |

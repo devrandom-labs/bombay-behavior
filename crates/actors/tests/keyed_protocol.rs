@@ -1,9 +1,10 @@
 mod installed_control;
 
 use behavior::{Address, EndpointAddress, MessageProtocol, Protocol, Recipient};
-use behavior_actors::atomic::{
+use behavior_actors::pool::SubmissionId;
+use behavior_actors::pool::router::{
     BindingExpectation, BindingReply, BindingRequestId, KeyedAdmissionRejection, KeyedCommand,
-    KeyedOutcome, SubmissionId,
+    KeyedOutcome,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

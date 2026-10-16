@@ -5,11 +5,11 @@ use std::time::{Duration, Instant};
 use behavior_actors::Activate as _;
 
 use super::{
-    ActivationPolicy, ActorDrainPolicy, BacklogCapacity, ChildStopped, DiagnosticDisposition,
+    ActorDrainPolicy, BacklogCapacity, ChildStopped, DiagnosticDisposition,
     EstablishedShutdownResolved, Exit, FifoCommand, FifoEvent, Interruption, ItemSettlement, Never,
     OrderedRoles, PoolFailureReaction, PoolRecovery, RuntimeAddr, ScheduleAfterRejection,
-    SearchWorker, SettledItem, Step, TimerElapsed, TimerScheduled, WorkerInitializationOutcome,
-    WorkerSubmission, created_worker, fifo,
+    SearchWorker, SettledItem, StartupLimit, Step, TimerElapsed, TimerScheduled,
+    WorkerInitializationOutcome, WorkerSubmission, created_worker, queue,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -284,18 +284,22 @@ async fn compare_sequence(sequence: &[DeskInput]) {
     let role_owner = Arc::new(());
     let roles = OrderedRoles::new(Arc::clone(&role_owner), [])
         .unwrap_or_else(|_| panic!("one role is a valid FIFO roster"));
-    let pool = fifo(
+    let pool = queue::new(
         |_: &Arc<()>| Ok::<_, Never>(WorkerSubmission::immediate(SearchWorker)),
         roles,
-        ActivationPolicy::new(1).unwrap_or_else(|_| panic!("one activation is valid policy")),
-        PoolRecovery::temporary(PoolFailureReaction::RetireRole),
-        BacklogCapacity::new(0),
-        Interruption::Fail,
-        ActorDrainPolicy::RetireActorGraphAfter {
-            deadline: Duration::from_secs(2),
+        queue::Config {
+            startup: StartupLimit::new(1).unwrap_or_else(|_| panic!("one startup is valid policy")),
+            recovery: PoolRecovery::temporary(PoolFailureReaction::RetireRole),
+            backlog: BacklogCapacity::new(0),
+            interruption: Interruption::Fail,
+            shutdown: ActorDrainPolicy::RetireActorGraphAfter {
+                deadline: Duration::from_secs(2),
+            },
+            diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-        DiagnosticDisposition::<Infallible>::terminate(),
     )
+    .logical_replies()
+    .build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs the pool"));
     let initialized = pool
         .initialize()
@@ -318,20 +322,20 @@ async fn compare_sequence(sequence: &[DeskInput]) {
         .unwrap_or_else(|| panic!("created worker awaits initialization"));
     let mut worker = Some(initialization.worker().creation());
     let initialized_worker = pool
-        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForActivation))
+        .on(initialization.resolve(WorkerInitializationOutcome::ReadyForStartup))
         .unwrap_or_else(|error| panic!("worker initialization failed: {error}"));
-    let activation = initialized_worker
+    let startup = initialized_worker
         .sends
-        .worker_activations
+        .worker_startups
         .into_requests()
         .pop()
-        .unwrap_or_else(|| panic!("initialized worker begins activation"));
+        .unwrap_or_else(|| panic!("initialized worker begins startup"));
     let activation_started = pool
-        .on(activation.started())
-        .unwrap_or_else(|error| panic!("activation start failed: {error}"));
+        .on(startup.started())
+        .unwrap_or_else(|error| panic!("startup start failed: {error}"));
     assert!(activation_started.sends.worker_assignments.is_empty());
     let ready = pool
-        .on(activation.activate().await)
+        .on(startup.start().await)
         .unwrap_or_else(|error| panic!("worker readiness failed: {error}"));
     assert!(ready.sends.worker_assignments.is_empty());
 
@@ -342,7 +346,7 @@ async fn compare_sequence(sequence: &[DeskInput]) {
     assert!(draining.creates.is_empty());
     assert!(draining.sends.worker_observations.is_empty());
     assert!(draining.sends.worker_initializations.is_empty());
-    assert!(draining.sends.worker_activations.is_empty());
+    assert!(draining.sends.worker_startups.is_empty());
     assert!(draining.sends.customer_outcomes.as_slice().is_empty());
     assert!(draining.sends.worker_assignments.is_empty());
     assert!(draining.sends.worker_preparations.is_empty());
@@ -423,7 +427,7 @@ async fn compare_sequence(sequence: &[DeskInput]) {
         assert!(acted.creates.is_empty());
         assert!(acted.sends.worker_observations.is_empty());
         assert!(acted.sends.worker_initializations.is_empty());
-        assert!(acted.sends.worker_activations.is_empty());
+        assert!(acted.sends.worker_startups.is_empty());
         assert!(acted.sends.customer_outcomes.as_slice().is_empty());
         assert!(acted.sends.worker_assignments.is_empty());
         assert!(acted.sends.worker_preparations.is_empty());
