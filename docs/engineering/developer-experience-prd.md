@@ -45,7 +45,7 @@ require the remaining consumers, inferred standalone roots and full gates.
 Published Behavior/Actors0.28.0 and macros0.15.0 are verified against registry
 checksums, tags and exact source at owner d9237dde; the constructor inference
 repair is delivered. This release does not include finite holding or generic
-send insertion. Isolated Bombay branch dc09bb still selects registry027/150;
+send insertion. Isolated Bombay branch99d9484 still selects registry027/150;
 its new finite facade needs the unpublished owner candidate. Local source-selected
 proofs and prepared catalogue adoption are explicitly separate from registry
 verification. The owning checklist records the remaining delivery and gates;
@@ -1247,7 +1247,11 @@ and cached offline audit limits remain explicit. Candidate archives have252
 safe members/228 exact Rust files and clean58ce331 provenance, not registry028
 contents. Exact receipts are in the existing evidence root's send-names,
 send-names-common, send-names-stash and stash-limits/SEND-NAMES-* records.
-Both exact heads are ready and mergeable with all14 GitHub checks passing.
+Both exact heads passed all14 GitHub checks, then merged under explicit user
+authorization: PR113 as99369ba and PR114 as21d95b5. Squash trees exactly match
+the reviewed feature trees. Main21d95b5 CI38990565430 passes all11 jobs; the
+normal Release38991329420 is preparing the official version PR. No new
+registry publication is claimed.
 The release skill's four-workspace preflight passes at809/aafd in8.222/8.218s.
 The user authorizes merge/publication after generated-release review; the new generic impls require
 a reviewed breaking macro version, preserving compatibility for older published
@@ -1261,11 +1265,38 @@ Actors0.26.1/Macros0.14 only. The stock Actors0.28 owning-pool fixture also pass
 with the current0.15 candidate; it disproves the proposed library-level conflict
 and earns no RED credit. The initial offline attempt lacks registry archives
 and earns no Rust credit. Test the actual caller-level manual-impl overlap on
-registry0.28 instead: the unchanged consumer must pass with old0.15, reject
-conflicting new generated impls, then pass unchanged when the breaking candidate
-is excluded by its compatible requirement. Reuse the existing metadata/locked-
-build guard; no actor code, bounds, public types or dependency is added. Any
-retained guard change belongs to the reviewed release branch and complete gates.
+registry0.28 instead: the unchanged consumer passes with old0.15 and rejects the
+new candidate at E0283 because two insertion paths become applicable. The same
+source must then pass unchanged when the breaking candidate is excluded by its
+compatible requirement. The unchanged source passes debug and optimized runs
+with registry015 and rejects exactly one E0283 in each profile with the selected
+path candidate. Metadata proves Core028 stays in the registry; source hashes
+match. Two reviews check complete allocation/prefix/receipt conservation and
+non-vacuous candidate selection; the stock-worker falsifier remains explicit.
+
+Release change record: await and inspect the official PR; expect12 paths: root
+and macro manifests, four locks, README, three changelogs, the existing archive
+verifier and one real notices fixture. Add one concrete manual-product consumer
+to the existing packaged check, retaining the026 worker and current README
+consumers. Reuse metadata-selected macro version checks and Cargo; no actor
+code, bounds, public types or dependency. Expected production Rust delta0;
+Python gate approximately+60 lines, fixture approximately+35. Actor states,
+subordinate sums, transition branches and public spellings stay unchanged; the
+new guard owns package compatibility, no runtime authority or history. Run the
+unchanged-source old-compatible/new-breaking selection controls before retaining
+it, and measure the complete actual release diff. Disposition remains pending
+these controls, official version review and complete release gates.
+
+The user selects `application.shutdown()` as the canonical short application
+operation. This is a spelling change, not a joined-cleanup operation: preserve
+the existing Result, exact rejection, static root authority and inferred lane;
+`retirement().await` still observes retirement. Inspect both ApplicationHandle
+and ApplicationLifecycle owners plus negative fixtures before editing. Prove the
+short name with a failing consumer first, then migrate real callers/docs without
+a competing alias. The current inventory finds110 files mentioning the old name
+across native source/tests/docs/tools; ownership review must distinguish any
+non-application operation. This is a separately measured post-release batch,
+not an implicit extension of the authorized24-file stash migration.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
