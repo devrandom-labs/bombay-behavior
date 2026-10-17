@@ -1319,6 +1319,23 @@ application/installed documentation requires selective migration; checksum and
 minimum-compiler expectations need regeneration with unchanged denials. This is a separately measured post-release batch,
 not an implicit extension of the authorized24-file stash migration.
 
+Prepared cumulative native scope: existing24 paths,119 shutdown/application
+paths (including compiler inventory and coordination) and nine registry adoption
+paths overlap to146 distinct files. Adoption owns root Cargo.toml/lock,
+crates/bombay/Cargo.toml, both Driver manifests and law_manifest.rs, the protected
+consumer lock and Engine fuzz manifest/lock. The fuzz target imports Behavior
+and the current Driver directly; both must select the same protocol owner.
+This is a budget proposal, not permission or an implemented rename. Expected
+rename production line delta0; two existing method spellings replaced, no new
+public type, behavior, authority or policy. Preserve InstalledActor's separate
+lower-level contract. Prove the two-owner syntax first, then migrate all actual
+callers, rustdoc and compiler expectations together; retain every failure denial
+and original assertion. Run the complete supported compiler/native/consumer
+gates before delivery. The exact path set is retained in the existing evidence
+root's shutdown-spelling/PROPOSED-SCOPE.json. Actual dependency adoption still
+requires the published version/checksum; pending budget approval does not stop
+the already authorized owner release.
+
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
 1.99/1.96 pass debug/release, with exact original allocations/bytes/destinations,
