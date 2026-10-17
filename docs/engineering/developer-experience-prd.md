@@ -1253,16 +1253,19 @@ The user authorizes merge/publication after generated-release review; the new ge
 a reviewed breaking macro version, preserving compatibility for older published
 Actors users with their existing manual impls.
 
-Release compatibility law (derived Rust package policy): a candidate macro must
-not break either published Actors0.26.1/Macros0.14 or Actors0.28.0/Macros0.15.
-The existing archive preflight checks only the first epoch. Before changing
-that guard, compile the existing owning-pool fixture with registry0.28 owners
-and the current0.15 candidate macro; conflicting generated/manual SendInput
-impls must reject it. A breaking macro line must instead leave the compatible
-registry0.15 selected and the same consumer must pass. Reuse both existing
-fixtures and the metadata/locked-build guard; no actor code, bounds, public
-types or dependency is added. Any retained guard change belongs to the reviewed
-release branch and its complete package/Nix checks.
+Release compatibility law (derived Rust package policy): compatible macro
+updates must preserve existing valid consumers, including handwritten SendInput
+impls for generic derived products. A breaking macro line must leave the old
+compatible registry macro selected. The existing archive preflight checks
+Actors0.26.1/Macros0.14 only. The stock Actors0.28 owning-pool fixture also passes
+with the current0.15 candidate; it disproves the proposed library-level conflict
+and earns no RED credit. The initial offline attempt lacks registry archives
+and earns no Rust credit. Test the actual caller-level manual-impl overlap on
+registry0.28 instead: the unchanged consumer must pass with old0.15, reject
+conflicting new generated impls, then pass unchanged when the breaking candidate
+is excluded by its compatible requirement. Reuse the existing metadata/locked-
+build guard; no actor code, bounds, public types or dependency is added. Any
+retained guard change belongs to the reviewed release branch and complete gates.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
