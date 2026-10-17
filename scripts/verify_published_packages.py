@@ -1,6 +1,7 @@
 """Compile the README consumer against the contents of packaged crate archives."""
 
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -17,9 +18,38 @@ PACKAGES = (
 )
 
 
+def check_compatible_macro(metadata: dict, macros: pathlib.Path, line: str) -> None:
+    """Exercise a compatible candidate, or retain the published compatible macro."""
+    selected = [
+        package for package in metadata["packages"]
+        if package["name"] == "bombay-behavior-macros"
+    ]
+    if len(selected) != 1:
+        raise SystemExit("published consumer has ambiguous macro owners")
+    selected = selected[0]
+    if not selected["version"].startswith(line + "."):
+        raise SystemExit("published consumer escaped its compatible macro version line")
+    candidate = tomllib.loads((macros / "Cargo.toml").read_text())["package"]
+    selected_manifest = pathlib.Path(selected["manifest_path"]).resolve()
+    candidate_manifest = (macros / "Cargo.toml").resolve()
+    if candidate["version"].startswith(line + "."):
+        if selected_manifest != candidate_manifest or selected["source"] is not None:
+            raise SystemExit("published consumer did not exercise the compatible candidate")
+    elif selected_manifest == candidate_manifest or selected["source"] != (
+        "registry+https://github.com/rust-lang/crates.io-index"
+    ):
+        raise SystemExit("published consumer selected the incompatible candidate")
+    print(
+        f"Compatible{line} consumer resolves Macros{selected['version']} "
+        f"from {selected['source'] or selected_manifest}",
+        flush=True,
+    )
+
+
 def check_published_worker(temporary: pathlib.Path, macros: pathlib.Path) -> None:
     """An old public worker must survive a compatible macro update."""
     consumer = temporary / "published-worker"
+    environment = {**os.environ, "CARGO_TARGET_DIR": str(consumer / "target")}
     (consumer / "src").mkdir(parents=True)
     (consumer / "src/main.rs").write_text(
         (ROOT / "crates/behavior-macros/tests/fixtures/clerk.rs").read_text()
@@ -37,6 +67,7 @@ def check_published_worker(temporary: pathlib.Path, macros: pathlib.Path) -> Non
         subprocess.check_output(
             ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest)],
             cwd=temporary,
+            env=environment,
         )
     )
     for name in ("bombay-behavior", "bombay-behavior-actors"):
@@ -48,33 +79,50 @@ def check_published_worker(temporary: pathlib.Path, macros: pathlib.Path) -> Non
             "registry+https://github.com/rust-lang/crates.io-index"
         ):
             raise SystemExit(f"historical worker did not select published {name}0.26.1")
-    selected = [
-        package for package in metadata["packages"]
-        if package["name"] == "bombay-behavior-macros"
-    ]
-    if len(selected) != 1:
-        raise SystemExit("historical worker has ambiguous macro owners")
-    selected = selected[0]
-    if not selected["version"].startswith("0.14."):
-        raise SystemExit("historical worker escaped its compatible macro version line")
-    candidate = tomllib.loads((macros / "Cargo.toml").read_text())["package"]
-    selected_manifest = pathlib.Path(selected["manifest_path"]).resolve()
-    candidate_manifest = (macros / "Cargo.toml").resolve()
-    if candidate["version"].startswith("0.14."):
-        if selected_manifest != candidate_manifest or selected["source"] is not None:
-            raise SystemExit("historical worker did not exercise the compatible candidate")
-    elif selected_manifest == candidate_manifest or selected["source"] != (
-        "registry+https://github.com/rust-lang/crates.io-index"
-    ):
-        raise SystemExit("historical worker selected the incompatible candidate")
-    print(
-        f"Published0.26.1 worker resolves Macros{selected['version']} "
-        f"from {selected['source'] or selected_manifest}",
-        flush=True,
-    )
+    check_compatible_macro(metadata, macros, "0.14")
     subprocess.run(
         ["cargo", "check", "--locked", "--manifest-path", str(manifest)],
         cwd=temporary,
+        env=environment,
+        check=True,
+    )
+
+
+def check_published_product(temporary: pathlib.Path, macros: pathlib.Path) -> None:
+    """Preserve an existing inferred send with a handwritten insertion witness."""
+    consumer = temporary / "published-product"
+    environment = {**os.environ, "CARGO_TARGET_DIR": str(consumer / "target")}
+    (consumer / "src").mkdir(parents=True)
+    (consumer / "src/main.rs").write_text(
+        (ROOT / "crates/behavior-macros/tests/fixtures/notices.rs").read_text()
+    )
+    manifest = consumer / "Cargo.toml"
+    manifest.write_text(
+        '[package]\nname = "published-send-product"\nversion = "0.0.0"\n'
+        'edition = "2024"\n\n[dependencies]\n'
+        'behavior = { package = "bombay-behavior", version = "=0.28.0" }\n'
+        'behavior-macros = { package = "bombay-behavior-macros", version = "0.15" }\n'
+        '\n[patch.crates-io]\n'
+        f'bombay-behavior-macros = {{ path = "{macros}" }}\n'
+    )
+    metadata = json.loads(
+        subprocess.check_output(
+            ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(manifest)],
+            cwd=temporary,
+            env=environment,
+        )
+    )
+    owners = [package for package in metadata["packages"]
+              if package["name"] == "bombay-behavior"]
+    if len(owners) != 1 or owners[0]["version"] != "0.28.0" or owners[0]["source"] != (
+        "registry+https://github.com/rust-lang/crates.io-index"
+    ):
+        raise SystemExit("historical product did not select published Behavior0.28.0")
+    check_compatible_macro(metadata, macros, "0.15")
+    subprocess.run(
+        ["cargo", "run", "--locked", "--manifest-path", str(manifest)],
+        cwd=temporary,
+        env=environment,
         check=True,
     )
 
@@ -112,6 +160,7 @@ def main() -> None:
             extracted[package] = temporary / f"{package}-{versions[package]}"
 
         consumer = temporary / "consumer"
+        environment = {**os.environ, "CARGO_TARGET_DIR": str(consumer / "target")}
         (consumer / "src").mkdir(parents=True)
         (consumer / "src" / "main.rs").write_text(
             (ROOT / "crates/behavior-macros/tests/fixtures/unrenamed-direct/src/lib.rs")
@@ -136,9 +185,11 @@ def main() -> None:
         subprocess.run(
             ["cargo", "check", "--manifest-path", str(consumer / "Cargo.toml")],
             cwd=temporary,
+            env=environment,
             check=True,
         )
         check_published_worker(temporary, extracted["bombay-behavior-macros"])
+        check_published_product(temporary, extracted["bombay-behavior-macros"])
 
 
 if __name__ == "__main__":

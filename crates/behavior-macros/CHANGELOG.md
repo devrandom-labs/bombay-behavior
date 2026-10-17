@@ -13,8 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(effects)* [**breaking**] infer request lanes through generic send products ([#113](https://github.com/devrandom-labs/bombay-behavior/pull/113))
 
-### Fixed
-
 - Generated send contracts avoid capturing caller parameters and referenced
   type names, including raw names and already occupied fallback names.
   `SendProduct` and nominal actor lanes keep their existing public spellings,

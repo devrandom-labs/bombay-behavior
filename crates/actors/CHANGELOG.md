@@ -17,8 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(effects)* [**breaking**] infer request lanes through generic send products ([#113](https://github.com/devrandom-labs/bombay-behavior/pull/113))
 
-### Fixed
-
 - Keep previously held, undelegated originals available through `take()` when
   replay selection or inner execution unwinds. A selector only borrows its
   current input; inner execution may consume its delegated input. This does

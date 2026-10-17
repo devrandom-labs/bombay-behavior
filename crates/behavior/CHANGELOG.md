@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.28.0...bombay-behavior-v0.29.0) - 2026-10-17
+
+### Changed
+
+- Pair with Macros0.16 for generic send-product insertion and caller-name safety.
+  Align the shared version with Actors' bounded holding and complete refusals.
+
 ## [0.28.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.27.0...bombay-behavior-v0.28.0) - 2026-10-16
 
 ### Changed
