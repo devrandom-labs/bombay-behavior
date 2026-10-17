@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use behavior_actors::{
     Activate as _, Cache, CacheConfiguration, CacheMessage, CacheResult, Deadline,
     FinalizeOnShutdown, OneShot, PeerTermination, Periodic, PropagateTermination, ReceiveTimeout,
-    ShutdownRequested, Stash, StashRoute, StopOnShutdown, TerminationMonitor, Watch, propagate_all,
-    stop_on_abnormal_death,
+    ShutdownRequested, StashRoute, StopOnShutdown, TerminationMonitor, UnlimitedStash, Watch,
+    propagate_all, stop_on_abnormal_death,
 };
 use behavior_core::{
     Actions, Behavior, BehaviorLayer, Delivery, MailAddr, MessageProtocol, Never, NoBirths,
@@ -45,7 +45,7 @@ fn finalize_cache(
 #[test]
 fn captured_and_function_layers_preserve_domain_sends_and_outer_shutdown() {
     let stashed = apply(cache(), |inner| {
-        Stash::new(inner, |_, message| deliver_cache(message))
+        UnlimitedStash::new(inner, |_, message| deliver_cache(message))
     });
     let mut root = apply(stashed, StopOnShutdown::new)
         .initialize()

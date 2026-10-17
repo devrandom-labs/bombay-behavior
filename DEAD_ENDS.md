@@ -1,5 +1,21 @@
 # Reopened design experiments
 
+## Finite stash without inherited effect insertion
+
+Disposition: `reopen` for the first unretained lowering. The focused native
+accepted/closed-refusal journeys and five pure tests passed, but the added
+ReceiveTimeout witness cannot append an existing adapter delivery with
+`Actions::cont().with_send(request)`: debug and release both fail only E0277
+because generic SendProduct provides no SendInput delegation. Inner effects
+remain interpretable, yet ordinary outer reactions lose a prior capability.
+No callback annotation, positional access or stash-specific insertion patch is
+retained. The first production lowering is saved privately and removed; focused
+regressions remain. The common generic product must preserve inferred unique
+insertion and ambiguous duplicate denial before finite admission is lowered
+again. Nominal actor products already own semantic lane tags and must not gain
+a second competing insertion route. The owning DevX PRD records the law and
+source-bound failure receipts; no catalogue migration has begun.
+
 ## Separate late worker-preparation return wrapper
 
 Date: 2026-10-01. Disposition: `reopen` for the wrapper only.

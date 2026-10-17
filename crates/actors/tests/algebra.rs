@@ -716,11 +716,12 @@ async fn stashing_is_local_state_and_replay() {
             Ok(Actions::cont())
         }
     }
-    let behavior = behavior_actors::Stash::new(Seen(Vec::new()), |_, message| match message {
-        0 => StashRoute::Release,
-        1 => StashRoute::Stash,
-        _ => StashRoute::Deliver,
-    });
+    let behavior =
+        behavior_actors::UnlimitedStash::new(Seen(Vec::new()), |_, message| match message {
+            0 => StashRoute::Release,
+            1 => StashRoute::Stash,
+            _ => StashRoute::Deliver,
+        });
     let initialized = behavior.initialize().unwrap();
     let mut behavior = initialized.behavior;
     let stashed = behavior.transition(User::user(MailAddr(1), 1)).unwrap();
@@ -805,7 +806,7 @@ fn stash_accepts_an_infallible_machine_and_preserves_both_queues() {
             })
         },
     );
-    let stash = behavior_actors::Stash::new(machine, |machine, parcel| match parcel {
+    let stash = behavior_actors::UnlimitedStash::new(machine, |machine, parcel| match parcel {
         Parcel::Held(_) if machine.phase() == Phase::Closed => StashRoute::Stash,
         Parcel::Release => StashRoute::Release,
         Parcel::Direct(_) | Parcel::Held(_) => StashRoute::Deliver,
@@ -865,9 +866,190 @@ impl StashRecording {
     }
 }
 
+#[test]
+fn finite_stash_preserves_initial_effects_and_a_stopping_release_trigger() {
+    for skipped in [0, 2] {
+        let mut expected_sequence = CreationSequence::new();
+        let mut wrapped_sequence = CreationSequence::new();
+        for _ in 0..skipped {
+            let _ = expected_sequence
+                .issue()
+                .expect("advance the bare creator's valid correlation state");
+            let _ = wrapped_sequence
+                .issue()
+                .expect("advance the wrapped creator's equal correlation state");
+        }
+        let mut bare = ExplicitInitialization {
+            received: Vec::new(),
+            creations: expected_sequence,
+        };
+        let expected =
+            behavior::initialize(&mut bare).expect("observe the actual bare initialization");
+        assert!(expected.sends.deliveries.is_empty());
+        assert_eq!(expected.sends.markers, [7]);
+        assert_eq!(expected.become_, Step::Continue);
+        let (expected_id, Quiet, expected_kind) = expected
+            .creates
+            .into_one()
+            .unwrap_or_else(|_| panic!("the bare actor emits one creation"))
+            .into_parts();
+        assert_eq!(expected_kind, CreationKind::Birth);
+        assert_eq!(bare.received, [1]);
+        let refused = Recipient::<behavior::MessageProtocol<MailAddr, User<MailAddr, u64>>>::global(
+            MailAddr(31),
+        );
+        let mut stash = behavior_actors::Stash::new(
+            ExplicitInitialization {
+                received: Vec::new(),
+                creations: wrapped_sequence,
+            },
+            1,
+            refused,
+            |_, message| {
+                if *message == 99 {
+                    StashRoute::Release
+                } else {
+                    StashRoute::Stash
+                }
+            },
+        );
+        assert!(stash.base().received.is_empty());
+        let initialized =
+            behavior::initialize(&mut stash).expect("only initialization creates a child");
+        let behavior_actors::StashSends { actor, refusals } = initialized.sends;
+        assert!(actor.deliveries.is_empty());
+        assert_eq!(actor.markers, [7]);
+        assert!(refusals.is_empty());
+        assert_eq!(initialized.become_, Step::Continue);
+        let creation = initialized
+            .creates
+            .into_one()
+            .unwrap_or_else(|_| panic!("the original creation survives"));
+        let (id, Quiet, kind) = creation.into_parts();
+        assert_eq!(id, expected_id);
+        assert_eq!(kind, expected_kind);
+        assert_eq!(stash.base().received, [1]);
+        let held = behavior::delegate_transition(&mut stash, User::user(MailAddr(7), 5))
+            .expect("holding does not initialize or deliver again");
+        let behavior_actors::StashSends { actor, refusals } = held.sends;
+        assert!(actor.deliveries.is_empty());
+        assert!(actor.markers.is_empty());
+        assert!(refusals.is_empty());
+        assert!(held.creates.is_empty());
+        assert_eq!(held.become_, Step::Continue);
+        let overflow = behavior::delegate_transition(&mut stash, User::user(MailAddr(13), 9))
+            .expect("the configured refusal recipient owns the original overflowing input");
+        let behavior_actors::StashSends {
+            actor,
+            mut refusals,
+        } = overflow.sends;
+        assert!(actor.deliveries.is_empty());
+        assert!(actor.markers.is_empty());
+        assert!(overflow.creates.is_empty());
+        assert_eq!(overflow.become_, Step::Continue);
+        assert_eq!(refusals.len(), 1);
+        let delivery = refusals.pop().expect("one exact original input");
+        assert_eq!(delivery.to, refused);
+        assert_eq!(delivery.message, User::user(MailAddr(13), 9));
+        let stopped = behavior::delegate_transition(&mut stash, User::user(MailAddr(19), 99))
+            .expect("a stopping release trigger leaves the held FIFO untouched");
+        let behavior_actors::StashSends { actor, refusals } = stopped.sends;
+        let expected_deliveries = [Delivery::new(Recipient::global(MailAddr(9)), 99)];
+        assert!(actor.deliveries == expected_deliveries);
+        assert!(actor.markers.is_empty());
+        assert!(refusals.is_empty());
+        assert!(stopped.creates.is_empty());
+        assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
+        assert_eq!(stash.base().received, [1, 99]);
+        assert_eq!(stash.held(), 1);
+        let held: Vec<_> = stash.take().into_iter().collect();
+        assert_eq!(held, [User::user(MailAddr(7), 5)]);
+        assert_eq!(stash.held(), 0);
+    }
+}
+
+#[test]
+fn finite_stash_keeps_replayed_effects_before_stop_and_the_untouched_suffix() {
+    let after = Duration::from_secs(3);
+    let refused =
+        Recipient::<behavior::MessageProtocol<MailAddr, User<MailAddr, u64>>>::global(MailAddr(31));
+    let mut stash = behavior_actors::Stash::new(
+        behavior_actors::ReceiveTimeout::new(
+            StashRecording {
+                admission: StashAdmission::Holding,
+                received: Vec::new(),
+            },
+            after,
+            |_| Actions::stop(),
+        ),
+        3,
+        refused,
+        |timer, message| recording_stash_route(timer.base(), message),
+    );
+    let initialized = behavior::initialize(&mut stash).expect("the inner timeout initializes once");
+    let behavior_actors::StashSends { actor, refusals } = initialized.sends;
+    assert_eq!(
+        actor.owned.as_slice(),
+        [behavior_actors::OwnedScheduleAfter::new(
+            TimerGeneration(0),
+            after
+        )]
+    );
+    assert!(actor.inner.is_empty());
+    assert!(refusals.is_empty());
+    assert!(initialized.creates.is_empty());
+    assert_eq!(initialized.become_, Step::Continue);
+    for (sender, message) in [(MailAddr(7), 1), (MailAddr(13), 0), (MailAddr(19), 3)] {
+        let held = behavior::delegate_transition(&mut stash, UserEvent::user(sender, message))
+            .expect("holding does not rearm the inner inactivity timer");
+        let behavior_actors::StashSends { actor, refusals } = held.sends;
+        assert!(actor.owned.is_empty());
+        assert!(actor.inner.is_empty());
+        assert!(refusals.is_empty());
+        assert!(held.creates.is_empty());
+        assert_eq!(held.become_, Step::Continue);
+    }
+    let overflow = behavior::delegate_transition(&mut stash, UserEvent::user(MailAddr(23), 9))
+        .expect("overflow returns its original input without rearming the inner timer");
+    let behavior_actors::StashSends {
+        actor,
+        mut refusals,
+    } = overflow.sends;
+    assert!(actor.owned.is_empty());
+    assert!(actor.inner.is_empty());
+    assert!(overflow.creates.is_empty());
+    assert_eq!(overflow.become_, Step::Continue);
+    assert_eq!(refusals.len(), 1);
+    let delivery = refusals.pop().expect("one complete refusal");
+    assert_eq!(delivery.to, refused);
+    assert_eq!(delivery.message, User::user(MailAddr(23), 9));
+    assert_eq!(stash.held(), 3);
+    assert!(stash.base().received.is_empty());
+    let stopped = behavior::delegate_transition(&mut stash, UserEvent::user(MailAddr(29), 2))
+        .expect("release keeps its successful replay prefix when the next input stops");
+    let behavior_actors::StashSends { actor, refusals } = stopped.sends;
+    assert_eq!(
+        actor.owned.as_slice(),
+        [
+            behavior_actors::OwnedScheduleAfter::new(TimerGeneration(1), after),
+            behavior_actors::OwnedScheduleAfter::new(TimerGeneration(2), after),
+        ]
+    );
+    assert!(actor.inner.is_empty());
+    assert!(refusals.is_empty());
+    assert!(stopped.creates.is_empty());
+    assert_eq!(stopped.become_, Step::Stop(behavior::Stopped));
+    assert_eq!(stash.base().received, [2, 1, 0]);
+    assert_eq!(stash.base().admission, StashAdmission::Accepting);
+    assert_eq!(stash.held(), 1);
+    let held: Vec<_> = stash.take().into_iter().collect();
+    assert_eq!(held, [User::user(MailAddr(19), 3)]);
+    assert_eq!(stash.held(), 0);
+}
+
 #[tokio::test]
 async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -888,7 +1070,7 @@ async fn stash_release_delivers_the_trigger_then_drains_the_held_fifo() {
 
 #[tokio::test]
 async fn stash_replay_preserves_fifo_and_selectively_retains_ineligible_input() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -917,7 +1099,7 @@ async fn stash_replay_preserves_fifo_and_selectively_retains_ineligible_input() 
 
 #[tokio::test]
 async fn stash_replay_stop_preserves_the_unread_held_tail() {
-    let behavior = behavior_actors::Stash::new(
+    let behavior = behavior_actors::UnlimitedStash::new(
         StashRecording {
             admission: StashAdmission::Holding,
             received: Vec::new(),
@@ -1132,7 +1314,7 @@ fn birth_modes_are_disjoint_and_wrappers_forward_them() {
     requires_no_births((Quiet).base());
 
     let creator = behavior_actors::Watch::new(
-        behavior_actors::Stash::new(
+        behavior_actors::UnlimitedStash::new(
             behavior_actors::Deadline::new(
                 ExplicitInitialization {
                     received: Vec::new(),

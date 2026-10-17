@@ -60,7 +60,7 @@ fn deliver(_: &u64) -> StashRoute {
     clippy::unnecessary_wraps,
     reason = "DeadlineReaction requires the behavior's exact controlled-failure result"
 )]
-fn deadline(_: &mut behavior_actors::Stash<Domain>) -> behavior_core::Become {
+fn deadline(_: &mut behavior_actors::UnlimitedStash<Domain>) -> behavior_core::Become {
     Step::Continue
 }
 
@@ -75,7 +75,7 @@ where
 fn inferred_stack_crosses_one_generic_adapter_layer() {
     let due = Instant::now();
     let inferred = accepts_closed_behavior(behavior_actors::Deadline::new(
-        behavior_actors::Stash::new(Domain, |_, message| deliver(message)),
+        behavior_actors::UnlimitedStash::new(Domain, |_, message| deliver(message)),
         Some(due),
         deadline,
     ));

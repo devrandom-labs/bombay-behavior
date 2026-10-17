@@ -1,9 +1,11 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use behavior::{
     BehaviorBase as _, EventLayer, MailAddr, MessageProtocol, Never, NoSends, Recipient, SendLayer,
     Step, Stopped, UserEvent, delegate_transition, initialize,
 };
 use behavior_actors::{
-    Machine, MessageAdapter, Move, ShutdownRequested, Stash, StashRoute, StopOnShutdown,
+    Machine, MessageAdapter, Move, ShutdownRequested, StashRoute, StopOnShutdown, UnlimitedStash,
 };
 
 fn cents(dollars: u64) -> u64 {
@@ -13,7 +15,7 @@ fn cents(dollars: u64) -> u64 {
 #[test]
 fn shutdown_outside_stash_returns_the_original_fifo_once() {
     let destination = Recipient::<MessageProtocol<MailAddr, u64>>::global(MailAddr(29));
-    let mut stash = Stash::new(MessageAdapter::new(destination, cents), |_, _| {
+    let mut stash = UnlimitedStash::new(MessageAdapter::new(destination, cents), |_, _| {
         StashRoute::Stash
     });
     let empty = stash.take();
@@ -63,7 +65,7 @@ fn shutdown_outside_stash_returns_the_original_fifo_once() {
 #[test]
 fn stash_outside_shutdown_returns_the_original_fifo_once() {
     let destination = Recipient::<MessageProtocol<MailAddr, u64>>::global(MailAddr(31));
-    let mut root = Stash::new(
+    let mut root = UnlimitedStash::new(
         StopOnShutdown::new(MessageAdapter::new(destination, cents)),
         |_, _| StashRoute::Stash,
     );
@@ -134,7 +136,7 @@ fn receive_parcel(door: Door, stored: &mut Vec<u64>, parcel: &Parcel) -> Result<
 #[test]
 fn taking_messages_preserves_machine_deferrals_and_the_stash_route() {
     let machine = Machine::<MailAddr, _, _, _, _>::new(Vec::new(), Door::Closed, receive_parcel);
-    let mut stash = Stash::new(machine, |machine, parcel| match parcel {
+    let mut stash = UnlimitedStash::new(machine, |machine, parcel| match parcel {
         Parcel::Arrived(number) if number % 2 == 1 && machine.phase() == Door::Closed => {
             StashRoute::Stash
         }
@@ -203,6 +205,124 @@ fn taking_messages_preserves_machine_deferrals_and_the_stash_route() {
     assert_eq!(stash.base().state(), &[2, 5, 7]);
     let empty = stash.take();
     assert!(empty.is_empty());
+    let repeated = stash.take();
+    assert!(repeated.is_empty());
+}
+
+#[test]
+fn a_replay_selector_panic_preserves_the_reheld_prefix_and_undelegated_suffix() {
+    let machine = Machine::<MailAddr, _, _, _, _>::new(Vec::new(), Door::Closed, receive_parcel);
+    let mut stash = UnlimitedStash::new(machine, |machine, parcel| match parcel {
+        Parcel::Released => StashRoute::Release,
+        Parcel::Arrived(1) => StashRoute::Stash,
+        Parcel::Arrived(_) if machine.phase() == Door::Closed => StashRoute::Stash,
+        Parcel::Arrived(3) => panic!("the borrowed parcel selector failed"),
+        Parcel::Arrived(_) => StashRoute::Deliver,
+    });
+    let initialized = initialize(&mut stash).expect("the machine starts infallibly");
+    assert_eq!(initialized.sends.as_slice(), []);
+    assert!(initialized.creates.is_empty());
+    assert_eq!(initialized.become_, Step::Continue);
+    for (from, number) in [(7, 1), (11, 2), (13, 3), (17, 4)] {
+        let held = delegate_transition(
+            &mut stash,
+            UserEvent::user(MailAddr(from), Parcel::Arrived(number)),
+        )
+        .expect("all parcels arrive before the door opens");
+        assert_eq!(held.sends.as_slice(), []);
+        assert!(held.creates.is_empty());
+        assert_eq!(held.become_, Step::Continue);
+    }
+    assert_eq!(stash.held(), 4);
+    let released = catch_unwind(AssertUnwindSafe(|| {
+        delegate_transition(&mut stash, UserEvent::user(MailAddr(19), Parcel::Released))
+    }));
+    let Err(payload) = released else {
+        panic!("replay must reach the selected panic");
+    };
+    let panic_message = payload.downcast_ref::<&str>();
+    assert_eq!(panic_message, Some(&"the borrowed parcel selector failed"));
+    assert_eq!(stash.base().phase(), Door::Open);
+    // The second parcel was delegated before the panic. The first remains
+    // held; only the still-undelegated originals belong to this FIFO.
+    assert_eq!(stash.base().state(), &[2]);
+    assert_eq!(stash.base().held(), 0);
+    let held = stash.take();
+    let actual: Vec<_> = held
+        .into_iter()
+        .map(|input| (input.from, input.message))
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            (MailAddr(7), Parcel::Arrived(1)),
+            (MailAddr(13), Parcel::Arrived(3)),
+            (MailAddr(17), Parcel::Arrived(4))
+        ]
+    );
+    let repeated = stash.take();
+    assert!(repeated.is_empty());
+}
+
+#[test]
+fn a_replay_actor_panic_preserves_the_reheld_prefix_and_undelegated_suffix() {
+    let machine = Machine::<MailAddr, _, _, _, _>::new(
+        Vec::new(),
+        Door::Closed,
+        |door, stored, parcel| match (door, parcel) {
+            (Door::Open, Parcel::Arrived(3)) => panic!("the parcel actor failed after delegation"),
+            _ => receive_parcel(door, stored, parcel),
+        },
+    );
+    let mut stash = UnlimitedStash::new(machine, |machine, parcel| match parcel {
+        Parcel::Released => StashRoute::Release,
+        Parcel::Arrived(1) => StashRoute::Stash,
+        Parcel::Arrived(_) if machine.phase() == Door::Closed => StashRoute::Stash,
+        Parcel::Arrived(_) => StashRoute::Deliver,
+    });
+    let initialized = initialize(&mut stash).expect("the machine starts infallibly");
+    assert_eq!(initialized.sends.as_slice(), []);
+    assert!(initialized.creates.is_empty());
+    assert_eq!(initialized.become_, Step::Continue);
+    for (from, number) in [(7, 1), (11, 2), (13, 3), (17, 4)] {
+        let held = delegate_transition(
+            &mut stash,
+            UserEvent::user(MailAddr(from), Parcel::Arrived(number)),
+        )
+        .expect("all parcels arrive before the door opens");
+        assert_eq!(held.sends.as_slice(), []);
+        assert!(held.creates.is_empty());
+        assert_eq!(held.become_, Step::Continue);
+    }
+    assert_eq!(stash.held(), 4);
+    let released = catch_unwind(AssertUnwindSafe(|| {
+        delegate_transition(&mut stash, UserEvent::user(MailAddr(19), Parcel::Released))
+    }));
+    let Err(payload) = released else {
+        panic!("replay must reach the delegated actor panic");
+    };
+    let panic_message = payload.downcast_ref::<&str>();
+    assert_eq!(
+        panic_message,
+        Some(&"the parcel actor failed after delegation")
+    );
+    assert_eq!(stash.base().phase(), Door::Open);
+    // The second parcel was delegated before the panic. The first remains
+    // held; only the still-undelegated originals belong to this FIFO.
+    assert_eq!(stash.base().state(), &[2]);
+    assert_eq!(stash.base().held(), 0);
+    let held = stash.take();
+    let actual: Vec<_> = held
+        .into_iter()
+        .map(|input| (input.from, input.message))
+        .collect();
+    assert_eq!(
+        actual,
+        [
+            (MailAddr(7), Parcel::Arrived(1)),
+            (MailAddr(17), Parcel::Arrived(4))
+        ]
+    );
     let repeated = stash.take();
     assert!(repeated.is_empty());
 }

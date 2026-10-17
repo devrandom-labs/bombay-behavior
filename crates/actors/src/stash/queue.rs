@@ -1,4 +1,4 @@
-//! Pure message holding and replay composition.
+//! The authoritative original-input FIFO and replay policy.
 
 use std::collections::VecDeque;
 
@@ -9,7 +9,7 @@ mod sealed {
     pub trait StaticallyInfallible {}
 }
 
-/// Statically proven uninhabited transition error accepted by [`Stash`].
+/// Statically proven uninhabited transition error accepted by both stash policies.
 ///
 /// The trait is sealed: replay safety depends on the error being genuinely
 /// impossible, so downstream code cannot assert the capability for an
@@ -40,13 +40,17 @@ pub trait StashStatus {
     fn stashed_messages(&self) -> usize;
 }
 
-/// FIFO message holding for an infallible inner fold.
+/// Deliberately unbounded FIFO holding for an infallible inner fold.
+///
+/// Prefer [`super::Stash`] when original-input retention must be finite. This
+/// explicit policy needs no refusal recipient, including for Never protocols
+/// and compositions whose selector never holds an input.
 ///
 /// Releasing one command may replay several retained mailbox inputs in one
 /// transition. Because [`behavior::Actions`] has no rollback effect, a
 /// fallible inner fold could reject after earlier replayed inputs had already
 /// produced unreturnable actions. Such an inner behavior is therefore not a
-/// valid `Stash` composition:
+/// valid `UnlimitedStash` composition:
 ///
 /// ```compile_fail,E0277
 /// struct Fallible;
@@ -63,15 +67,28 @@ pub trait StashStatus {
 ///     }
 /// }
 /// fn route(_: &()) -> behavior_actors::StashRoute { behavior_actors::StashRoute::Release }
-/// let _ = behavior_actors::Stash::new(Fallible, |_, message| route(message));
+/// let _ = behavior_actors::UnlimitedStash::new(Fallible, |_, message| route(message));
 /// ```
-pub struct Stash<B: Behavior> {
+pub struct UnlimitedStash<B: Behavior> {
     inner: B,
     route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute,
     held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
-impl<B: Behavior> Stash<B> {
+// Still-undelegated originals belong to the actor even if selection or inner
+// execution unwinds. Reunite the unread suffix after the already reheld prefix.
+struct HeldInputs<'a, A: Address, M> {
+    held: &'a mut VecDeque<User<A, M>>,
+    unread: VecDeque<User<A, M>>,
+}
+
+impl<A: Address, M> Drop for HeldInputs<'_, A, M> {
+    fn drop(&mut self) {
+        self.held.append(&mut self.unread);
+    }
+}
+
+impl<B: Behavior> UnlimitedStash<B> {
     /// Take all held messages in arrival order, leaving this stash empty.
     ///
     /// Original senders and messages move to the caller without cloning.
@@ -80,6 +97,11 @@ impl<B: Behavior> Stash<B> {
     ///
     /// Messages still in a runtime mailbox belong to that mailbox, not this
     /// stash. A second call returns an empty queue.
+    ///
+    /// With unwinding panics, a replay selector retains its borrowed original;
+    /// inner execution retains only originals not yet delegated to it. Neither
+    /// case rolls back inner mutations or recovers consumed inputs or Actions
+    /// that the panicking transition never returned. Aborts are not recoverable.
     #[must_use]
     pub fn take(
         &mut self,
@@ -88,7 +110,7 @@ impl<B: Behavior> Stash<B> {
     }
 }
 
-impl<B: Behavior<Ph = Never>> Stash<B> {
+impl<B: Behavior<Ph = Never>> UnlimitedStash<B> {
     /// Wrap `inner` with `route`, a pure decision over the actual inner state and message.
     ///
     /// Stashed messages retain FIFO order and ownership until a later
@@ -112,15 +134,19 @@ impl<B: Behavior<Ph = Never>> Stash<B> {
     pub fn held(&self) -> usize {
         self.held.len()
     }
+
+    pub(super) fn route(&self, message: &behavior::BehaviorMessage<B>) -> StashRoute {
+        (self.route)(&self.inner, message)
+    }
 }
 
-impl<B: Behavior<Ph = Never>> StashStatus for Stash<B> {
+impl<B: Behavior<Ph = Never>> StashStatus for UnlimitedStash<B> {
     fn stashed_messages(&self) -> usize {
         self.held()
     }
 }
 
-impl<B> behavior::BehaviorBase for Stash<B>
+impl<B> behavior::BehaviorBase for UnlimitedStash<B>
 where
     B: Behavior<Ph = Never> + behavior::BehaviorBase,
 {
@@ -131,7 +157,7 @@ where
     }
 }
 
-impl<B, A, Sends, Br> Stash<B>
+impl<B, A, Sends, Br> UnlimitedStash<B>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
@@ -140,14 +166,48 @@ where
     B::Error: StaticallyInfallible,
     B::Protocol: behavior::Protocol<Addr = A>,
 {
+    pub(super) fn receive(
+        &mut self,
+        user: User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>,
+        route: StashRoute,
+    ) -> Result<Actions<behavior::BehaviorAddr<B>, Never, B::Sends, B::Birth>, B::Error> {
+        match route {
+            StashRoute::Stash => {
+                self.held.push_back(user);
+                Ok(Actions::cont())
+            }
+            StashRoute::Deliver => behavior::delegate_transition(
+                &mut self.inner,
+                B::Event::user(user.from, user.message),
+            ),
+            StashRoute::Release => {
+                let mut actions = behavior::delegate_transition(
+                    &mut self.inner,
+                    B::Event::user(user.from, user.message),
+                )?;
+                if !matches!(actions.become_, Step::Stop(_)) {
+                    self.drain_into(&mut actions)?;
+                }
+                Ok(actions)
+            }
+        }
+    }
+
     fn drain_into(
         &mut self,
         acc: &mut Actions<behavior::BehaviorAddr<B>, Never, B::Sends, B::Birth>,
     ) -> Result<(), B::Error> {
-        let mut batch = core::mem::take(&mut self.held);
-        while let Some(user) = batch.pop_front() {
-            match (self.route)(&self.inner, &user.message) {
-                StashRoute::Stash => self.held.push_back(user),
+        let mut inputs = HeldInputs {
+            unread: core::mem::take(&mut self.held),
+            held: &mut self.held,
+        };
+        while let Some(user) = inputs.unread.front() {
+            let route = (self.route)(&self.inner, &user.message);
+            let Some(user) = inputs.unread.pop_front() else {
+                break;
+            };
+            match route {
+                StashRoute::Stash => inputs.held.push_back(user),
                 StashRoute::Deliver | StashRoute::Release => {
                     let actions = behavior::delegate_transition(
                         &mut self.inner,
@@ -156,7 +216,6 @@ where
                     acc.sends.append(actions.sends);
                     acc.creates.extend(actions.creates);
                     if let Step::Stop(exit) = actions.become_ {
-                        self.held.extend(batch);
                         acc.become_ = Step::Stop(exit);
                         return Ok(());
                     }
@@ -167,7 +226,7 @@ where
     }
 }
 
-impl<B, A, Sends, Br> Behavior for Stash<B>
+impl<B, A, Sends, Br> Behavior for UnlimitedStash<B>
 where
     A: Address,
     Sends: SendEffects + behavior::SendsFor<B::Event>,
@@ -199,25 +258,7 @@ where
             Ok(user) => user,
             Err(other) => return behavior::delegate_transition(&mut self.inner, other),
         };
-        match (self.route)(&self.inner, &user.message) {
-            StashRoute::Stash => {
-                self.held.push_back(user);
-                Ok(Actions::cont())
-            }
-            StashRoute::Deliver => behavior::delegate_transition(
-                &mut self.inner,
-                B::Event::user(user.from, user.message),
-            ),
-            StashRoute::Release => {
-                let mut actions = behavior::delegate_transition(
-                    &mut self.inner,
-                    B::Event::user(user.from, user.message),
-                )?;
-                if !matches!(actions.become_, Step::Stop(_)) {
-                    self.drain_into(&mut actions)?;
-                }
-                Ok(actions)
-            }
-        }
+        let route = self.route(&user.message);
+        self.receive(user, route)
     }
 }

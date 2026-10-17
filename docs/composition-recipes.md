@@ -48,7 +48,7 @@ Callers compose at the value level; Rust infers the full nested type:
 
 ```rust,ignore
 let behavior = domain
-    .layer(|inner| Stash::new(inner, |_, message| admission(message)))
+    .layer(|inner| Stash::new(inner, 8, refused, |_, message| admission(message)))
     .layer(|inner| ReceiveTimeout::new(inner, idle, on_idle))
     .layer(StopOnShutdown::new);
 ```
@@ -59,18 +59,55 @@ product, failure, and terminal decision. Reordering layers can therefore
 change the program and must be chosen from those laws, not from type
 convenience.
 
-### Recovering held messages
+### Holding and recovering messages
+
+`Stash::new(actor, 8, refused, route)` holds at most eight original mailbox
+inputs. The pure selector chooses `Stash`, `Deliver` or `Release` from the
+actual actor state and message. Only newly selected `Stash` inputs consume a
+slot. At capacity, the complete original `User`, including its sender, moves
+to `refused` through `Actions`, and the actor continues. A zero limit refuses
+every newly selected held input. Delivery, release and non-user events still
+reach the inner actor at capacity.
+
+A release delivers its trigger first, then checks the selector again for each
+held input in FIFO order. It can retain an input that remains ineligible; it
+does not force delivery. If replay stops, its produced sends and staged creations
+remain in order and the untouched suffix stays held. Initialization runs the
+inner actor once before mailbox input. `StashSends { actor, refusals }`
+interprets inner effects before refusals and preserves their independent
+terminal custody. Unique inner request lanes still support inferred
+`Actions::cont().with_send(request)` through other wrappers.
 
 When you own a stash, `let pending = stash.take();` moves its held messages
-into your custody in arrival order. Each value retains its original sender
-and message; taking again returns an empty queue. The wrapped actor and routing
-policy remain available, and a later release still follows that policy.
-This operation performs no replay or actor effect. Unread runtime mailbox
-inputs have their own retirement custody and must also be consumed.
+into your custody in FIFO order without cloning or replay. Taking again returns
+an empty queue. The actor, selector, limit and refusal recipient remain
+unchanged, so a later refill follows the same policy. Unread runtime mailbox
+inputs have separate retirement custody and must also be consumed.
 
-The current stash has no capacity limit; recovery does not add one. Executable
-[recovery and wrapper-order tests](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs) cover both
-shutdown orders and preserve a machine's separate deferrals and future replay.
+If replay unwinds, previously held inputs not yet delegated to the actor remain
+available through `take()`, after any inputs reheld earlier in that replay.
+A selector only borrows the current input, so that input is retained too. A
+panicking inner actor may consume its delegated input and change its own state;
+there is no rollback or recovery of Actions it never returned. Aborts and
+allocator/destructor failure are outside this recovery contract.
+
+The limit counts held inputs, not bytes, allocation capacity, runtime mailbox
+entries, outgoing effects or an inner Machine's separate deferrals. Both stash
+policies require a closed phase and a statically uninhabited transition error;
+replay cannot roll back already produced effects. Only the repeatable refusal
+route needs `Clone`; finite holding adds no such requirement to the actor or
+message.
+
+Migration: replace `Stash::new(actor, route)` with
+`Stash::new(actor, limit, refused, route)`. Explicit types become `Stash<B, R>`;
+ordinary calls infer both types. For deliberate unbounded retention, use
+`UnlimitedStash::new(actor, route)`, which needs no refusal recipient. There is
+no implicit conversion of an already populated queue. Both policies provide
+`take()` and preserve the same replay contract.
+
+Executable witnesses: [finite admission and wrapper orders](https://github.com/devrandom-labs/bombay-behavior/blob/a309bbd/crates/actors/tests/stash_limits.rs),
+[initialization and replay effects](https://github.com/devrandom-labs/bombay-behavior/blob/a309bbd/crates/actors/tests/algebra.rs), and
+[original-input recovery](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs).
 
 ### Timer ownership
 

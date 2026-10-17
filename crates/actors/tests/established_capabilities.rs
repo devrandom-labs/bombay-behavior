@@ -15,8 +15,8 @@ use behavior_actors::{
     InterpretEstablishedObservation, InterpretEstablishedShutdown, MessageAdapter,
     NoShutdownTargets, ObservationAuthority, ObservationId, ObservationRejection,
     ObserveEstablished, ObserveEstablishedCreation, ReceiveTimeout, ReplyRoute, ShutdownChoice,
-    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, Stash, StopOnShutdown,
-    TerminationMonitorError, TerminationObservation, Watch, established_child,
+    ShutdownEstablished, ShutdownId, ShutdownRejection, ShutdownRequested, StopOnShutdown,
+    TerminationMonitorError, TerminationObservation, UnlimitedStash, Watch, established_child,
 };
 use core::future::{Future, ready};
 use core::marker::PhantomData;
@@ -332,13 +332,13 @@ fn nominal_occurrences_cross_only_topology_transparent_wrappers() {
         ChildHead,
     >();
     resolves_occurrence::<
-        StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>,
+        StopOnShutdown<ReceiveTimeout<Watch<UnlimitedStash<GeneratedParent>>>>,
         GeneratedParentChildrenWorker,
         Worker,
         ChildHead,
     >();
     resolves_occurrence::<
-        Stash<StopOnShutdown<GeneratedParent>>,
+        UnlimitedStash<StopOnShutdown<GeneratedParent>>,
         GeneratedParentChildrenWorker,
         Worker,
         ChildHead,
@@ -1128,8 +1128,8 @@ where
 
 #[test]
 fn both_wrapper_orders_accept_exact_installed_shutdown() {
-    type Outer = StopOnShutdown<ReceiveTimeout<Watch<Stash<GeneratedParent>>>>;
-    type Inner = Stash<StopOnShutdown<GeneratedParent>>;
+    type Outer = StopOnShutdown<ReceiveTimeout<Watch<UnlimitedStash<GeneratedParent>>>>;
+    type Inner = UnlimitedStash<StopOnShutdown<GeneratedParent>>;
 
     let outer =
         EstablishedActor::<Outer>::issued(Installed::new(Endpoint::new(RuntimeAddr(81), 1)));

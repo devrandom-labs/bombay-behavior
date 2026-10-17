@@ -25,7 +25,7 @@
 //! owning-type constructors. [`Activate`] consumes any concrete definition
 //! into its one initialized [`Active`] state. Rust can infer wrapper stacks at
 //! construction and spawn call sites; applications do not need to name types
-//! such as `Deadline<Stash<Machine<...>>>`.
+//! such as deadlines around stashed state machines.
 //! Correctness-sensitive cross-family orders use ordinary typed nesting and
 //! actor communication. The repository's composition guide records their
 //! construction, error, initialization, and effect-preservation laws.
@@ -148,7 +148,7 @@ pub use routing::{
     WorkQueueOutcome, WorkQueueRejection, WorkQueueSends, WorkQueueState,
 };
 pub use shutdown::{FinalizeOnShutdown, ShutdownEvent, ShutdownReaction, StopOnShutdown};
-pub use stash::{Stash, StashRoute, StashStatus, StaticallyInfallible};
+pub use stash::{Stash, StashRoute, StashSends, StashStatus, StaticallyInfallible, UnlimitedStash};
 pub(crate) use supervisor::directory::{InterruptedWorker, WorkerChange};
 pub use termination::{
     Crash, Exit, ReportTerminalOutcome, RestartDenial, SupervisionFailureReason, TerminalOutcome,

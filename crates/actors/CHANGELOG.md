@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep previously held, undelegated originals available through `take()` when
+  replay selection or inner execution unwinds. A selector only borrows its
+  current input; inner execution may consume its delegated input. This does
+  not roll back inner state or recover Actions never returned by a panic.
+
+### Breaking
+
+- Construct finite holding with `Stash::new(actor, limit, refused, route)`.
+  Overflow returns the complete original `User` through the typed refusal
+  recipient and continues; zero is valid. Explicit types become `Stash<B, R>`.
+  `StashSends { actor, refusals }` preserves both effect lanes. Deliberate
+  unbounded holding moves to `UnlimitedStash::new(actor, route)`. Both policies
+  retain FIFO `take()`, replay ordering and the existing infallibility and
+  closed-phase requirements. The limit counts held inputs, not allocation bytes
+  or other actor/runtime queues.
+
 ## [0.28.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.27.0...bombay-behavior-actors-v0.28.0) - 2026-10-16
 
 ### Added
