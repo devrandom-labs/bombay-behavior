@@ -1253,6 +1253,17 @@ The user authorizes merge/publication after generated-release review; the new ge
 a reviewed breaking macro version, preserving compatibility for older published
 Actors users with their existing manual impls.
 
+Release compatibility law (derived Rust package policy): a candidate macro must
+not break either published Actors0.26.1/Macros0.14 or Actors0.28.0/Macros0.15.
+The existing archive preflight checks only the first epoch. Before changing
+that guard, compile the existing owning-pool fixture with registry0.28 owners
+and the current0.15 candidate macro; conflicting generated/manual SendInput
+impls must reject it. A breaking macro line must instead leave the compatible
+registry0.15 selected and the same consumer must pass. Reuse both existing
+fixtures and the metadata/locked-build guard; no actor code, bounds, public
+types or dependency is added. Any retained guard change belongs to the reviewed
+release branch and its complete package/Nix checks.
+
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
 1.99/1.96 pass debug/release, with exact original allocations/bytes/destinations,
