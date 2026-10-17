@@ -1368,8 +1368,33 @@ incorrect unittest module invocation fails import and earns no test credit;
 the documented direct script invocation passes unchanged. Fresh immutable
 current/minimum replay passes in192.378/199.643s with all633 caller inputs
 unchanged and complete named case/suite/target coverage. Full native Nix gates
-and the final-source minimum workspace run remain in progress. No earlier
-source-selected pass is credited as their result.
+remain in progress. Registry adoption is committed at864cd0f and the119-path
+canonical shutdown migration at4fcf68d; all633 tested source bytes match that
+clean feature-branch tree. No earlier source-selected pass is credited as their
+result.
+
+The broader minimum workspace exposes two additional compiler-only differences:
+Engine's suggested Driver turbofish and Observe's qualification of Publisher in
+a receiver note. Nine E0599 denials and the E0382 ownership denial remain exact;
+no fixture or Rust implementation changes. The failed runs remain failures.
+With just those two independently reviewed expectation hunks, the isolated
+minimum workspace passes791 tests/two existing parent-invoked child skips in
+99.806s. This is default/Axum evidence, not remote runtime or authoritative
+Nix acceptance. Both bounded sanitizer campaigns also pass:2,048 Driver cases
+and1,024 cases for each of four Observe targets, with all633 native inputs
+unchanged. Corpora, seeds, compiler identities and logs are retained.
+
+A prepared verification-only extension reuses the same immutable checker for
+Bombay, Engine and Observe:136 existing fixtures,32 suites,28 targets and23
+compiler-specific expectations. Complete136-case replay passes both compilers
+in229.730/238.574s with all633 inputs unchanged. The root README still teaches the
+removed shutdown spelling. Correcting that line and extending tools/diagnostics.py
+requires two additional native paths (146→148); the expectation inventory/patch
+are already scoped. Expected production delta0, new public types0, runtime
+changes0 and fixture edits0. The exact four-file patch and two source/oracle
+reviews are prepared under shutdown-spelling/WORKSPACE-VERIFIER.patch and
+WORKSPACE-VERIFIER-SCOPE.json. Those two extra paths remain unapplied pending
+the required change-budget authorization.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
