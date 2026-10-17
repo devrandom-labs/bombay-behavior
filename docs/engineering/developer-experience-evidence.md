@@ -2,6 +2,18 @@
 
 Companion to the [PRD](developer-experience-prd.md). Source references are pinned to Behavior `d69f992b371c12ab34e73b18e45b8112c90a1508` and Bombay `c3afb3011090ac4c9112fd39e4a76980db856df0`. Repository documents supplied requirement names, not implementation verdicts. Source inventory and test-body inspection do not constitute a fresh passing test run.
 
+Current implementation additions are tracked in the owning PRD's single
+checklist. Published Behavior/Actors0.29.0 and macros0.16.0 are verified at
+[55dbac2](https://github.com/devrandom-labs/bombay-behavior/commit/55dbac2d1068b29907498b3a7fa32b3080e0cd30).
+Merged [PR114](https://github.com/devrandom-labs/bombay-behavior/pull/114) supplies
+finite admission and replay-panic custody in stash/{queue,limit}.rs, with owner
+tests in stash.rs/stash_limits.rs and real Bombay retirement witnesses. Merged
+[PR113](https://github.com/devrandom-labs/bombay-behavior/pull/113) supplies
+generic send insertion and private-parameter naming. All228 shipped Rust files
+match the verified release; Bombay selects those registry owners. Final
+downstream acceptance remains open. The pinned inventory below preserves the
+initial source inventory, not current names or a fresh verification certificate.
+
 ## Source evidence
 
 | Area | Inspected source and test witnesses | PRD owner |
