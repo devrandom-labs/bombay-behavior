@@ -1069,7 +1069,8 @@ with explicit selection available. Seven focused cases, both wrapper orders,
 move-only nominal messages and caller-local pure construction pass. No new public
 state/type/trait, storage or interpreter change. Its11 Nix checks,1,003 tests,
 123 doctests, package/archive and FIFO/keyed static controls pass; all14 current
-CI checks pass. It is ready for review, unpublished and lacks merge authorization.
+CI checks pass. It is ready for review and unpublished; current delivery
+authorization is recorded below.
 
 Finite owner a863633 follows pre-edit laws/tests5068f6a/569e4d6/bd27c9f and the
 removed candidate's recorded falsifier. Its tests cover zero/full/refill/take,
@@ -1155,8 +1156,8 @@ The prepared native migration preserves existing unbounded policies through
 UnlimitedStash rather than inventing refusal ports or capacities. Its11-path
 private patch touches10 additional files beyond the14-path native finite batch
 (24 native paths;52 with the28 owner paths). It adds no production lines,
-public types, policy, bounds or runtime machinery; combined production stays
-net294 (owner277/native17; facade+25/-8), two added public types. All255 original assertion
+public types, policy, bounds or runtime machinery; combined production is
+net339 after the private-name repair (owner322/native17; facade+25/-8), two added public types. All255 original assertion
 macro bodies/order/string bytes remain exact after formatting. A Never facade
 constructor comparison transfers to the existing real finite Documents fixture;
 all original compile denials remain, registered once. The manifest adds four
@@ -1169,8 +1170,12 @@ profile. The unchanged diagnostics checker passes all128 cases on both current a
 minimum compilers; the same25 focused cases pass debug/release on both. A fresh
 exclusive-target full workspace run passes791 tests with two existing controlled
 subprocess skips in295.082s. These are private source-selected proofs; registry,
-remote cancellation and authoritative native Nix gates remain separate. The patch is private pending the AGENTS file-budget
-expansion; the actual branch is clean at dc09bb after merging main49cc897 (internal TLS
+remote cancellation and authoritative native Nix gates remain separate. The user
+authorizes applying this exact24-file native caller batch and merging PR113/114
+plus normal publication after review/verification of the generated release PR.
+This permits the prepared11-path migration; later dependency/inventory adoption
+retains its separately measured scope. Before application, the actual branch is
+clean at5e6fd440 after merging main49cc897 (internal TLS
 dependency/locks/docs only, no Rust changes); the prepared patch still applies.
 Earlier private execution keeps its original graph, rather than certifying this
 new lock. Refreshed native e69c6dc with source-selected owner aafd1e9 separately
@@ -1194,7 +1199,7 @@ and original executable evidence revisions, and inventory finite Stash plus
 explicit UnlimitedStash (45→46 templates, unchanged19 runtime request families).
 Existing initialization, interpreter, custody and source obligations are reused;
 no production/type/bound change is justified. Prepare this only in another private
-copy now; it is outside the pending24-file caller-only approval and remains a
+copy now; it is outside the authorized24-file caller-only migration and remains a
 separately counted adoption prerequisite. Do not weaken the version assertion
 or rewrite historical evidence as current-source execution.
 
@@ -1244,7 +1249,7 @@ contents. Exact receipts are in the existing evidence root's send-names,
 send-names-common, send-names-stash and stash-limits/SEND-NAMES-* records.
 Both exact heads are ready and mergeable with all14 GitHub checks passing.
 The release skill's four-workspace preflight passes at809/aafd in8.222/8.218s.
-Merge/publication authorization remains pending; the new generic impls require
+The user authorizes merge/publication after generated-release review; the new generic impls require
 a reviewed breaking macro version, preserving compatibility for older published
 Actors users with their existing manual impls.
 
