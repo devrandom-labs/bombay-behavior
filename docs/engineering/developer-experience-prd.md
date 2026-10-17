@@ -1250,7 +1250,11 @@ send-names-common, send-names-stash and stash-limits/SEND-NAMES-* records.
 Both exact heads passed all14 GitHub checks, then merged under explicit user
 authorization: PR113 as99369ba and PR114 as21d95b5. Squash trees exactly match
 the reviewed feature trees. Main21d95b5 CI38990565430 passes all11 jobs; the
-normal Release38991329420 is preparing the official version PR. No new
+normal Release38991329420 succeeded and created official PR115. Its repaired
+head3a14b4c proposes Core/Actors029 and Macros016; all11 native gates pass
+in88.064s with1,035 tests/zero skips and123 doctests/zero ignored. Four-workspace
+preflight passes in25.679s, including current archives, the026 worker and the
+028 manual product. Fresh GitHub CI38992029952 is still running. No new
 registry publication is claimed.
 The release skill's four-workspace preflight passes at809/aafd in8.222/8.218s.
 The user authorizes merge/publication after generated-release review; the new generic impls require
@@ -1280,12 +1284,24 @@ verifier and one real notices fixture. Add one concrete manual-product consumer
 to the existing packaged check, retaining the026 worker and current README
 consumers. Reuse metadata-selected macro version checks and Cargo; no actor
 code, bounds, public types or dependency. Expected production Rust delta0;
-Python gate approximately+60 lines, fixture approximately+35. Actor states,
-subordinate sums, transition branches and public spellings stay unchanged; the
-new guard owns package compatibility, no runtime authority or history. Run the
-unchanged-source old-compatible/new-breaking selection controls before retaining
-it, and measure the complete actual release diff. Disposition remains pending
-these controls, official version review and complete release gates.
+The complete release diff is12 paths: Python+74/-23/net51, fixture+35, production
+Rust0 and public types0. The original preflight rejects all three stale nested
+locks and both README versions; repairs conserve every nonowner package record.
+The guard rejects the deliberately mislabelled compatible candidate at E0283
+and passes with the breaking version, selecting registry015 as verified by
+metadata. Each generated consumer uses its own target directory. Both reviews
+check source selection, exact original allocations/bytes/prefix and independent
+receipts, including the non-conflicting stock-worker falsifier. All838 owner
+inputs stay exact. Archives retain252 safe members/228 byte-exact Rust files and
+clean3a14b4c provenance. Actor states, subordinate sums, transition branches and
+public spellings stay unchanged: there is no actor production Rust delta, new
+authority, historical state, flag or structural syntax. Disposition pass for the
+package guard; GitHub gates, merge/publication and actual registry adoption
+remain open. Four package-fixture warnings, four intended unused-patch warnings,
+six unused license allowances, two duplicate groups and60 offline audit yank
+lookups remain explicit; native audit success is not fresh online yank evidence.
+The first evidence parser rejected literal ok(B-dot output; the corrected
+six-suite parse reads the unchanged transcript and changes no source or verdict.
 
 The user selects `application.shutdown()` as the canonical short application
 operation. This is a spelling change, not a joined-cleanup operation: preserve
@@ -1293,9 +1309,14 @@ the existing Result, exact rejection, static root authority and inferred lane;
 `retirement().await` still observes retirement. Inspect both ApplicationHandle
 and ApplicationLifecycle owners plus negative fixtures before editing. Prove the
 short name with a failing consumer first, then migrate real callers/docs without
-a competing alias. The current inventory finds110 files mentioning the old name
-across native source/tests/docs/tools; ownership review must distinguish any
-non-application operation. This is a separately measured post-release batch,
+a competing alias. The generic two-owner caller passes with the old spelling
+and fails exactly two E0599 errors with the new spelling, debug and optimized.
+Its original incorrect import earns no credit. Two source reviews confirm that
+only the two operation spellings change; compile-only checks prove no runtime
+law. The broader inventory includes123 files with compiler snapshots; six are
+InstalledActor-only and retain their lower-level operation. Remaining mixed
+application/installed documentation requires selective migration; checksum and
+minimum-compiler expectations need regeneration with unchanged denials. This is a separately measured post-release batch,
 not an implicit extension of the authorized24-file stash migration.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
