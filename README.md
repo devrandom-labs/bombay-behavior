@@ -1,8 +1,8 @@
 # Bombay Behavior
 
-> Core and Actors `0.28` provide named policy configuration, inferred startup
-> and replies, and complete action custody. Standard interpreter requests can
-> use `OwnedItem`. This release pairs with Macros `0.15.0`.
+> Core and Actors `0.29` add bounded holding and generic send insertion. Named
+> policy configuration, inferred startup and replies, and complete action
+> custody remain available. Standard interpreter requests can use `OwnedItem`. This release pairs with Macros `0.16.0`.
 > See the changelogs for public module moves and other breaking API changes.
 
 Bombay Behavior is the statically typed functional core of the Bombay actor
@@ -142,8 +142,8 @@ See [Nominal Behavior attribute](docs/behavior-attribute.md).
 
 ```toml
 [dependencies]
-bombay-behavior = "0.28"
-bombay-behavior-actors = "0.28"
+bombay-behavior = "0.29"
+bombay-behavior-actors = "0.29"
 ```
 
 Composition has two axes. `Behavior::layer` invokes a statically typed
