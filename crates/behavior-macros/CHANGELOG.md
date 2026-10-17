@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-macros-v0.15.0...bombay-behavior-macros-v0.16.0) - 2026-10-17
+
+### Fixed
+
+- *(effects)* [**breaking**] infer request lanes through generic send products ([#113](https://github.com/devrandom-labs/bombay-behavior/pull/113))
+
 ### Fixed
 
 - Generated send contracts avoid capturing caller parameters and referenced

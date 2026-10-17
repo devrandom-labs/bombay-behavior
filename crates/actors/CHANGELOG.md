@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.28.0...bombay-behavior-actors-v0.29.0) - 2026-10-17
+
+### Added
+
+- *(stash)* [**breaking**] bound held inputs and return complete refusals ([#114](https://github.com/devrandom-labs/bombay-behavior/pull/114))
+
+### Fixed
+
+- *(effects)* [**breaking**] infer request lanes through generic send products ([#113](https://github.com/devrandom-labs/bombay-behavior/pull/113))
+
 ### Fixed
 
 - Keep previously held, undelegated originals available through `take()` when
