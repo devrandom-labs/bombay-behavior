@@ -1325,7 +1325,8 @@ paths overlap to146 distinct files. Adoption owns root Cargo.toml/lock,
 crates/bombay/Cargo.toml, both Driver manifests and law_manifest.rs, the protected
 consumer lock and Engine fuzz manifest/lock. The fuzz target imports Behavior
 and the current Driver directly; both must select the same protocol owner.
-This is a budget proposal, not permission or an implemented rename. Expected
+The user authorizes this146-file cumulative scope. It does not authorize a new
+actor model or an implemented-name claim. Expected
 rename production line delta0; two existing method spellings replaced, no new
 public type, behavior, authority or policy. Preserve InstalledActor's separate
 lower-level contract. Prove the two-owner syntax first, then migrate all actual
@@ -1333,8 +1334,9 @@ callers, rustdoc and compiler expectations together; retain every failure denial
 and original assertion. Run the complete supported compiler/native/consumer
 gates before delivery. The exact path set is retained in the existing evidence
 root's shutdown-spelling/PROPOSED-SCOPE.json. Actual dependency adoption still
-requires the published version/checksum; pending budget approval does not stop
-the already authorized owner release.
+requires the published version/checksum. PR115 merged as55dbac2 after all14
+checks pass; its tree equals the fully tested3a14b4c tree. Main CI38992917401
+and normal publication remain pending; no manual dispatch bypass is allowed.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
