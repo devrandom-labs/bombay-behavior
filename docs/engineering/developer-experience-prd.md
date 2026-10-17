@@ -729,7 +729,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
-| DX04 | ApplicationOutcome joins work, native retirement, notifications and families; consuming completion returns value plus ApplicationRetirement or the original whole report. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection and final registry runtime delivery. Sourceeadea native/minimum workspace/remote gates pass; corrected41812fce archive journeys pass both compilers/profiles. |
+| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. Both report getters preserve native custody and independent failures; pre-edit denials, report-erasure inversions, six native regressions and two product laws pass. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection and final registry runtime delivery. Sourceeadea native/minimum workspace/remote gates pass; corrected41812fce archive journeys pass both compilers/profiles. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
@@ -749,7 +749,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX21 | Canonical `application.shutdown()` and advanced lifecycle access retain the original admission Result and inferred ingress. Both owners pass the pre-edit missing-method control and supported-compiler debug/optimized journeys. Root wrapper orders, request replay, natural completion and complete retirement retain their assertions; immutable compiler replay preserves missing/ambiguous authority denials. | Open: complete child-derived phases/drain/deadline/forced-retirement acceptance and packaged delivery. Final native repository gates pass. Admission does not imply joined cleanup. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. | Open: callback/associated-type distillation, complete family/root cleanup coexistence and final complete consumer/repository gates. |
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
-| DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
+| DX24 | Terminal evidence stays authoritative. Root/subtree report inspection survives completed selection, startup refusal, cancellation and a real notification panic without reclassifying actor failure; absent publication stays absent. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: remaining pressure/retry/drain inspection, sensitive-payload policy, bounded diagnostic dimensions/retention and final report delivery gates. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained. Final native protected gates pass132 outer cases with two expected failed child controls and four zero-match controls; passing retries do not explain the hang or establish compressed-content/permanent Darwin repair. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.29.0 and macros0.16.0 match actual registry checksums, tags/releases and228 shipped Rust files at55dbac2. Reviewed PR115, all14 GitHub checks, all11 native gates, four-workspace preflight and normal main-CI/publication workflows pass. Root/fuzz/protected locks select these registry owners; Driver inventory, fuzz compilation and both immutable compiler corpora pass. Corrected41812fce passes all25 native Nix gates. | Open: exact-head Linux gates and runtime publication. Failed runtime-only packaging on eadea00 led to approved41812fce: Engine0.3/macros0.2/runtime0.2, all-feature joint archives, supported-compiler native failure/retirement consumers and historical compatibility inversions. Feature/consumer/cost acceptance remains open. |
@@ -1116,23 +1116,61 @@ and assertions remain unchanged. All53 local guide links resolve. Actual native
 all-feature doctests also pass all six with zero ignores in74.320s, including
 their dependency rebuild. Original archives stay unchanged.
 
-The next proposed DX04/24 change has no production implementation yet. The
-existing joined root report is available inside Work but is lost to ordinary
-post-run inspection unless Work returns it itself. A complete real FIFO archive
-consumer adding only `outcome.root_report()` and `retirement.root_report()` fails
-with exactly two E0599 errors; the same journey without those calls executes
-successfully. Derived inspection law: retain the existing runtime-issued report
-independently of work, native receiving, notification and family results. An
-unpublished report remains absent, never fabricated success. Reuse the existing
-Observe publication and joined cleanup barrier; add no channel, trait, bound,
-actor state or public type. The proposed ownership product is Work × optional
-root report × native receiving × notification receiving × families; completed
-selection and `into_parts` must preserve all five axes. Prove native failure,
-absence, cancellation and telemetry-fault cuts before migrating other callers.
-Expected production delta is about+35 lines in application/{execution,http,outcome}.rs.
-The26 additional paths are two owners and24 existing caller/test files; the
-proposed cumulative scope is179, pending explicit approval under Bombay AGENTS.
-Exact pre-edit source, controls and path inventory: shutdown-spelling/ROOT-REPORT-DESIGN.json.
+Bombayb4b21f9 now retains the runtime-issued joined root report for DX04/24 for ordinary post-run
+inspection: `outcome.root_report()` and `retirement.root_report()`. Work returns
+its business value; callers need not return the report merely to inspect actor
+status. Before production edits, the complete real FIFO archive consumer failed
+with exactly two E0599 errors; its unchanged-journey control ran successfully.
+This is a derived inspection/custody law, not another actor-model effect or
+lifecycle authority. An unpublished report stays absent, never fabricated success.
+
+The complete ownership product is Work × optional root report × native receiving
+× notification receiving × families. Completed selection transfers every axis;
+other phases return the complete original outcome. `into_parts` returns all five
+axes, with the report second. Reuse the existing Observe pair, cleanup publication
+and join: the native cleanup handle carries a clone of its existing observation;
+family-only cleanup carries none. After joining, `try_get` reads the immutable
+snapshot without waiting for a publication that may never happen. Cold execution
+allocates no observation earlier. No new public type, trait, bound, channel,
+module, actor control state, effect lane or transition authority is introduced.
+
+The user authorized179 then184 cumulative paths on2026-10-17. The additional
+five existing test files contain twelve report-slot binding changes missed by
+the first scan. All7,639 original assertion sites survive; six native regressions
+and two product laws add55. Mechanical migration inserts only the report slot;
+three compiler-fixture hashes change and expected diagnostic bytes remain exact.
+Native success, initialization refusal, cold/running cancellation, both wrapper
+orders and a real notification panic pass before catalogue migration. Erasing
+only the acquired report causes five retention regressions to fail in each
+profile while the cold/absent control passes; exact source is restored afterward.
+Two independent test reviews inspect observables, custody and counterexamples.
+Actual owner debug/release each pass344 library and19 outcome tests; the six
+isolated native regressions also pass both profiles on1.96. Real FIFO and fixed
+supervision replacement/drain journeys pass debug/release. Workspace/Axum
+all-target checks and strict Clippy pass. Immutable1.99/1.96 replay passes all136
+cases with the same32 suites,28 targets and633 unchanged source inputs. Fresh
+full repository and actual-archive verification for this implementation remain
+required; earlier41812fce gates do not certify this source.
+
+Aggregate checkpoint: application work presence/custody and all native control
+sums remain unchanged; subordinate result alternatives and74 match arms remain
+unchanged. Three production owners grow182→228,1732→1753 and389→395 lines
+(+101/-28, net+73); this is a new inspection capability, not code reduction.
+Public types added/removed0/0; two getters are added. Surviving values are the
+same affine work, cleanup, native, notification and family products plus the
+existing Copy report. Scans find no arrival history, repeated cause, false
+cardinality, nested transition authority, semantic boolean or structural caller
+syntax. Ownership/runtime/Driver laws cross-checked; disposition pass. Exact
+source, two reviews, inversion and counts: shutdown-spelling/ROOT-REPORT-*.json.
+
+The frozen-source FIFO cost comparison repeats five processes per capacity and
+allocator mode on1.99 and1.96. Report preservation adds8bytes of peak heap
+(396226→396234 at capacity1024;142770→142778 at effective capacity2), no extra
+allocations and no retained heap: joined10768bytes, after host56bytes in one
+Tokio parker allocation,169 blocks through join/174 after host. Identical business
+source, lock, work and complete retirement are checked. System RSS is recorded
+without claiming improvement from its noisy variation; these results cover one
+root/worker/customer workload, not framework-wide costs.
 
 Official release PR381 at5d486b8 remains unmodified. Its exact Engine source and
 `^0.26.0` dependency (freshly resolving0.26.1) reject the unchanged0.25 historical
