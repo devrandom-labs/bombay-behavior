@@ -1393,8 +1393,9 @@ requires two additional native paths (146→148); the expectation inventory/patc
 are already scoped. Expected production delta0, new public types0, runtime
 changes0 and fixture edits0. The exact four-file patch and two source/oracle
 reviews are prepared under shutdown-spelling/WORKSPACE-VERIFIER.patch and
-WORKSPACE-VERIFIER-SCOPE.json. Those two extra paths remain unapplied pending
-the required change-budget authorization.
+WORKSPACE-VERIFIER-SCOPE.json. The user authorizes148 cumulative paths. Apply
+those two additional paths after the current frozen-source Nix run completes,
+then verify the final tree; no further permission is needed for this patch.
 
 Three actual Bombay journeys prove both sends accepted, both completely rejected,
 and first rejected without skipping the later accepted receipt. Both compilers
