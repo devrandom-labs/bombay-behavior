@@ -731,7 +731,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
 | DX04 | ApplicationOutcome joins work, native retirement, notifications and families; consuming completion returns value plus ApplicationRetirement or the original whole report. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection and final registry runtime delivery. Sourceeadea native/minimum workspace/remote gates pass; corrected41812fce archive journeys pass both compilers/profiles. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
-| DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Capacity2 reduces measured client peak heap at equal work. | Open: complete resource accounting, final-source/archive gates and comparable package/compile/runtime measurements. Existing measurements cover their recorded consumer and host only. |
+| DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Existing measurements cover their recorded consumer and host only. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
 | DX08 | Published owners preserve selected send lanes through wrappers and static denials. FIFO/keyed construction accepts ordinary named completion/business products. Published029/016 includes generic-product insertion and caller-name safety; owner gates, packaged consumers and complete missing/ambiguous controls pass. | Open: finish downstream retention, catalogue reconciliation and final delivery gates. Earlier native witnesses retain their recorded compiler/profile and source limits. |
 | DX09 | ActorExt adds the exact owning FinalizeOnShutdown and EstablishedTerminationMonitor. Missing-method regressions, order/effect/refusal witnesses, archive consumers and recorded native gates pass. | Open: remaining decoration/catalogue audit and final combined-source reconciliation. |
@@ -752,8 +752,8 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence stays authoritative. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: bounded borrowed operational inspection, telemetry-failure independence, sensitive-payload policy and bounded diagnostic dimensions/retention. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained. Final native protected gates pass132 outer cases with two expected failed child controls and four zero-match controls; passing retries do not explain the hang or establish compressed-content/permanent Darwin repair. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
-| DX27 | Published Behavior/Actors0.29.0 and macros0.16.0 match actual registry checksums, tags/releases and228 shipped Rust files at55dbac2. Reviewed PR115, all14 GitHub checks, all11 native gates, four-workspace preflight and normal main-CI/publication workflows pass. Root/fuzz/protected locks select these registry owners; Driver inventory, fuzz compilation and both immutable compiler corpora pass. | Open: final resulting-source native/Linux gates and runtime publication. Failed runtime-only packaging on eadea00 led to approved41812fce: Engine0.3/macros0.2/runtime0.2, all-feature joint archives, supported-compiler native failure/retirement consumers and historical compatibility inversions. Feature/consumer/cost acceptance remains open. |
-| DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. This table is the sole DX01–DX28 disposition checklist. | Open: compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. Current contract/evidence is compacted; three existing ignored topology excerpts still need synchronization with their compiled source. |
+| DX27 | Published Behavior/Actors0.29.0 and macros0.16.0 match actual registry checksums, tags/releases and228 shipped Rust files at55dbac2. Reviewed PR115, all14 GitHub checks, all11 native gates, four-workspace preflight and normal main-CI/publication workflows pass. Root/fuzz/protected locks select these registry owners; Driver inventory, fuzz compilation and both immutable compiler corpora pass. Corrected41812fce passes all25 native Nix gates. | Open: exact-head Linux gates and runtime publication. Failed runtime-only packaging on eadea00 led to approved41812fce: Engine0.3/macros0.2/runtime0.2, all-feature joint archives, supported-compiler native failure/retirement consumers and historical compatibility inversions. Feature/consumer/cost acceptance remains open. |
+| DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. Its three partial ignored topology copies are replaced by links to complete compiled sources; both supported archive previews pass six doctests/zero ignores. This table is the sole DX01–DX28 disposition checklist. | Open: compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. Current contract/evidence is compacted. |
 
 ### Retained contracts and evidence
 
@@ -932,7 +932,7 @@ falsifiers remain in45ab42d and the retained timer tests.
 | Isolated minimum workspace with reviewed diagnostics |791 default/Axum outer passes, two existing parent-invoked child skips; the separate corrected remote debug matrix passes. | No remote credit comes from zero-case feature-disabled targets. Final-source minimum debug/release remote matrices each pass426 outer cases/20 UI fixtures with all633 prepared inputs unchanged. The final-source default/Axum workspace also passes791 outer cases/136 UI fixtures in87.305s, retaining both parent-invoked child skips. |
 | Actual4fcf68d sanitizer/coverage gates | Driver2,048 bounded cases; Observe1,024 for each of four targets. Owner coverage passes:737/818 Driver,962/1001 actor execution,95/97 actor outcome,502/525 Observe lines. | Existing floors90/93/90/90% are unchanged. Bounded campaigns and line coverage are not exhaustive invariant or runtime-performance proof. |
 | Final Bombayeadea00 | All25 native Darwin Nix gates pass in3459.500s on the unchanged633-input tree. Every output has its expected deriver and content hash. Workspace:791 outer successes/136 UI cases; remote debug/release:426 outer successes/20 UI each. Protected consumers:132 outer successes; two deliberate failed child controls and four zero-match controls are checked by their parents. Registry adoption preserves all396 complete unrelated records and the354-node native graph. | Both minimum remote profiles pass426 outer cases/20 UI; minimum workspace passes791/136 UI. Two existing parent-invoked workspace child skips remain explicit. Windows metadata is not execution. Draft [Bombay PR386](https://github.com/devrandom-labs/bombay/pull/386) runs separate Linux CI. Workspace success does not establish package correctness: actual runtime archive verification fails below. |
-| Corrected Bombay41812fce | Strict1.99/1.96 replay passes136 cases/32 suites/28 targets, preserving all633 inputs. Clean-commit three-package/all-feature verification passes both compilers. Actual extracted consumers pass24 selected native cases per profile/compiler, three renamed tests and six executable examples each; all seven examples compile. All501 archive files and19 caller Rust files remain unchanged. Archived doctests each pass six cases with three existing ignored excerpts. | Engine0.3.0/macros0.2.0/runtime0.2.0 are prepared, not published. Complete new-source native/Linux Nix gates remain pending. Owner-relative compiler snapshots are separate from the selected native archive tests; their strict source replays remain mandatory. Historical compatibility inversions prove why smaller release bumps are invalid. |
+| Corrected Bombay41812fce | All25 native Nix gates pass in3185.671s on the unchanged633-input tree. Strict1.99/1.96 replay passes136 cases/32 suites/28 targets. Clean-commit three-package/all-feature verification passes both compilers. Actual extracted consumers pass24 selected native cases per profile/compiler, three renamed tests and six executable examples each; all seven examples compile. All501 archive files and19 caller Rust files remain unchanged. Archived doctests each pass six cases with three existing ignored excerpts. | Engine0.3.0/macros0.2.0/runtime0.2.0 are prepared, not published. Exact-head Linux Nix CI remains pending. Eight successful outputs were unavailable during post-run hash inspection; their exact derivations are being realized again with local GC roots. Owner-relative compiler snapshots remain separate from the native archive selection. Historical compatibility inversions prove why smaller release bumps are invalid. |
 
 Historical full failures retain their exact outcomes: initial Darwin signing and
 disk exhaustion; e629464 exits1 with16 passing/nine failing gates; the later
@@ -975,6 +975,30 @@ owned events16→24bytes, requests24→32, receipts8→16, queue120 unchanged. A
 key grows8→16:64 named timers retain6672→7184bytes (+512),18 allocations each,
 total allocated13008→14000. No whole-application RSS, throughput or latency gain
 follows.
+
+An isolated optimized FIFO search journey from the actual41812fce archives uses
+one root, one worker and one typed customer. Five interleaved processes per
+capacity and allocator mode preserve the same job, complete retirement, cleanup
+and notification results. Configuring both actor/client mailboxes to minimum1
+(effective2), instead of1024, reduces measured peak heap396226→142770bytes and
+System-allocator median child RSS4161536→3883008bytes. These are buffer-capacity
+tradeoffs for one workload, not historical implementation or framework-wide
+performance gains. Joined retained heap is10768bytes in both cases. After the
+caller host drops, one56-byte allocation remains; an independent profile traces
+it to Tokio's thread-local CURRENT_PARKER during blocking-pool shutdown.
+The consumer selects Tokio1.53.3, separately from workspace1.53.1.
+
+The4096-byte allocation/release calibration, independent OS RSS-unit calibration,
+strict result classifier and eight missing/conflicting-result controls are
+reviewed. A System-for-dhat inversion fails before actor work. That inversion
+first exposed same-name Cargo cache reuse; the initial samples are superseded.
+Accepted samples use separate source-specific targets and pinned1.99. Pinned1.96
+independently reproduces every exact heap count in20 further process samples;
+its System RSS medians are4128768→3850240bytes. A mistaken
+1.95-shell attempt remains uncredited and is repeated correctly. Receipts:
+shutdown-spelling/package-preview/POOL-MEMORY-SUPPORTED-COMPILERS-VERIFIED.json
+and its40 raw per-process results. Portable memory and latency
+remain open; retained heap is not claimed to be zero.
 
 The repeated optimized stash probe uses64 move-only512-byte messages, five
 repetitions/policy/compiler (50 runs), ten empty controls and payload calibration.
@@ -1075,7 +1099,8 @@ Rust1.99/1.96 pass on41812fce in203.362/208.448s with all633 inputs and exact
 136/32/28 coverage conserved. All-feature native/current and Windows/minimum
 metadata pass; the354-node native graph has identical edges, kinds and features
 after normalizing only the three intentional workspace version identities.
-Windows execution and full resulting-source gates remain unclaimed. Actual clean
+Windows execution remains unclaimed; all25 resulting-source native Nix gates
+pass at41812fce without changing any of633 inputs. Actual clean
 41812fce three-package/all-feature verification also passes in8.655s: all82
 production Rust files and VCS paths match, normalized manifests retain no paths
 or patches, and the runtime lock's Engine/macro checksums match the exact tested
@@ -1083,9 +1108,31 @@ archives. Its separate actual archive journeys pass24 native cases/profile on ea
 supported compiler, three renamed tests and six terminating examples each,
 conserving501 archive files and19 caller Rust files.
 Pinned1.96 all-feature package verification passes in68.860s too. Both archive
-doctest runs pass six cases; the same three pre-existing partial topology excerpts
-remain ignored and explicitly open under DX28. The mutable doctest host is a
-separate archive copy; original archives and source Rust remain unchanged.
+doctest runs pass six cases; three pre-existing partial topology excerpts remain
+ignored at41812fce. The guide correction removes these duplicate excerpts and
+links their complete compiled examples/tests. Its separate archive previews pass
+all six doctests with zero ignores on both supported compilers; all Rust tests
+and assertions remain unchanged. All53 local guide links resolve. Actual native
+all-feature doctests also pass all six with zero ignores in74.320s, including
+their dependency rebuild. Original archives stay unchanged.
+
+The next proposed DX04/24 change has no production implementation yet. The
+existing joined root report is available inside Work but is lost to ordinary
+post-run inspection unless Work returns it itself. A complete real FIFO archive
+consumer adding only `outcome.root_report()` and `retirement.root_report()` fails
+with exactly two E0599 errors; the same journey without those calls executes
+successfully. Derived inspection law: retain the existing runtime-issued report
+independently of work, native receiving, notification and family results. An
+unpublished report remains absent, never fabricated success. Reuse the existing
+Observe publication and joined cleanup barrier; add no channel, trait, bound,
+actor state or public type. The proposed ownership product is Work × optional
+root report × native receiving × notification receiving × families; completed
+selection and `into_parts` must preserve all five axes. Prove native failure,
+absence, cancellation and telemetry-fault cuts before migrating other callers.
+Expected production delta is about+35 lines in application/{execution,http,outcome}.rs.
+The26 additional paths are two owners and24 existing caller/test files; the
+proposed cumulative scope is179, pending explicit approval under Bombay AGENTS.
+Exact pre-edit source, controls and path inventory: shutdown-spelling/ROOT-REPORT-DESIGN.json.
 
 Official release PR381 at5d486b8 remains unmodified. Its exact Engine source and
 `^0.26.0` dependency (freshly resolving0.26.1) reject the unchanged0.25 historical
