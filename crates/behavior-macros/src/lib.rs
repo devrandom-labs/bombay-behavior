@@ -483,6 +483,19 @@ struct GenericUses {
     lifetimes: std::collections::BTreeSet<String>,
 }
 
+impl GenericUses {
+    // Raw and ordinary spellings name the same Rust identifier. Also avoid
+    // references: a new parameter must not capture an authored type alias.
+    fn fresh(&mut self, preferred: &str) -> Ident {
+        let mut name = preferred.to_owned();
+        while self.identifiers.contains(&name) || self.identifiers.contains(&format!("r#{name}")) {
+            name.push('_');
+        }
+        self.identifiers.insert(name.clone());
+        Ident::new(&name, Span::mixed_site())
+    }
+}
+
 impl<'ast> Visit<'ast> for GenericUses {
     fn visit_ident(&mut self, ident: &'ast Ident) {
         self.identifiers.insert(ident.to_string());
@@ -521,7 +534,9 @@ fn product_generics(item: &ItemImpl, fields: &[NamedField]) -> Generics {
 fn named_send_interpretation(
     loans: &[&Ident],
     field_types: &[&Type],
-    _settlements: &Ident,
+    interpreter: &Ident,
+    root_event: &Ident,
+    path: &Ident,
     behavior: &TokenStream2,
 ) -> TokenStream2 {
     let turns = loans.iter().zip(field_types).enumerate().map(|(index, (loan, field_ty))| {
@@ -539,7 +554,7 @@ fn named_send_interpretation(
             {
                 let ::core::option::Option::Some(#behavior::InterpretationProgress::Interpreting(custody)) = progress else { return; };
                 let (#(#current_loan,)*) = custody;
-                <#field_ty as #behavior::InterpretSends<__BombayInterpreter, __BombayRootEvent, __BombayPath>>::interpret(#loan, interpreter)
+                <#field_ty as #behavior::InterpretSends<#interpreter, #root_event, #path>>::interpret(#loan, interpreter)
             }.await;
             // All direct child loans below are synchronous and end before
             // constructing the next child producer.
@@ -585,18 +600,24 @@ fn named_settlement_contract(
     field_types: &[Type],
     behavior: &TokenStream2,
 ) -> TokenStream2 {
+    let mut uses = GenericUses::default();
+    uses.visit_generics(generics);
+    uses.visit_ident(name);
+    for field_ty in field_types {
+        uses.visit_type(field_ty);
+    }
+    let settlement_host = uses.fresh("__BombaySettlementHost");
+    let settlement_event = uses.fresh("__BombaySettlementEvent");
     let mut classification_generics = generics.clone();
     let mut custody_generics = generics.clone();
+    custody_generics.params.push(parse_quote!(#settlement_host));
     custody_generics
         .params
-        .push(parse_quote!(__BombaySettlementHost));
-    custody_generics
-        .params
-        .push(parse_quote!(__BombaySettlementEvent));
+        .push(parse_quote!(#settlement_event));
     custody_generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__BombaySettlementHost: ::core::marker::Send));
+        .push(parse_quote!(#settlement_host: ::core::marker::Send));
     let mut combined_status = quote!(#behavior::SettlementStatus::Accepted);
     for (field, field_ty) in fields.iter().zip(field_types) {
         classification_generics
@@ -608,8 +629,8 @@ fn named_settlement_contract(
             .predicates
             .push(parse_quote!(
                 #field_ty: #behavior::SourceSettlementCustody<
-                    __BombaySettlementHost,
-                    __BombaySettlementEvent,
+                    #settlement_host,
+                    #settlement_event,
                 > + ::core::marker::Send
             ));
         combined_status = quote! {
@@ -621,7 +642,7 @@ fn named_settlement_contract(
     let (classification_impl, _, classification_where) = classification_generics.split_for_impl();
     let (custody_impl, _, custody_where) = custody_generics.split_for_impl();
     let source_settlements = field_types.iter().map(|ty| quote!(#ty)).collect::<Vec<_>>();
-    let source_custody = field_types.iter().map(|ty| quote!(<#ty as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::Custody)).collect::<Vec<_>>();
+    let source_custody = field_types.iter().map(|ty| quote!(<#ty as #behavior::SourceSettlementCustody<#settlement_host, #settlement_event>>::Custody)).collect::<Vec<_>>();
     let (source_product, source_owner) =
         source_product_custody(&source_settlements, &source_custody, behavior);
     let source_input = fields.iter().rev().fold(
@@ -642,7 +663,7 @@ fn named_settlement_contract(
             }
         }
 
-        impl #custody_impl #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent> for #settlement_type #custody_where {
+        impl #custody_impl #behavior::SourceSettlementCustody<#settlement_host, #settlement_event> for #settlement_type #custody_where {
             type Custody = #source_owner;
             fn prepare_source(progress: &mut ::core::option::Option<#behavior::SourceProgress<Self, Self::Custody>>) {
                 let original = match progress.take() {
@@ -651,7 +672,7 @@ fn named_settlement_contract(
                 };
                 // The concrete Core tuple prepare only decomposes; it calls no child method.
                 let mut product = ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_input));
-                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::prepare_source(&mut product);
+                <#source_product as #behavior::SourceSettlementCustody<#settlement_host, #settlement_event>>::prepare_source(&mut product);
                 *progress = match product {
                     ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_output)) => ::core::option::Option::Some(#behavior::SourceProgress::Original(#name { #(#fields,)* })),
                     ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)) => ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)),
@@ -659,8 +680,8 @@ fn named_settlement_contract(
                     ::core::option::Option::None => ::core::option::Option::None,
                 };
             }
-            fn offer_next_to_source(custody: &mut Self::Custody, host: &mut __BombaySettlementHost) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send {
-                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::offer_next_to_source(custody, host)
+            fn offer_next_to_source(custody: &mut Self::Custody, host: &mut #settlement_host) -> impl ::core::future::Future<Output = ()> + ::core::marker::Send {
+                <#source_product as #behavior::SourceSettlementCustody<#settlement_host, #settlement_event>>::offer_next_to_source(custody, host)
             }
             fn finish_source(progress: &mut ::core::option::Option<#behavior::SourceProgress<Self, Self::Custody>>) {
                 let custody = match progress.take() {
@@ -668,7 +689,7 @@ fn named_settlement_contract(
                     retained => { *progress = retained; return; }
                 };
                 let mut product = ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody));
-                <#source_product as #behavior::SourceSettlementCustody<__BombaySettlementHost, __BombaySettlementEvent>>::finish_source(&mut product);
+                <#source_product as #behavior::SourceSettlementCustody<#settlement_host, #settlement_event>>::finish_source(&mut product);
                 *progress = match product {
                     ::core::option::Option::Some(#behavior::SourceProgress::Original(#source_output)) => ::core::option::Option::Some(#behavior::SourceProgress::Original(#name { #(#fields,)* })),
                     ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)) => ::core::option::Option::Some(#behavior::SourceProgress::Offering(custody)),
@@ -694,26 +715,34 @@ fn named_send_contract(
     settlement_name: &Ident,
     behavior: &TokenStream2,
 ) -> TokenStream2 {
+    let mut uses = GenericUses::default();
+    uses.visit_generics(generics);
+    uses.visit_ident(name);
+    for field_ty in field_types {
+        uses.visit_type(field_ty);
+    }
+    let event = uses.fresh("__BombayEvent");
+    let interpreter = uses.fresh("__BombayInterpreter");
+    let root_event = uses.fresh("__BombayRootEvent");
+    let path = uses.fresh("__BombayPath");
     let (_, type_generics, _) = generics.split_for_impl();
     let mut effects_generics = generics.clone();
     let mut logical_generics = generics.clone();
     let mut settlement_generics = generics.clone();
     let mut lawful_generics = generics.clone();
-    lawful_generics.params.push(parse_quote!(__BombayEvent));
+    lawful_generics.params.push(parse_quote!(#event));
     let mut interpretation_generics = generics.clone();
     interpretation_generics
         .params
-        .push(parse_quote!(__BombayInterpreter));
+        .push(parse_quote!(#interpreter));
     interpretation_generics
         .params
-        .push(parse_quote!(__BombayRootEvent));
-    interpretation_generics
-        .params
-        .push(parse_quote!(__BombayPath));
+        .push(parse_quote!(#root_event));
+    interpretation_generics.params.push(parse_quote!(#path));
     interpretation_generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__BombayInterpreter: ::core::marker::Send));
+        .push(parse_quote!(#interpreter: ::core::marker::Send));
     interpretation_generics
         .make_where_clause()
         .predicates
@@ -735,15 +764,15 @@ fn named_send_contract(
         lawful_generics
             .make_where_clause()
             .predicates
-            .push(parse_quote!(#field_ty: #behavior::SendsFor<__BombayEvent>));
+            .push(parse_quote!(#field_ty: #behavior::SendsFor<#event>));
         interpretation_generics
             .make_where_clause()
             .predicates
             .push(parse_quote!(
                 #field_ty: #behavior::InterpretSends<
-                    __BombayInterpreter,
-                    __BombayRootEvent,
-                    __BombayPath,
+                    #interpreter,
+                    #root_event,
+                    #path,
                 >
             ));
         logical_protocols = quote!(
@@ -774,8 +803,14 @@ fn named_send_contract(
     let loan_fields = interpretation_loans.iter().collect::<Vec<_>>();
     let remaining_interpretations =
         Ident::new("__bombay_remaining_interpretations", Span::mixed_site());
-    let interpretation =
-        named_send_interpretation(&loan_fields, field_types, settlement_name, behavior);
+    let interpretation = named_send_interpretation(
+        &loan_fields,
+        field_types,
+        &interpreter,
+        &root_event,
+        &path,
+        behavior,
+    );
     let source_settlements = field_types
         .iter()
         .map(|ty| quote!(<#ty as #behavior::SendSettlements>::Settlements))
@@ -838,7 +873,7 @@ fn named_send_contract(
             type Protocols = #logical_protocols;
         }
 
-        impl #lawful_impl #behavior::SendsFor<__BombayEvent>
+        impl #lawful_impl #behavior::SendsFor<#event>
             for #name #type_generics #lawful_where
         {}
 
@@ -888,14 +923,14 @@ fn named_send_contract(
 
         impl #interpretation_impl
             #behavior::InterpretSends<
-                __BombayInterpreter,
-                __BombayRootEvent,
-                __BombayPath,
+                #interpreter,
+                #root_event,
+                #path,
             > for #name #type_generics #interpretation_where
         {
             fn interpret(
                 progress: &mut ::core::option::Option<#behavior::InterpretationProgress<Self,Self::InterpretationCustody,Self::Settlements>>,
-                interpreter: &mut __BombayInterpreter,
+                interpreter: &mut #interpreter,
             ) -> impl ::core::future::Future<Output=()> + ::core::marker::Send {
                 async move {
                     #interpretation
@@ -911,6 +946,10 @@ fn named_send_contract(
 )]
 fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
     let behavior = behavior_crate()?;
+    let mut uses = GenericUses::default();
+    uses.visit_derive_input(&input);
+    let send_input = uses.fresh("__BombayInput");
+    let send_path = uses.fresh("__BombaySendPath");
     let name = input.ident;
     let generics = input.generics;
     let Data::Struct(data) = input.data else {
@@ -995,11 +1034,54 @@ fn derive_send_product_contract(input: DeriveInput) -> Result<TokenStream2> {
         &settled_fields,
         &behavior,
     );
-    Ok(quote!(#send_contract #settlement_contract))
+    let send_inputs =
+        field_names
+            .iter()
+            .zip(&field_types)
+            .enumerate()
+            .map(|(index, (field, field_ty))| {
+                let mut insertion_generics = generics.clone();
+                insertion_generics.params.push(parse_quote!(#send_input));
+                insertion_generics.params.push(parse_quote!(#send_path));
+                insertion_generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(
+                        #field_ty: #behavior::SendInput<#send_input, #send_path>
+                    ));
+                let (insertion_impl, _, insertion_where) = insertion_generics.split_for_impl();
+                // Disjoint existing witnesses identify a field without changing the
+                // field's own semantic lane or choosing between duplicate inputs.
+                let path = (0..index).fold(
+                    quote!((#behavior::Own, #send_path)),
+                    |path, _| quote!(#behavior::Inside<#path>),
+                );
+                quote! {
+                    impl #insertion_impl #behavior::SendInput<#send_input, #path>
+                        for #name #type_generics #insertion_where
+                    {
+                        fn emit(&mut self, input: #send_input) {
+                            <#field_ty as #behavior::SendInput<
+                                #send_input,
+                                #send_path,
+                            >>::emit(&mut self.#field, input);
+                        }
+                    }
+                }
+            });
+    Ok(quote!(#send_contract #settlement_contract #(#send_inputs)*))
 }
 
 /// Derive the ordered send and settlement contracts for a named generic
 /// product whose fields are its lane type parameters.
+///
+/// Each field also forwards its existing typed SendInput capability. Unique
+/// inputs infer their lane through nested products and wrappers; duplicate
+/// capabilities remain ambiguous. Insertion moves one original input into one
+/// lane, retaining all other fields and their ordering. Nominal actor products
+/// keep their separately generated semantic lane contracts. Caller parameter
+/// names, including raw identifiers, need no reserved implementation prefix;
+/// generated private parameters avoid declarations and referenced type names.
 #[proc_macro_derive(SendProduct)]
 pub fn derive_send_product(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -1026,6 +1108,15 @@ fn generate_sends(
             visibility,
         }) => (product, visibility),
     };
+    let mut uses = GenericUses::default();
+    uses.visit_item_impl(item);
+    for field in &product.fields {
+        uses.visit_type(&field.ty);
+    }
+    let send_input = uses.fresh("__BombayInput");
+    let address = uses.fresh("__BombayAddress");
+    let phase = uses.fresh("__BombayPh");
+    let birth = uses.fresh("__BombayBirth");
     let name = format_ident!("{}Sends", actor);
     let settlements_name = format_ident!("{}Settlements", actor);
     let field_names: Vec<_> = product.fields.iter().map(|field| &field.name).collect();
@@ -1060,9 +1151,9 @@ fn generate_sends(
                 quote! {
                     /// Append one value to this generated semantic send lane.
                     #[must_use]
-                    fn #method<__BombayInput>(self, input: __BombayInput) -> Self
+                    fn #method<#send_input>(self, input: #send_input) -> Self
                     where
-                        Self: #behavior::AppendSend<__BombayInput, #lane>;
+                        Self: #behavior::AppendSend<#send_input, #lane>;
                 }
             });
 
@@ -1071,11 +1162,11 @@ fn generate_sends(
         .zip(lane_names.iter())
         .map(|(method, lane)| {
             quote! {
-                fn #method<__BombayInput>(self, input: __BombayInput) -> Self
+                fn #method<#send_input>(self, input: #send_input) -> Self
                 where
-                    Self: #behavior::AppendSend<__BombayInput, #lane>,
+                    Self: #behavior::AppendSend<#send_input, #lane>,
                 {
-                    <Self as #behavior::AppendSend<__BombayInput, #lane>>::append_send(
+                    <Self as #behavior::AppendSend<#send_input, #lane>>::append_send(
                         self,
                         input,
                     )
@@ -1084,21 +1175,17 @@ fn generate_sends(
         });
 
     let mut actions_impl_generics = product_generics.clone();
-    actions_impl_generics
-        .params
-        .push(parse_quote!(__BombayAddress));
-    actions_impl_generics.params.push(parse_quote!(__BombayPh));
-    actions_impl_generics
-        .params
-        .push(parse_quote!(__BombayBirth));
+    actions_impl_generics.params.push(parse_quote!(#address));
+    actions_impl_generics.params.push(parse_quote!(#phase));
+    actions_impl_generics.params.push(parse_quote!(#birth));
     actions_impl_generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__BombayAddress: #behavior::Address));
+        .push(parse_quote!(#address: #behavior::Address));
     actions_impl_generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__BombayBirth: #behavior::BirthMode));
+        .push(parse_quote!(#birth: #behavior::BirthMode));
     actions_impl_generics
         .make_where_clause()
         .predicates
@@ -1111,18 +1198,18 @@ fn generate_sends(
         .zip(field_types.iter())
         .map(|((lane, field), field_ty)| {
             let mut generics = product_generics.clone();
-            generics.params.push(parse_quote!(__BombayInput));
+            generics.params.push(parse_quote!(#send_input));
             generics.make_where_clause().predicates.push(parse_quote!(
-                #field_ty: #behavior::SendInput<__BombayInput, #behavior::Own>
+                #field_ty: #behavior::SendInput<#send_input, #behavior::Own>
             ));
             let (impl_generics, _, where_clause) = generics.split_for_impl();
             quote! {
-                impl #impl_generics #behavior::SendInput<__BombayInput, #lane>
+                impl #impl_generics #behavior::SendInput<#send_input, #lane>
                     for #name #type_generics #where_clause
                 {
-                    fn emit(&mut self, input: __BombayInput) {
+                    fn emit(&mut self, input: #send_input) {
                         <#field_ty as #behavior::SendInput<
-                            __BombayInput,
+                            #send_input,
                             #behavior::Own,
                         >>::emit(&mut self.#field, input);
                     }
@@ -1185,10 +1272,10 @@ fn generate_sends(
 
         impl #actions_impl_generics #actions_name #type_generics
             for #behavior::Actions<
-                __BombayAddress,
-                __BombayPh,
+                #address,
+                #phase,
                 #name #type_generics,
-                __BombayBirth,
+                #birth,
             >
             #actions_where_clause
         {
@@ -1317,7 +1404,8 @@ fn generate_births(
 /// impl containing `receive(&mut self, from, message)` and, optionally,
 /// `init(&mut self)`. Omitting `init` selects the behavior algebra's empty
 /// initialization transition. The original impl and methods are preserved
-/// unchanged.
+/// unchanged. Generated send contracts preserve caller parameter and referenced
+/// type names; public product and lane names remain derived from the actor.
 ///
 #[proc_macro_attribute]
 #[allow(

@@ -149,6 +149,22 @@ wrapper-owned selection is now `(Own, Path)` and inner selection is
 This is a source break for explicit wrapper proofs. Interpretation order,
 emitter ingress, request rejection and settlement custody are unchanged.
 
+Caller generic parameters and referenced type aliases need no reserved macro
+prefix. Private generated parameters avoid those names, including raw spellings;
+public actor product and lane names stay unchanged. No migration is needed for
+this naming repair.
+
+Generic `SendProduct` derives forward each field's existing `SendInput`
+capability, including nested nominal actor lanes. Ordinary callers continue to
+write `Actions::cont().with_send(request)` when exactly one lane accepts that
+request. For explicit duplicate selection, field zero uses `(Own, Path)` and
+successive fields wrap that witness in `Inside`; this selects a field only and
+does not change interpretation order or emitter ingress. Insertion adds no
+`Clone` or thread-transfer bound; individual delivery and interpretation
+contracts retain their existing requirements. Remove manual insertion impls
+that overlap these newly generated witnesses. Nominal actor lane tags are
+unchanged and gain no second competing route.
+
 Composition must preserve these invariants:
 
 - every accepted event produces one result;
