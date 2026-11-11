@@ -740,7 +740,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers and typed request custody are published; matching runtime and caller migration are on the isolated Bombay branch. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: remaining acceptance cuts and coordinated runtime archives. Final registry029 native Bombay/protected gates pass; they do not certify the complete programme. |
-| DX14 | Published029 retains finite Stash admission and complete refusal custody. PR117 merged the user-selected Machine retained-progress law, original-input errors and one-time take. PR119 merged finite Machine admission shared with Stash, preserves both timeout/shutdown orders and refuses complete originals through normal Actions. All11 native Nix gates pass with1,051 cases/zero skips; four existing sequence fuzzers pass10,000 cases each. The real Application journey passes source and extracted archives on1.96/1.99 debug/release. Capacity inversions fail and exact restoration passes; all14 feature checks and main CI pass. | Open: registry publication and catalogue acceptance. Source/package proof does not establish a released runtime upgrade or bound outer queues, runtime mailboxes or allocation bytes. |
+| DX14 | Published030 includes finite Stash/Machine admission, complete refusals and the user-selected retained-progress law. PR117/119 and release PR118 pass their exact-head checks; main CI and normal publication succeed. Both registry archives match checksums and production source; tags identify628649d. All11 native owner gates pass with1,051 cases/zero skips; four sequence fuzzers pass10,000 cases each. The real Application journey passes source and extracted feature archives on1.96/1.99 debug/release; capacity inversions fail and exact restoration passes. Bombay acknowledged the released versions and migration. | Open: registry-based runtime adoption and complete catalogue acceptance. The owner limits count held inputs, independently of outer queues, runtime mailboxes and allocation bytes. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: coordinated runtime archives, configured-service costs and complete delivery. Final integrated native runtime/repository gates pass. Earlier child-oracle/work-entry falsifiers and corrected evidence retain their limits. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete registry029 catalogue reconciliation, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -1304,6 +1304,41 @@ paths; its measured production delta was already included. Standing user scope
 approval covers the corrected total. This receipt is not registry or downstream
 adoption proof, and the larger programme remains open.
 
+Release030 delivery,2026-11-11: all14 exact33a7da5 release-PR checks pass.
+Previously enabled squash auto-merge commits PR118 as628649da014a527d47f21567a859c5c78494df13
+at16:41:32UTC. Main CI43060819819 passes, and its normal publication workflow
+43062619719 succeeds without dispatch. Behavior0.30.0 is published at17:00:14UTC
+and Actors0.30.0 at17:00:22UTC; Macros remains0.16.0. Both registry entries are
+available and unyanked. Downloaded archives match registry SHA-256 values:
+Core a053cef32c83bfd0df2fb146d2163a9d78a5e71534febfbd5601087040776b27;
+Actors af2978fe3eda8157844a8929b82df5c0454bc4946478993a5c0740fdf4259641.
+Their production source trees equal checkout, and each archive's VCS metadata
+and annotated release tag identify628649d. Exact receipts and actual registry
+archives are preserved under `restart-2026-11-11/release030-*`.
+[Core release](https://github.com/devrandom-labs/bombay-behavior/releases/tag/bombay-behavior-v0.30.0),
+[Actors release](https://github.com/devrandom-labs/bombay-behavior/releases/tag/bombay-behavior-actors-v0.30.0).
+
+The release correction passes the required four-workspace preflight, archive
+consumer and all11 native Nix checks, including1,051 nextest cases/zero skips
+and78 checked negative diagnostics. Its complete diff contains nine version,
+lock, installation-documentation, changelog and existing-record paths, with no
+Rust implementation or test changes. Existing packaged-consumer dead-code and
+deliberate unused compatibility-patch warnings remain explicit. No whole-runtime
+or fresh registry-based Bombay upgrade is credited from these owner gates.
+
+The user-requested notice is queued to the rediscovered Bombay remote-actor
+session01a1ca41-7633-7a11-bc73-53ad7779597e as01a1cb90-7e3d-7992-b0fc-2ab36dafa134.
+It names exact published versions/links, retained-progress and original-input
+error migration, bounded Machine syntax and the verification scope. Bombay
+acknowledges receipt at17:04:07UTC and17:06:01UTC, retaining those details and its
+existing remote-actor goal. It preserves PR412's dependency set while its Nix
+gate is open, then will qualify registry adoption in the existing step order.
+Delivery and acknowledgment are established independently; complete notice and
+receipts remain in the existing `bombay-release-notices.md` handoff record.
+This closes owner030 publication and its release notice. Runtime adoption,
+proportional terminal recovery, remaining catalogue/privacy work and broader
+resource/compile/runtime measurements remain open under the same DX01–DX28 goal.
+
 #### Timer ownership — DX13/16
 
 Ordinary OneShot, Periodic, Deadline and ReceiveTimeout construction takes the
@@ -1333,6 +1368,7 @@ falsifiers remain in45ab42d and the retained timer tests.
 
 | Exact scope | Executed result | Limit |
 | --- | --- | --- |
+| Published owner628649d, Behavior/Actors0.30.0 and unchanged Macros0.16.0 | All14 exact-head release checks,11 native Nix gates,1,051 nextest/zero skips and four-workspace release preflight pass. Main CI43060819819 and normal publication43062619719 succeed. Both actual registry checksums, production source trees, VCS records and annotated tags agree with the verified source. Bombay explicitly acknowledges the release/migration notice. | Full registry-based runtime adoption and remaining programme criteria stay open. Packaged-consumer dead-code and deliberate compatibility-patch warnings are unchanged. |
 | Published owner55dbac2, Behavior/Actors0.29.0 and macros0.16.0 | All14 GitHub checks,11 native Nix gates,1,035 nextest/zero skips,123 doctests/zero ignores and four-workspace package preflight pass. Main CI38992917401 and normal publication38993686976 succeed. All228 shipped Rust files match actual Cargo-selected registry archives/checksums, tags and releases. | Owner delivery is complete; it does not close downstream acceptance. Offline audit has60 unavailable yank checks, six unused license allowances and two duplicate groups. Four package-fixture and four intended unused-patch warnings remain. |
 | Actual Bombay4fcf68d registry029/016 | Immutable1.99/1.96 replay passes128 fixtures:20 positive/108 negative,30 suites,26 targets and111 outer passes plus the controlled child. All633 caller inputs are unchanged. | Superseded full Nix run was interrupted after21 valid outputs when both compilers independently reproduced the stale remote borrow underline. Full run exit1 is not a pass. Logs, hashes and individual outputs remain preserved. |
 | Prepared immutable workspace extension | Both compilers pass136 existing cases:21 positive/115 negative,32 suites,28 targets,114 outer passes plus the controlled child; all633 inputs remain exact. Five verifier controls pass. | Final actualeadea00 replay also passes both compilers in225.176/223.750s, preserving all633 inputs and exact named coverage. The136-case default/Axum corpus does not include four remote borrowing cases. |
