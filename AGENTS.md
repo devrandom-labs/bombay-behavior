@@ -744,9 +744,12 @@ versions, release links, breaking changes, required consumer migration and the
 scope of compatibility verification. Confirm registry publication and tags
 before announcing a release; a merge or versioned main is not publication.
 Find the current Bombay task before sending, preserve its existing goal, and
-record delivery in the existing DevX records. If the task message cannot be
-delivered, retain a pending notice and report that status; saving a notice does
-not establish delivery or acknowledgment.
+record delivery in the existing DevX records. Use `codex queue --thread UUID
+--message TEXT` for an existing running session when direct task messaging
+reports an active writer. A queue receipt proves acceptance into the queue;
+confirm consumption or acknowledgment separately. If no message can be queued,
+retain a pending notice and report that status. Saving a notice does not
+establish delivery or acknowledgment.
 
 ## Verification gates
 
