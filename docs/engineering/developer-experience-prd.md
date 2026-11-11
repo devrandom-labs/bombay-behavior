@@ -891,12 +891,78 @@ exact senders/allocations, retirement, cleanup and notifications. The first
 finite lowering was removed when an outer-timeout consumer rejected inferred
 send insertion; the generic owner repair preceded catalogue migration.
 
-Machine's Clone-based rollback hypothesis remains reopened: shared cloned state
+Machine's Clone-based rollback hypothesis was rejected: shared cloned state
 disproves rollback, so Clone cannot establish the claimed transactional law.
-Do not remove existing bounds by dropping deferred inputs, weaken static phase
-restrictions or credit finite Stash as bounded Machine retention. The Machine
-bounds/deferred-custody model needs its own focused pre-edit witness and complete
-failure equation before production changes.
+The explicit replacement below preserves original inputs and actual progress.
+Static phase restrictions remain; finite Stash does not bound Machine retention.
+
+Machine rejection decision (user-selected2026-11-11): retain completed work and
+the exact refused/unprocessed inputs. This deliberately replaces whole-turn
+rollback; it is Bombay policy, not an Agha guarantee. The unchanged saved native
+consumer at Bombay9f542c18 reproduces one passing value-state control and the
+shared-state rollback failure (balance7 rather than0). Rust's
+[Clone contract](https://doc.rust-lang.org/std/clone/trait.Clone.html) explicitly
+permits shared underlying storage; it cannot establish independent snapshots.
+
+Before production edits: keep `Machine::new(state, phase, on)` and its existing
+borrowed-message callback. Successful earlier decisions and actual state
+mutations remain; on refusal `MachineError.event` owns the actual refused User,
+not the earlier accepted drain trigger. For held inputs, the ownership equation
+is originals = processed inputs + refused input + reheld prefix + unread suffix.
+Only a genuine phase change retries deferred inputs; Stop ends that drain.
+`machine.take()` transfers the remaining original Users, including senders, once.
+No state/message Clone bound is needed to execute. Callback unwind retains held
+inputs still borrowed by the callback and the unread suffix, without promising
+state rollback or recovery of an incoming value consumed by an unwinding call.
+Retention limits remain a separate unimplemented law; this batch does not bound
+the queue or add an overflow policy.
+
+The focused design stage changes only Machine, its tests, this contract and the
+existing private held-input custody owner shared with Stash. Reuse Move's four
+decisions, MachineError's event/cause and Stash's dispatch-free reunion on Drop;
+delete cloned staging and Advance's three private alternatives. Expected scope:
+six repository paths, at most100 net production lines, zero new public types,
+one recovery method. No catalogue/testkit/example migration in this stage.
+Held Users now own their addresses, so Machine's address-only PhantomData is
+redundant and removed. The existing conditional explicit Clone implementation
+remains ordinary duplication; execution no longer uses it as a transaction.
+Pre-edit regressions cover the accepted prefix, exact refused sender/payload,
+unread/reheld originals, Stop, unwind, non-Clone state/messages and real timeout/
+shutdown policies in both orders. Native proof uses an isolated actual
+Application consumer before any migration. The aggregate remains phase × state
+× held FIFO with one transition authority; the shared custody product owns only
+the reheld prefix and unread suffix needed for exact reunion. Complete measured
+checkpoint and both oracle reviews are required before retention.
+
+The design stage passes eight pure tests, including both timeout/shutdown orders,
+on pinned1.95 in debug/release. Seventeen existing Stash/error-source controls
+also pass both profiles. A real Application at Bombay9f542c18 passes on pinned
+1.99 in both profiles, retaining the accepted deposit, refused allocation/sender,
+unread allocation, failed-root report, notifications and cleanup. Removing only
+the shared unread-input reunion fails four pure cases and that same native
+journey in both profiles; exact source restoration returns every case to green.
+The original two law tests failed on old source, before non-Clone inputs were
+added; the latter independently expose the old Clone bounds. Both oracle review
+passes check full Actions, allocation identity, real sender identity, nonvacuous
+timer Stop, one-time recovery and unwind. No independent-agent review is claimed.
+
+Aggregate checkpoint: phase × state × held FIFO remains the complete control
+product, with user-defined phase cardinality unchanged. Move4→4; private
+Advance3→0; MachineError's event/cause product and two Result alternatives stay.
+The existing shared custody product retains exactly the reheld prefix/unread
+suffix required for reunion; it has no callback or transition authority.
+Machine match arms15→10. Affected production files627→644 lines,
+production+89/-72/net17; Actors source modules136→137. Public types3→3,
+public spellings13→14 (only `take`); focused tests+422/-0. Residue review finds
+no arrival history, repeated cause, cardinality assumption, semantic boolean,
+nested transition authority or new structural caller syntax. Synthetic timer
+events in component tests name their existing interpreter-owned sum; the native
+caller uses ordinary Application construction. Cross-checked transition algebra,
+layer laws, Stash custody and all normalized atomic laws (no Machine clauses).
+Disposition: pass for this design stage; old rollback-oracle migration, full
+gates, release compatibility, bounds and broader DX14 acceptance remain open.
+Receipts and the two oracle reviews: saved handoff
+`restart-2026-11-11/machine-*`.
 
 #### Timer ownership — DX13/16
 

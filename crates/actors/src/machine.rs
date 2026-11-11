@@ -5,6 +5,8 @@ use std::collections::VecDeque;
 use behavior::{Actions, Address, Behavior, NoBirths, User};
 use behavior::{Never, Step, Stopped};
 
+use crate::inputs::HeldInputs;
+
 pub enum Move<P> {
     Stay,
     Goto(P),
@@ -12,11 +14,15 @@ pub enum Move<P> {
     Stop,
 }
 
-/// Controlled machine rejection with the complete unaccepted mailbox input.
+/// Controlled machine rejection with the complete refused input.
+///
+/// A deferred-input refusal returns that original input and its sender, rather
+/// than the earlier mailbox communication that triggered replay. Earlier
+/// decisions and actual callback mutations remain in the machine.
 #[derive(Clone, PartialEq, Eq, thiserror::Error)]
 #[error("machine rejected its mailbox input: {cause}")]
 pub struct MachineError<A, M, E> {
-    /// Exact user event whose transition or induced drain was rejected.
+    /// Exact direct or deferred user event whose callback refused.
     pub event: User<A, M>,
     /// Domain error returned by the phase function.
     #[source]
@@ -33,18 +39,18 @@ impl<A, M, E: core::fmt::Debug> core::fmt::Debug for MachineError<A, M, E> {
     }
 }
 
-enum Advance {
-    Continue,
-    PhaseChanged,
-    Stop,
-}
-
+/// A phase machine with original-input deferral and ordered replay.
+///
+/// The callback borrows each message and mutates the actual state. Refusal
+/// returns the original input through [`MachineError`]; it does not roll back
+/// state mutations or earlier successful replay. State and messages need not
+/// implement Clone. Deferred retention is unbounded; an outer stash's limit
+/// does not bound this separate queue.
 pub struct Machine<A: Address, S, M, P, E> {
     state: S,
     phase: P,
     on: fn(P, &mut S, &M) -> Result<Move<P>, E>,
-    held: VecDeque<M>,
-    address: core::marker::PhantomData<A>,
+    held: VecDeque<User<A, M>>,
 }
 
 impl<A, S, M, P, E> Clone for Machine<A, S, M, P, E>
@@ -60,7 +66,6 @@ where
             phase: self.phase.clone(),
             on: self.on,
             held: self.held.clone(),
-            address: core::marker::PhantomData,
         }
     }
 }
@@ -77,6 +82,12 @@ where
 }
 
 impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
+    /// Construct a phase machine without processing an input.
+    ///
+    /// A genuine phase change replays held inputs. Returning the current phase
+    /// does not replay them; Stop ends the current drain. The callback must
+    /// perform no interpreter effects. Validate before mutation if a domain
+    /// refusal must leave a particular state value unchanged.
     #[must_use]
     pub fn new(state: S, phase: P, on: fn(P, &mut S, &M) -> Result<Move<P>, E>) -> Self {
         Self {
@@ -84,7 +95,6 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
             phase,
             on,
             held: VecDeque::new(),
-            address: core::marker::PhantomData,
         }
     }
 
@@ -103,42 +113,38 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
         self.held.len()
     }
 
-    fn advance(&mut self, message: M) -> Result<Advance, E> {
-        Ok(match (self.on)(self.phase, &mut self.state, &message)? {
-            Move::Stay => Advance::Continue,
-            Move::Defer => {
-                self.held.push_back(message);
-                Advance::Continue
-            }
-            Move::Stop => Advance::Stop,
-            Move::Goto(next) => {
-                let changed = next != self.phase;
-                self.phase = next;
-                if changed {
-                    Advance::PhaseChanged
-                } else {
-                    Advance::Continue
-                }
-            }
-        })
+    /// Transfer the remaining original inputs without replay or cloning.
+    ///
+    /// Reheld inputs precede the unread suffix after Stop, refusal or unwinding
+    /// replay. Senders and payloads move together. State, phase and callback
+    /// remain unchanged; a second call returns an empty queue. An unwinding
+    /// callback retains the held input it only borrowed, but cannot restore
+    /// arbitrary state mutations or an incoming value consumed by unwinding.
+    #[must_use]
+    pub fn take(&mut self) -> VecDeque<User<A, M>> {
+        core::mem::take(&mut self.held)
     }
 
-    fn drain(&mut self) -> Result<Step<Never, Stopped>, E> {
-        let mut batch = core::mem::take(&mut self.held);
-        while let Some(message) = batch.pop_front() {
-            let outcome = match self.advance(message) {
-                Ok(transition) => transition,
-                Err(error) => {
-                    self.held.extend(batch);
-                    return Err(error);
-                }
+    fn drain(&mut self) -> Result<Step<Never, Stopped>, MachineError<A, M, E>> {
+        let mut inputs = HeldInputs {
+            unread: core::mem::take(&mut self.held),
+            held: &mut self.held,
+        };
+        while let Some(event) = inputs.unread.front() {
+            let decision = (self.on)(self.phase, &mut self.state, &event.message);
+            let Some(event) = inputs.unread.pop_front() else {
+                break;
             };
-            match outcome {
-                Advance::Continue => {}
-                Advance::PhaseChanged => batch.extend(self.held.drain(..)),
-                Advance::Stop => {
-                    self.held.extend(batch);
-                    return Ok(Step::Stop(Stopped));
+            match decision {
+                Err(cause) => return Err(MachineError { event, cause }),
+                Ok(Move::Stay) => {}
+                Ok(Move::Defer) => inputs.held.push_back(event),
+                Ok(Move::Stop) => return Ok(Step::Stop(Stopped)),
+                Ok(Move::Goto(next)) => {
+                    if next != self.phase {
+                        self.phase = next;
+                        inputs.unread.append(inputs.held);
+                    }
                 }
             }
         }
@@ -154,8 +160,6 @@ impl<A: Address, S, M, P, E> behavior::Protocol for Machine<A, S, M, P, E> {
 impl<A, S, M, P, E> Behavior for Machine<A, S, M, P, E>
 where
     A: Address,
-    S: Clone,
-    M: Clone,
     P: Copy + PartialEq,
 {
     type Protocol = Self;
@@ -177,17 +181,21 @@ where
         _: behavior::ActiveTurn,
         event: Self::Event,
     ) -> Result<Actions<A, Never, Self::Sends, NoBirths>, Self::Error> {
-        let mut staged = self.clone();
-        let actions = match staged.advance(event.message.clone()) {
-            Err(cause) => return Err(MachineError { event, cause }),
-            Ok(Advance::Stop) => Actions::stop(),
-            Ok(Advance::PhaseChanged) => match staged.drain() {
-                Ok(step) => Actions::just(step),
-                Err(cause) => return Err(MachineError { event, cause }),
-            },
-            Ok(Advance::Continue) => Actions::cont(),
-        };
-        *self = staged;
-        Ok(actions)
+        match (self.on)(self.phase, &mut self.state, &event.message) {
+            Err(cause) => Err(MachineError { event, cause }),
+            Ok(Move::Stay) => Ok(Actions::cont()),
+            Ok(Move::Defer) => {
+                self.held.push_back(event);
+                Ok(Actions::cont())
+            }
+            Ok(Move::Stop) => Ok(Actions::stop()),
+            Ok(Move::Goto(next)) => {
+                if next == self.phase {
+                    return Ok(Actions::cont());
+                }
+                self.phase = next;
+                self.drain().map(Actions::just)
+            }
+        }
     }
 }

@@ -57,6 +57,7 @@
 //! ```
 
 mod activation;
+mod inputs;
 mod templates;
 pub use templates::{ZeroCapacity, diagnostic, pool, proxy, supervisor, worker};
 pub mod composition;

@@ -5,6 +5,8 @@ use std::collections::VecDeque;
 use behavior::{Actions, Address, Behavior, BirthMode, SendEffects, User, UserEvent};
 use behavior::{Never, Step};
 
+use crate::inputs::HeldInputs;
+
 mod sealed {
     pub trait StaticallyInfallible {}
 }
@@ -73,19 +75,6 @@ pub struct UnlimitedStash<B: Behavior> {
     inner: B,
     route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute,
     held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
-}
-
-// Still-undelegated originals belong to the actor even if selection or inner
-// execution unwinds. Reunite the unread suffix after the already reheld prefix.
-struct HeldInputs<'a, A: Address, M> {
-    held: &'a mut VecDeque<User<A, M>>,
-    unread: VecDeque<User<A, M>>,
-}
-
-impl<A: Address, M> Drop for HeldInputs<'_, A, M> {
-    fn drop(&mut self) {
-        self.held.append(&mut self.unread);
-    }
 }
 
 impl<B: Behavior> UnlimitedStash<B> {
