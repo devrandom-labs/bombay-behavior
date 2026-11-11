@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.29.0...bombay-behavior-actors-v0.30.0) - 2026-11-11
+
+### Added
+
+- *(machine)* bound deferred inputs and preserve complete refusals ([#119](https://github.com/devrandom-labs/bombay-behavior/pull/119))
+
+### Fixed
+
+- *(machine)* [**breaking**] retain progress and original refused inputs ([#117](https://github.com/devrandom-labs/bombay-behavior/pull/117))
+
 ### Breaking
 
 - Machine keeps completed replay work and actual callback mutations when a
