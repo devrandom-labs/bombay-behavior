@@ -740,7 +740,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers and typed request custody are published; matching runtime and caller migration are on the isolated Bombay branch. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: remaining acceptance cuts and coordinated runtime archives. Final registry029 native Bombay/protected gates pass; they do not certify the complete programme. |
-| DX14 | Published029 retains finite admission, complete refusal and unwind-safe previously held custody; `take()` transfers originals. Both wrapper orders, initialization/replay/Stop, native open/closed/panic retirement, static denials, ranked/property/fuzz sequences and four independent defects pass their source-bound recorded matrices. All11 current owner gates pass with1,035 tests/123 doctests; registry-only compiler replay passes both supported compilers. | Open: catalogue acceptance, coordinated runtime archives and Machine bounds/retention audit. Final registry-owner Bombay/nested native gates pass. Clone-based rollback remains disproven. |
+| DX14 | Published029 retains finite Stash admission, complete refusal and unwind-safe held custody. The resumed Machine design follows the user-selected retained-progress law: execution borrows non-Clone inputs, errors return the actual refused User, and take transfers remaining originals. Ten owner cases and one real Application journey plus two facade designation cases pass debug/release; downstream1.99/1.96 both pass. Custody-loss inversions fail and restoration passes. The repaired source passes1,045 workspace cases and all11 native Nix checks. | Open: reviewed merge, extracted-package delivery, catalogue acceptance and Machine bounds/retention. Clone-based rollback is replaced deliberately, not established by Clone. The separate Machine queue remains unbounded. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: coordinated runtime archives, configured-service costs and complete delivery. Final integrated native runtime/repository gates pass. Earlier child-oracle/work-entry falsifiers and corrected evidence retain their limits. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete registry029 catalogue reconciliation, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -963,6 +963,51 @@ Disposition: pass for this design stage; old rollback-oracle migration, full
 gates, release compatibility, bounds and broader DX14 acceptance remain open.
 Receipts and the two oracle reviews: saved handoff
 `restart-2026-11-11/machine-*`.
+
+Mechanical adoption follows proven design9fb1ea4. The unchanged error-path
+suite now fails exactly its three rollback oracles; their replacement follows
+the user's retained-progress decision, not a green-build requirement. Update
+only those expected failed inputs, actual state and remaining counts; retain
+the two unrelated driver tests. The existing error-sequence fuzzer must compare
+the actual refused input, and use input bytes to exercise deferred replay rather
+than always opening on occurrence zero. Reuse its numeric protocol; no new
+fixture type or production bound. Update the explicit-clone benchmark's obsolete
+rollback description, the owning guide and Actors changelog. Expected cumulative
+scope11 repository paths; production remains+89/-72/net17 and public types+0/-0.
+
+Adoption review found an implementation regression before accepting that stage:
+equal phase values can carry different observable fields. Goto must always
+store its exact next value; equality determines replay only. Two independent
+direct/replay probes pass on registry0.29 and fail on9fb1ea4 at revision1 versus2.
+This repairs the existing designation law, without a new phase type, bound or
+decision policy. Add those two owner regressions before replacing the stored
+phase and comparing the previous value. Earlier1,043-test/11-Nix-check success
+does not cover this counterexample. Repeat affected verification on the repair;
+the model and cumulative11-path scope remain unchanged.
+
+Both repaired designation cases and the complete native custody journey now
+pass in debug/release; ten owner tests pass both profiles. Updated error-path,
+FSM-property and two-buffer suites pass12 cases per profile. The range-based
+fuzz oracle passes10,000 byte-driven cases (maximum256 bytes), including actual
+deferred failures; its generated corpus is preserved outside the repository.
+The existing Nix fuzz shell supplies the linker environment; the first package
+runner attempt failed before fuzzing at missing libiconv and remains uncredited.
+No setup or dependency change was made. The two added designation tests inspect
+the carried revision directly, so PartialEq cannot conceal the rejected value.
+Final checkpoint retains the same control/product, alternatives, match arms,
+module count and public spellings; production is now+90/-72/net18, owner tests
++484/-0. The stored previous phase is a temporary comparison value, not retained
+arrival history. The frozen repair passes1,045 workspace nextest cases/zero
+skips and all11 native Nix checks. Its real Application journey and two facade
+designation cases also pass debug/release on both1.99 and1.96 at current
+Bombay937fecc3. Final source/oracle review preserves all original driver tests,
+the three explicitly changed Machine error laws, phase fields and held custody.
+Only this receipt/checklist text changes after those full checks; the final
+documentation gate covers that update separately. Reviewed merge and package
+delivery remain open. Retained inputs now store their senders as well as
+messages; concrete layout and workload costs remain part of resource acceptance.
+No whole-workload allocation or memory reduction is claimed from removing
+execution clones.
 
 #### Timer ownership — DX13/16
 
