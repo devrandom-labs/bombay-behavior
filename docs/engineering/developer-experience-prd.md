@@ -740,7 +740,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers and typed request custody are published; matching runtime and caller migration are on the isolated Bombay branch. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: remaining acceptance cuts and coordinated runtime archives. Final registry029 native Bombay/protected gates pass; they do not certify the complete programme. |
-| DX14 | Published029 retains finite Stash admission, complete refusal and unwind-safe held custody. The resumed Machine design follows the user-selected retained-progress law: execution borrows non-Clone inputs, errors return the actual refused User, and take transfers remaining originals. Ten owner cases and one real Application journey plus two facade designation cases pass debug/release; downstream1.99/1.96 both pass. Custody-loss inversions fail and restoration passes. The repaired source passes1,045 workspace cases and all11 native Nix checks. | Open: reviewed merge, extracted-package delivery, catalogue acceptance and Machine bounds/retention. Clone-based rollback is replaced deliberately, not established by Clone. The separate Machine queue remains unbounded. |
+| DX14 | Published029 retains finite Stash admission and complete refusal custody. PR117 merged the user-selected Machine retained-progress law, original-input errors and one-time take. The separately verified finite Machine candidate shares admission with Stash, preserves both timeout/shutdown orders and refuses complete originals through normal Actions. All11 native Nix gates pass with1,051 cases/zero skips; four existing sequence fuzzers pass10,000 cases each. The real Application journey passes source and extracted archives on1.96/1.99 debug/release. Capacity inversions fail and exact restoration passes. | Open: finite-candidate reviewed merge, registry publication and catalogue acceptance. Source/package proof does not establish a released runtime upgrade or bound outer queues, runtime mailboxes or allocation bytes. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: coordinated runtime archives, configured-service costs and complete delivery. Final integrated native runtime/repository gates pass. Earlier child-oracle/work-entry falsifiers and corrected evidence retain their limits. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete registry029 catalogue reconciliation, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -1067,6 +1067,215 @@ in both profiles, and the independent fuzz oracle passes another10000 cases.
 Only this receipt text changes after the frozen full gate; its documentation
 gate is checked separately. DraftPR117 carries the retained implementation;
 exact-head CI and merge/publication remain delivery obligations.
+
+Finite Machine deferral hypothesis, before production edits2026-11-11:
+`Machine::bounded(state, phase, on, InputLimit::new(slots, refused))` starts an
+empty finite queue. Slots count original deferred Users, not bytes, runtime
+mailboxes or an outer Stash. Zero is valid. After the existing callback selects
+Defer, a new original is either held within the limit or emitted intact to the
+typed refusal recipient; the actor continues. Actual callback mutations stay,
+as with the user-selected retained-progress law. The limit is not a transaction
+around the callback. Stay, Goto, Stop and callback errors retain their laws even
+at capacity. Replaying an already held input consumes no new slot. Its reheld
+prefix plus unread suffix never exceeds the original admitted count. Take moves
+remaining originals once, without changing the limit or recipient.
+
+This is deliberate Bombay policy, reusing finite Stash's existing refusal
+equation; it is not an Agha resource guarantee. Overflow is a normal typed send,
+not actor failure. MachineError remains the exact callback refusal, so its
+Never specialization stays statically infallible and lawful under Stash.
+Before editing, review Agha et al.1997's communication/interface semantics,
+the transition algebra, layer laws, existing logical/exact delivery interpreters
+and normalized atomic laws. No normalized atomic document adds a Machine law.
+No new runtime request, receipt, lifecycle outcome or interpretation port is
+needed: logical and exact refusals use the same DeliveryRoute products as Stash.
+
+Predeclared representation: one Machine authority still owns state × phase ×
+original FIFO. Add one fixed retention configuration, with two real static
+policies: unit retains without a bound; InputLimit owns slots and its refusal
+capability. A sealed InputRetention law admits the complete original through
+the authoritative queue and returns its concrete sends. These are the only two
+new public contracts. Machine's additional policy parameter defaults to unit
+to preserve existing valid five-parameter type spellings and three-argument
+construction, not to repair an invalid caller. No caller supplies a unit marker,
+empty callback, dummy recipient or placeholder. Finite construction requires
+the real refusal capability; state/messages require no Clone. Only repeatable
+delivery authority needs Clone, as in Stash. Reuse this same InputLimit in
+finite Stash, deleting its separate limit/refusal fields and duplicate admission
+branch rather than retaining two bounded-input algorithms. Keep existing Stash
+construction and replay restrictions unchanged.
+
+Before production, write the focused zero/full/release/custody regressions in
+domain vocabulary, then capture their failure on6f90401's Machine API through
+pinned Nix. Prove original sender/allocation/content, exact capacity, subsequent
+nondeferred work, callback mutation, stopped/unread custody, and infallible
+Stash composition. Two real templates, Stash and Machine, must use the shared
+admission law and both shutdown/timeout orders must retain its refusal effects
+before catalogue adoption. The smallest real Application witness uses the
+existing pre-root scope and an exact external refusal endpoint. Wrong protocol
+and forged policy denials must fail at construction. No broad example, testkit
+or facade migration belongs in this design stage.
+
+Pre-edit ledger: Machine, Actors exports, one shared retention module, Stash's
+two existing owners, focused tests and this PRD, plus the separately requested
+AGENTS release-coordination instruction. Expected Rust production at most120
+net lines and two new public contracts. Across the resumed task this adds three
+previously untouched paths to the prior16: AGENTS, retention and focused tests.
+Standing user approval covers this19-path scope. Baseline affected production
+is796 lines across Machine, Stash limit/queue, shared held custody and exports;
+Actors has137 source modules. Move has4 alternatives, Machine has10 match arms,
+and MachineError remains event × cause. The complete before/after checkpoint,
+all surviving subordinate values, residue scan, source/oracle reviews and
+defect inversions are required before retention. Any compiler diagnostic that
+requires another unnamed policy, type, bound or route reopens this hypothesis.
+The first four caller regressions are written before production and fail only
+at missing InputLimit (E0432) and four missing bounded constructors (E0599),
+exit101 under pinned1.95. State and boxed messages have no Clone implementation.
+Receipt: `restart-2026-11-11/machine-limits-before.*`. InputRetention's sends
+must satisfy the existing SendsFor<User<A,M>> law at Machine construction and
+execution, as required by Behavior::Sends. Stash's finite owner will borrow its
+existing child queue within the Stash aggregate via pub(super) visibility;
+this grants no application or runtime mutable access and adds no forwarding
+object or second queue. These are pre-edit interface decisions, not compiler
+fallout. The native logical/exact delivery implementations retain complete
+rejected requests, and Engine apply retains ordered independent settlements;
+the finite send reuses those current ports unchanged.
+The first production candidate compiles without another semantic symbol or
+bound. Test compilation exposes two fixture mistakes: ambiguous Box conversion
+before pointer inspection, and attempted mutable access through Active.
+Use ordinary Vec::into_boxed_slice construction and the existing trusted
+initialize/delegate_transition ports for the two pure recovery tests, just as
+the retained Machine tests do. Add no DerefMut, escape hatch or caller plumbing.
+The configured and replayed application syntax stays unchanged. Source is now
+136 net physical Rust lines, including the two static-denial Rustdoc controls,
+above the expected120 but below the standing-approved production budget; the
+complete checkpoint must assess this surface before retaining it.
+Three finite-owner cases pass. The composed oracle initially selects Stash for
+Work in every phase, so the existing pure selector law correctly reholds all
+three inputs instead of delegating any. Preserve the required two exact refusal
+deliveries; make Poll establish the actual Admitting phase used by that selector.
+This also exercises bounded replay's re-deferral without consuming another
+slot. No production repair or weakened expected refusal count is justified.
+All six capacity/order cases,24 existing Machine/Stash cases and63 Actors
+doctests now pass. The normal facade witness first used the ActorExt-only
+`bombay::actors` namespace incorrectly. Bombay already forwards the existing
+`composition` semantic module, whose documented role is to curate these owning
+construction contracts. The predeclared InputLimit/InputRetention contracts
+must be curated there alongside Machine and Stash; crate-root exports remain
+the same types. Record this completeness decision before adding those existing
+contract re-exports, then import InputLimit through bombay::composition. Add
+no facade wrapper, new constructor, dependency or generic to fix that error.
+This adds one existing source path to the ledger: cumulative20 paths, still
+two new public contracts under the user's standing approval. No runtime
+production file or catalogue caller is migrated in this design stage.
+The real Application now passes at Bombay937fecc3 with ordinary facade imports
+and an exact pre-root refusal endpoint. Two independently allocated senders
+distinguish admitted and refused inputs. Opening completes the admitted prefix;
+closing admits new held originals, and Stop at capacity joins healthy retirement
+with those exact allocations/senders recoverable once. No owner dependency or
+runtime production edit was added to obtain that proof.
+
+Before capacity-defect inversion, the aggregate product and Move4/Error product
+remain unchanged; only the constant static retention policy is new. InputLimit
+owns exactly slots and the refusal capability needed by later admission. Unit
+owns no data and performs real unbounded holding. Shared HeldInputs still owns
+only the reheld prefix/unread suffix. There is no new state/result sum or nested
+transition authority. Current scope is20 cumulative paths and two public
+contracts; affected production includes the existing composition curation,
+812→952 physical Rust lines (+160/-20/net140), modules137→138. Machine match
+arms remain10; the one capacity predicate moved from Stash into the shared
+policy. Canonical public spellings32→38 and types9→11; composition re-exports
+the same two new contracts. The new default policy parameter has two real
+substitutions and adds no required caller marker. No history, repeated cause,
+false cardinality, semantic boolean, runtime lookup or structural caller path
+is introduced. Cross-check the transition algebra, layer laws, original Stash
+contract and normalized atomic documents before retaining this candidate.
+The planned inversion changes only `< slots` to `<= slots`: no types, states,
+branches, public names or line counts change. It must falsify zero/full custody
+cases and the real Application refusal, while the two-input Stop control stays
+valid. Restore byte-exact source and repeat affected proofs before retention.
+The inversion fails5/6 Machine cases (Stop control passes),7/9 existing Stash
+cases and the exact native consumer in debug/release. Its minimized property
+input is zero slots and one held-selected input, already covered by deterministic
+cases. Preserve the generated seed outside the repository. Exact source restore
+passes the whole candidate fingerprint,30 affected owner cases per profile and
+the native journey per profile; minimum1.96's earlier positive remains exact.
+The second oracle review moves three ownership extractions outside assertions,
+preserving all expected values and assertion counts. No production shape changes
+follow compiler feedback or a failing oracle; only fixture construction,
+selector semantics and effectful-assertion placement were corrected.
+
+Finite retention checkpoint,2026-11-11: **pass**. The complete control-state
+sum is parametric in the caller's phase: before, each p:P owns S × original
+FIFO; after, each p:P owns S × original FIFO × fixed R. No phase or transition
+authority is added. Move remains4 alternatives, MachineError remains the
+original event × cause product with Result's two alternatives, and Machine
+match arms remain10. Neither admission nor HeldInputs owns a subordinate
+control/result sum. InputLimit's slots and destination are the current values
+needed by each later admission; unit owns no data and performs actual holding.
+HeldInputs' reheld prefix and unread suffix remain necessary for ordered exact
+custody on return/unwind. Stash's duplicate capacity branch and separate
+configuration fields are replaced by this same admission law.
+
+The complete retained source delta is production +160/-20/net140, tests
++433/-0/net433, public API +2/-0 types. Affected production is812→952 lines,
+Actors source modules137→138, canonical public spellings32→38 and types9→11;
+composition curates the same two contracts rather than inventing alternatives.
+The cumulative resumed task touches20 paths under standing scope approval.
+The residue scan finds no arrival-history state, repeated cause, false
+cardinality, nested transition authority, semantic boolean, erased dispatch,
+payload clone or structural application syntax. Cross-checked sources are the
+transition algebra, behavior-layer laws L1–L8, Stash's existing admission/custody
+contract, all five normalized aggregate laws and all four normalized atomic
+engineering documents; none adds a conflicting Machine rule.
+
+Two author source/oracle review passes are complete; no independent reviewer
+is claimed. The first checks the entire static surface against the pre-edit
+law and four failing callers, including sealed policy authority, exact sender
+custody, callback-before-admission and unchanged replay. Its oracle review
+corrected the fixture's phase selection without reducing the required refusals.
+The second audits every new symbol/bound against that provenance and complete
+Actions lanes in both wrapper orders and native retirement. It moves ownership
+extractions outside assertions and checks the deliberate capacity defect and
+exact restoration. All six new cases pass in both profiles; existing Stash
+properties and exhaustive sequences exercise the shared admission algorithm.
+No catalogue migration, new application protocol or placeholder is needed.
+
+Final source passes all11 native Nix checks,1,051 nextest cases/zero skips and
+78 checked compile-failure diagnostics, including the two new denials. Existing
+stash_sequences, fsm_sequences, two_buffer_sequences and error_sequences each
+complete10,000 fuzz inputs, with the zero-slot boundary seeded. The identical
+real Application fixture passes path source and extracted packages on1.99 and
+minimum1.96 in both profiles. It checks two distinct senders, the exact refused
+allocation, completed work, later FIFO recovery and joined healthy retirement.
+This is one native journey across eight selections, not eight domain journeys.
+Archived Actors contains207 files; all production src trees match their owning
+checkout. These0.29.0/0.16.0 candidate archives are not new registry releases.
+Receipts, archives and source fingerprints remain under
+`restart-2026-11-11/machine-limits-*`. The archive matrix's outer receipt writer
+initially used zsh's read-only status variable after all four successful tests;
+the four terminal exit receipts were checked individually before recording the
+aggregate result. No test failure was suppressed or rerun for that shell issue.
+
+The added public policy parameter has two real substitutions and preserves
+the existing five-parameter annotation and inferred constructor. It adds one
+statically selected admission/send implementation per used policy/route, no
+dynamic dispatch or runtime policy registry. Wrong refusal protocol fails with
+E0271 and forged policy with E0277. The existing frozen Processor probe compares
+PR117's archive with this candidate using identical source/locks and fresh
+targets on both compilers. Five processes per selection/compiler agree:
+default actor size72 bytes,129 allocations/12,800 allocated bytes, held heap
+10,752 bytes, peak10,784 bytes, completed heap6,656 bytes and disposed heap0.
+Release executable sizes are854,608→854,592 bytes on1.99 and796,240→796,240
+on1.96. Cold builds take16.71→14.76s and17.36→15.02s respectively; each is one
+sample with dependency work, so no compile-speed improvement is established.
+Cargo timing reports and binaries' sizes support this bounded generic-cost
+audit, not a catalogue monomorphization or whole-runtime performance claim.
+The first measurement wrapper used BSD stat syntax inside GNU Nix; its saved
+build timing was reused and only size/measurement collection was resumed.
+The finite policy's real Application and shared quota proofs establish behavior;
+no finite-Machine allocation advantage is claimed. Broader DX06/26 costs remain
+open. Only receipt/documentation edits follow the frozen full source gate.
 
 #### Timer ownership — DX13/16
 

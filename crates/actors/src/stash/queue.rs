@@ -74,7 +74,7 @@ pub trait StashStatus {
 pub struct UnlimitedStash<B: Behavior> {
     inner: B,
     route: fn(&B, &behavior::BehaviorMessage<B>) -> StashRoute,
-    held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
+    pub(super) held: VecDeque<User<behavior::BehaviorAddr<B>, behavior::BehaviorMessage<B>>>,
 }
 
 impl<B: Behavior> UnlimitedStash<B> {

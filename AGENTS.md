@@ -736,6 +736,21 @@ Public API changes require rustdoc that states semantics, invariants, errors,
 and panic conditions. Comments should explain laws and non-obvious constraints,
 not restate syntax.
 
+## Release coordination
+
+After every verified crate release, notify the active Bombay Codex task. The
+user explicitly authorizes this coordination. Include the exact published
+versions, release links, breaking changes, required consumer migration and the
+scope of compatibility verification. Confirm registry publication and tags
+before announcing a release; a merge or versioned main is not publication.
+Find the current Bombay task before sending, preserve its existing goal, and
+record delivery in the existing DevX records. Use `codex queue --thread UUID
+--message TEXT` for an existing running session when direct task messaging
+reports an active writer. A queue receipt proves acceptance into the queue;
+confirm consumption or acknowledgment separately. If no message can be queued,
+retain a pending notice and report that status. Saving a notice does not
+establish delivery or acknowledgment.
+
 ## Verification gates
 
 Use the pinned toolchain and keep the workspace warning-clean. During

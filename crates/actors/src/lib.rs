@@ -58,6 +58,7 @@
 
 mod activation;
 mod inputs;
+mod retention;
 mod templates;
 pub use templates::{ZeroCapacity, diagnostic, pool, proxy, supervisor, worker};
 pub mod composition;
@@ -129,6 +130,7 @@ pub(crate) use proxy::{
     InitialWorkerOutcome, ProxyDrain, ProxyInputReceipt, ProxyInputResult, ProxyOperation,
     ProxyOperationId, ProxyOutcome, ProxyPhase, ReplacementOutcome, StableProxy, WorkerStartResult,
 };
+pub use retention::{InputLimit, InputRetention};
 pub use routing::{
     AcknowledgementError, AcknowledgementInput, AcknowledgementMessage, AcknowledgementOutcome,
     AcknowledgementRecord, AcknowledgementState, Acknowledgements, BreakerAttempt,
