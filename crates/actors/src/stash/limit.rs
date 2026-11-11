@@ -6,6 +6,7 @@ use behavior::{
 };
 
 use crate::composition::DeliveryRoute;
+use crate::retention::{InputLimit, InputRetention as _};
 
 use super::{StashRoute, StashStatus, StaticallyInfallible, UnlimitedStash};
 
@@ -37,8 +38,7 @@ pub struct StashSends<ActorSends, Refusals> {
 /// initialization, transition or runtime operation.
 pub struct Stash<B: Behavior, R> {
     queue: UnlimitedStash<B>,
-    limit: usize,
-    refusals: R,
+    limit: InputLimit<R>,
 }
 
 impl<B: Behavior, R> Stash<B, R> {
@@ -76,8 +76,7 @@ impl<B: Behavior<Ph = Never>, R> Stash<B, R> {
     {
         Self {
             queue: UnlimitedStash::new(inner, route),
-            limit,
-            refusals,
+            limit: InputLimit::new(limit, refusals),
         }
     }
 
@@ -129,11 +128,11 @@ where
         let actions = match event.into_user() {
             Ok(user) => {
                 let route = self.queue.route(&user.message);
-                if matches!(route, StashRoute::Stash) && self.held() >= self.limit {
+                if matches!(route, StashRoute::Stash) {
                     return Ok(Actions::new(
                         StashSends {
                             actor: B::Sends::empty(),
-                            refusals: self.refusals.clone().deliver(user),
+                            refusals: self.limit.hold(&mut self.queue.held, user),
                         },
                         Creations::empty(),
                         Step::Continue,
