@@ -740,7 +740,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX11 | Inferred fixed/FIFO journeys preserve immediate/async startup, source refusal/panic, prepared prefix, assigned payload and shutdown. Keyed tests preserve affinity, exact rejection, unbind and joined retirement. | Open: dynamic supervision, independent late completion, remaining preparation/policy/failure cases and final gates. |
 | DX12 | Published0.26.0 returns complete duplicate-correlation rejection. Actual birth/replacement/replay witnesses retain accepted prefix/suffix and joined children; exact recipients preserve real application/Entity identity after closure. | Open: remaining creation/occurrence acceptance, including transitive/wrapped/rejected births and relational identity evidence. |
 | DX13 | Four no-ID timer wrappers and typed request custody are published; matching runtime and caller migration are on the isolated Bombay branch. PR109/6488965 passes11 fresh native gates and14 current CI checks; combined archives run112 consumer tests and16 examples across both compilers/profiles. Default Bombay workspace passes782 outer tests/132 UI fixtures; selected remote426 outer/20 UI per profile and both child-feature harnesses pass on1.99/1.96. Named replacement and memory costs remain explicit below. | Open: remaining acceptance cuts and coordinated runtime archives. Final registry029 native Bombay/protected gates pass; they do not certify the complete programme. |
-| DX14 | Published029 retains finite Stash admission and complete refusal custody. PR117 merged the user-selected Machine retained-progress law, original-input errors and one-time take. The separately verified finite Machine candidate shares admission with Stash, preserves both timeout/shutdown orders and refuses complete originals through normal Actions. All11 native Nix gates pass with1,051 cases/zero skips; four existing sequence fuzzers pass10,000 cases each. The real Application journey passes source and extracted archives on1.96/1.99 debug/release. Capacity inversions fail and exact restoration passes. | Open: finite-candidate reviewed merge, registry publication and catalogue acceptance. Source/package proof does not establish a released runtime upgrade or bound outer queues, runtime mailboxes or allocation bytes. |
+| DX14 | Published029 retains finite Stash admission and complete refusal custody. PR117 merged the user-selected Machine retained-progress law, original-input errors and one-time take. PR119 merged finite Machine admission shared with Stash, preserves both timeout/shutdown orders and refuses complete originals through normal Actions. All11 native Nix gates pass with1,051 cases/zero skips; four existing sequence fuzzers pass10,000 cases each. The real Application journey passes source and extracted archives on1.96/1.99 debug/release. Capacity inversions fail and exact restoration passes; all14 feature checks and main CI pass. | Open: registry publication and catalogue acceptance. Source/package proof does not establish a released runtime upgrade or bound outer queues, runtime mailboxes or allocation bytes. |
 | DX15 | Native b1c6781 adds actor-owned interpreters through Application/topology using existing guarded startup. Real file/environment requests, wrapper orders, root/descendant/cold/Entity configuration, rejection/panic/cancellation and disposal witnesses pass recorded matrices and inversions. Independent owner diagnostics retain source/coverage controls. | Open: coordinated runtime archives, configured-service costs and complete delivery. Final integrated native runtime/repository gates pass. Earlier child-oracle/work-entry falsifiers and corrected evidence retain their limits. |
 | DX16 | Startup/provenance and complete source/interpretation custody remain. PR100 merged as18653a7 supplies OwnedItem from existing settlement metadata; real IO/panic custody, mutations, privacy denials, owner gates and extracted consumers pass. PR101 head184354b fixes rejected reply custody:970 owner tests, ten native Nix gates, four-workspace preflight and locked real-runtime failure/retirement proofs pass. It merged as dda4a42 under explicit authorization; reviewed release PR103 merged as13951b8 and normal publication of Behavior/Actors0.26.1 is verified in both registries and release tags. | Open: complete registry029 catalogue reconciliation, two-template/wrapper composition, native integration and final downstream/cost evidence. Different custody equations remain distinct. |
 | DX17 | Shared retirement custody and semantic send access have bounded interface provenance. DirectoryConfig validates immutable limits once. PR110/7644735 removes the duplicate adapter spelling while preserving its implementation; complete native failure/retirement, both route alternatives, static denials, extracted packages and eleven owner Nix gates pass their recorded matrices. | Open: export/consumer/invariant and bounds audit; remove competing spellings only after comparing complete semantics. |
@@ -1276,6 +1276,33 @@ build timing was reused and only size/measurement collection was resumed.
 The finite policy's real Application and shared quota proofs establish behavior;
 no finite-Machine allocation advantage is claimed. Broader DX06/26 costs remain
 open. Only receipt/documentation edits follow the frozen full source gate.
+
+Release030 preparation, before metadata fixes2026-11-11: PR119 merged as
+c9a8408 after all14 exact7d0afaa feature checks passed. Main CI43053551760 and
+the normal Release workflow43055494445 pass. The latter refreshes existing
+PR118 at a5ef0c0, based on c9a8408, proposing Behavior/Actors0.30.0 and retaining
+Macros0.16.0. Both Machine changes and their breaking migration are named in
+Actors' generated changelog. No new versioned release has been established.
+
+The required external release-skill preflight fails before editing: three
+secondary Cargo locks still select029, and both README installation entries
+still select0.29. Root offline metadata additionally lacks the cached
+zerocopy-derive0.8.56 archive. Receipt `release030-preflight-before.log` records
+the exact findings and terminal exit1. Fetch that locked archive graph, update
+only workspace-owned version entries through Cargo, align the two README
+entries and add Core's shared-version changelog entry. The proposed version is
+owned by Cargo.toml; no new version policy or dependency upgrade is introduced.
+Then rerun the same preflight, packaged consumer and full pinned Nix gate at
+the final candidate. Preserve the existing four workspace boundaries.
+
+Release ledger: nine expected release-PR paths including its generated three,
+the three secondary locks, README, Core changelog and this existing task record;
+zero Rust production/test/API changes. Recounting the complete resumed task
+against f9e5fdf gives21 paths before the generated release and25 after these
+planned fixes. The earlier20 count omitted stash/limit.rs from the cumulative
+paths; its measured production delta was already included. Standing user scope
+approval covers the corrected total. This receipt is not registry or downstream
+adoption proof, and the larger programme remains open.
 
 #### Timer ownership — DX13/16
 

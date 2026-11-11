@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.29.0...bombay-behavior-v0.30.0) - 2026-11-11
+
+### Changed
+
+- Align the shared version with Actors0.30's retained-progress Machine contract
+  and finite deferral. Core's actor algebra is unchanged; Macros0.16 remains
+  compatible.
+
 ## [0.29.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-v0.28.0...bombay-behavior-v0.29.0) - 2026-10-17
 
 ### Changed
