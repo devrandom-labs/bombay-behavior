@@ -420,3 +420,65 @@ fn shutdown_outside_timeout_keeps_the_refusal_and_its_live_timer() {
     assert!(stopped.creates.is_empty());
     assert_eq!(stopped.become_, Step::Stop(Stopped));
 }
+#[derive(Clone, Copy, Debug)]
+enum Door {
+    Closed,
+    Open(u8),
+}
+
+impl PartialEq for Door {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::Closed, Self::Closed) | (Self::Open(_), Self::Open(_))
+        )
+    }
+}
+
+fn receive_door(door: Door, _: &mut (), message: &u8) -> Result<Move<Door>, Never> {
+    match (door, message) {
+        (Door::Closed, 0) => Ok(Move::Defer),
+        (Door::Closed, _) => Ok(Move::Goto(Door::Open(1))),
+        (Door::Open(_), _) => Ok(Move::Goto(Door::Open(2))),
+    }
+}
+
+#[test]
+fn direct_designation_keeps_new_data_when_the_phase_compares_equal() {
+    let mut door = Machine::new((), Door::Open(1), receive_door);
+    let started = initialize(&mut door).unwrap();
+    assert!(started.sends.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, Step::Continue);
+    let changed = delegate_transition(&mut door, User::new(MailAddr(7), 3)).unwrap();
+    assert!(changed.sends.is_empty());
+    assert!(changed.creates.is_empty());
+    assert_eq!(changed.become_, Step::Continue);
+    let Door::Open(revision) = door.phase() else {
+        panic!("the open phase remains designated")
+    };
+    assert_eq!(revision, 2);
+    assert_eq!(door.held(), 0);
+}
+
+#[test]
+fn replay_designation_keeps_new_data_when_the_phase_compares_equal() {
+    let mut door = Machine::new((), Door::Closed, receive_door);
+    let started = initialize(&mut door).unwrap();
+    assert!(started.sends.is_empty());
+    assert!(started.creates.is_empty());
+    assert_eq!(started.become_, Step::Continue);
+    let held = delegate_transition(&mut door, User::new(MailAddr(7), 0)).unwrap();
+    assert!(held.sends.is_empty());
+    assert!(held.creates.is_empty());
+    assert_eq!(held.become_, Step::Continue);
+    let changed = delegate_transition(&mut door, User::new(MailAddr(11), 3)).unwrap();
+    assert!(changed.sends.is_empty());
+    assert!(changed.creates.is_empty());
+    assert_eq!(changed.become_, Step::Continue);
+    let Door::Open(revision) = door.phase() else {
+        panic!("the open phase remains designated")
+    };
+    assert_eq!(revision, 2);
+    assert_eq!(door.held(), 0);
+}

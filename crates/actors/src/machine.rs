@@ -85,7 +85,8 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
     /// Construct a phase machine without processing an input.
     ///
     /// A genuine phase change replays held inputs. Returning the current phase
-    /// does not replay them; Stop ends the current drain. The callback must
+    /// does not replay them, but still stores the exact chosen phase value.
+    /// Stop ends the current drain. The callback must
     /// perform no interpreter effects. Validate before mutation if a domain
     /// refusal must leave a particular state value unchanged.
     #[must_use]
@@ -141,8 +142,8 @@ impl<A: Address, S, M, P: Copy + PartialEq, E> Machine<A, S, M, P, E> {
                 Ok(Move::Defer) => inputs.held.push_back(event),
                 Ok(Move::Stop) => return Ok(Step::Stop(Stopped)),
                 Ok(Move::Goto(next)) => {
-                    if next != self.phase {
-                        self.phase = next;
+                    let previous = core::mem::replace(&mut self.phase, next);
+                    if next != previous {
                         inputs.unread.append(inputs.held);
                     }
                 }
@@ -190,10 +191,10 @@ where
             }
             Ok(Move::Stop) => Ok(Actions::stop()),
             Ok(Move::Goto(next)) => {
-                if next == self.phase {
+                let previous = core::mem::replace(&mut self.phase, next);
+                if next == previous {
                     return Ok(Actions::cont());
                 }
-                self.phase = next;
                 self.drain().map(Actions::just)
             }
         }
