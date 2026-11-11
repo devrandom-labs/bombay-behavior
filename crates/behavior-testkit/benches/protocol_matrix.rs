@@ -183,7 +183,8 @@ fn measure_nested() -> f64 {
     rate(iterations, started.elapsed())
 }
 
-/// Clone a nonempty machine state and held queue to measure rollback cost.
+/// Measure explicit caller-requested duplication of a nonempty machine.
+/// Machine execution itself borrows originals and performs no staged clone.
 fn measure_machine_clone() -> f64 {
     let iterations = iterations("BOMBAY_BENCH_SHORT_ITERATIONS", SHORT_ITERATIONS);
     let mut machine = Machine::new(vec![7_u64; 64], (), |_, _: &mut Vec<u64>, _: &u64| {

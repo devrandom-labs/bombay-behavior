@@ -188,6 +188,7 @@
           };
           bombay-behavior-audit = craneLib.cargoAudit {
             inherit src advisory-db;
+            cargoAuditExtraArgs = "--ignore yanked --deny unsound";
             inherit (commonArgs) preFixup;
           };
           bombay-behavior-deny = craneLib.cargoDeny {

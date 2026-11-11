@@ -109,6 +109,27 @@ Executable witnesses: [finite admission and wrapper orders](https://github.com/d
 [initialization and replay effects](https://github.com/devrandom-labs/bombay-behavior/blob/a309bbd/crates/actors/tests/algebra.rs), and
 [original-input recovery](https://github.com/devrandom-labs/bombay-behavior/blob/ee9516d9005ca3e5e6f1976415b3924f1a5b8893/crates/actors/tests/stash.rs).
 
+### Deferred state-machine inputs
+
+[Machine](../behavior_actors/struct.Machine.html) borrows each message and lets
+its callback mutate the actual state. State and messages need not implement
+Clone. A real phase change replays held inputs; returning the current phase
+does not replay them. Stop ends the drain and keeps its remaining inputs.
+
+On refusal, completed work and actual state mutations remain. The error owns
+the refused input and its original sender, including during replay; it does not
+return the earlier accepted replay trigger. Validate before changing state if
+a domain refusal must preserve a particular value. There is no whole-turn
+rollback guarantee.
+
+`machine.take()` transfers remaining original Users once, with reheld inputs
+before the unread suffix. It performs no replay and preserves state, phase and
+callback. An unwinding callback retains deferred inputs it only borrowed and
+the unread suffix; arbitrary mutations or an incoming input consumed during
+unwind cannot be reconstructed. Machine's deferred queue remains unbounded;
+a surrounding finite Stash does not bound that separate queue. Fallible
+Machine errors still cannot compose with infallible Stash replay.
+
 ### Timer ownership
 
 `OneShot`, `Periodic`, `Deadline` and `ReceiveTimeout` select their own event

@@ -40,8 +40,8 @@ impl Behavior for RejectInput {
     }
 }
 
-/// A controlled error during a deferred drain rejects the complete mailbox
-/// turn. State, phase, and the accepted held queue remain exactly unchanged.
+/// A deferred refusal returns the actual failed input. The accepted phase
+/// change remains committed and the unread suffix stays held.
 #[test]
 fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
     #[derive(Clone, Copy, PartialEq)]
@@ -73,23 +73,23 @@ fn fsm_error_mid_drain_preserves_the_unprocessed_batch() {
         Err(behavior_actors::MachineError {
             event: User {
                 from: MailAddr(0),
-                message: 0
+                message: 1
             },
             cause: Boom,
         })
     ));
-    assert_eq!(machine.held(), 2);
-    assert!(machine.phase() == Phase::P0);
+    assert_eq!(machine.held(), 1);
+    assert!(machine.phase() == Phase::P1);
     assert!(machine.state().is_empty());
 
-    // The machine remains usable and the next P0 communication joins the same queue.
+    // The next P1 communication succeeds without replaying the unread suffix.
     let deferred = machine.transition(User::user(MailAddr(0), 2)).unwrap();
     assert_machine_continue(&deferred);
-    assert_eq!(machine.held(), 3);
+    assert_eq!(machine.held(), 1);
 }
 
-/// A direct-step error consumes only the errored message: held stays intact
-/// and the fold is still usable.
+/// A direct refusal returns its input and retains actual callback mutations.
+/// The held queue stays intact and the machine remains usable.
 #[test]
 fn fsm_direct_step_error_keeps_held_intact() {
     #[derive(Clone, Copy, PartialEq)]
@@ -130,7 +130,7 @@ fn fsm_direct_step_error_keeps_held_intact() {
         })
     ));
     assert_eq!(machine.held(), 0);
-    assert!(machine.state().is_empty());
+    assert_eq!(machine.state(), &[99]);
     // The machine is still live for a non-failing message.
     let continued = machine.transition(User::user(MailAddr(0), 3)).unwrap();
     assert_machine_continue(&continued);
@@ -181,10 +181,10 @@ fn driver_discards_successful_prefix_after_later_error() {
     assert_eq!(next_message.message, 4);
 }
 
-/// A later deferred-message error cannot commit the successful prefix of the
-/// staged drain or consume any accepted held communication.
+/// A later deferred refusal retains the successful prefix and returns the
+/// exact failed input. Completed and refused inputs leave the held queue.
 #[test]
-fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
+fn fsm_error_mid_drain_retains_the_completed_prefix() {
     #[derive(Clone, Copy, PartialEq)]
     enum Phase {
         P0,
@@ -217,13 +217,13 @@ fn fsm_error_mid_drain_rolls_back_the_complete_staged_drain() {
         Err(behavior_actors::MachineError {
             event: User {
                 from: MailAddr(0),
-                message: 0
+                message: 1
             },
             cause: Boom,
         })
     ));
-    assert!(machine.state().is_empty());
-    assert!(machine.phase() == Phase::P0);
-    assert_eq!(machine.held(), 3);
+    assert_eq!(machine.state(), &[2, 3]);
+    assert!(machine.phase() == Phase::P1);
+    assert_eq!(machine.held(), 0);
 }
 use behavior_actors::Activate;

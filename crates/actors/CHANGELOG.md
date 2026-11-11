@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Machine keeps completed replay work and actual callback mutations when a
+  later input refuses. It no longer attempts whole-turn rollback by cloning.
+  `MachineError.event` returns the actual refused input and its sender, including
+  when an earlier communication triggered replay. State and messages no longer
+  need Clone for execution. `Machine::take()` transfers remaining original Users
+  without replay; callback unwind retains still-borrowed deferred inputs and
+  their unread suffix. Deferred retention remains unbounded.
+
 ## [0.29.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.28.0...bombay-behavior-actors-v0.29.0) - 2026-10-17
 
 ### Added
