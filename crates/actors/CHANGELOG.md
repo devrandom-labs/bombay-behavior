@@ -15,7 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when an earlier communication triggered replay. State and messages no longer
   need Clone for execution. `Machine::take()` transfers remaining original Users
   without replay; callback unwind retains still-borrowed deferred inputs and
-  their unread suffix. Deferred retention remains unbounded.
+  their unread suffix. `Machine::new` retains without a bound.
+
+### Added
+
+- `Machine::bounded(state, phase, on, InputLimit::new(slots, refused))` limits
+  newly deferred original inputs. A full queue emits the complete `User`,
+  including its sender, through the typed refusal destination and continues;
+  callback mutations remain. Zero slots is valid. Already admitted replay,
+  nondeferred work, phase changes and Stop need no new slot. The limit counts
+  held inputs, not bytes or other actor/runtime queues. Finite Stash and
+  Machine share this admission law; existing Stash construction is unchanged.
 
 ## [0.29.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.28.0...bombay-behavior-actors-v0.29.0) - 2026-10-17
 

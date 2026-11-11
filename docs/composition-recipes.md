@@ -114,7 +114,20 @@ Executable witnesses: [finite admission and wrapper orders](https://github.com/d
 [Machine](../behavior_actors/struct.Machine.html) borrows each message and lets
 its callback mutate the actual state. State and messages need not implement
 Clone. A real phase change replays held inputs; returning the current phase
-does not replay them. Stop ends the drain and keeps its remaining inputs.
+does not replay them. Goto always stores the exact returned phase value;
+equality controls replay only. Stop ends the drain and keeps its remaining
+inputs.
+
+Use `Machine::bounded(state, phase, on, InputLimit::new(slots, refused))` for
+finite deferral. [InputLimit](../behavior_actors/struct.InputLimit.html) counts
+held original inputs; zero is valid. Its typed destination must accept the
+complete `User`, including the original sender. When the callback selects
+Defer at capacity, the original goes to that destination through normal sends
+and the actor continues. The callback has already run, so its mutations remain.
+Already admitted replay consumes no new slot. Stay, Goto, Stop and callback
+errors are not blocked by a full queue. A capacity refusal remains a successful
+transition, so a Machine with an infallible callback can still compose with
+Stash replay.
 
 On refusal, completed work and actual state mutations remain. The error owns
 the refused input and its original sender, including during replay; it does not
@@ -126,9 +139,12 @@ rollback guarantee.
 before the unread suffix. It performs no replay and preserves state, phase and
 callback. An unwinding callback retains deferred inputs it only borrowed and
 the unread suffix; arbitrary mutations or an incoming input consumed during
-unwind cannot be reconstructed. Machine's deferred queue remains unbounded;
-a surrounding finite Stash does not bound that separate queue. Fallible
-Machine errors still cannot compose with infallible Stash replay.
+unwind cannot be reconstructed. `Machine::new(state, phase, on)` retains without
+a bound. A surrounding finite Stash does not bound Machine's separate queue;
+neither limit counts allocation bytes or runtime mailbox entries. A refusal
+destination that panics during capability cloning or send construction cannot
+restore the incoming value consumed by unwinding. Fallible Machine errors
+still cannot compose with infallible Stash replay.
 
 ### Timer ownership
 
