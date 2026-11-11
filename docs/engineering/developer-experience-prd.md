@@ -1009,6 +1009,38 @@ messages; concrete layout and workload costs remain part of resource acceptance.
 No whole-workload allocation or memory reduction is claimed from removing
 execution clones.
 
+PR117 CI exposes a stale dependency prerequisite: Advisories and Licenses
+run43017441450 rejects Tokio1.53.1 for
+[RUSTSEC-2026-0386](https://rustsec.org/advisories/RUSTSEC-2026-0386.html).
+Before dependency edits: select the first patched compatible1.53.3 in the root,
+interpreter-contract and fuzz locks; refresh only the existing advisory-db Nix
+input so local audit sees the same published advisory. Existing manifest ranges
+already permit this patch. No AsyncFd call exists in these owners, and no new
+unsafe call, dependency, feature, API or actor-policy change is proposed.
+Expected cumulative scope15 repository paths, unchanged production+90/-72/net18
+and public types+0/-0. Retain the failed CI receipt and rerun audit, affected
+owner/downstream cases and final gates; earlier1.53.1 proofs keep their original
+dependency limits. Native fixture manifests/locks must select the patched Tokio
+too. The aggregate checkpoint is unchanged because this batch changes only
+existing dependency/advisory selections.
+The refreshed database also reports rustix1.1.4 under
+[RUSTSEC-2026-0486](https://github.com/RustSec/advisory-db/blob/2c684a5d6746d4508eff9e3cb529b3e33f56d438/crates/rustix/RUSTSEC-2026-0486.md);
+its first patched version1.1.6 changes the same root lock, not another path.
+Upstream package metadata gives Tokio1.53.3 MSRV1.71/MIT and rustix1.1.6
+MSRV1.65 with an existing accepted license choice. Both fit pinned1.95.
+The existing local audit returns0 while reporting these unsound warnings;
+that result does not establish advisory clearance. Its recorded default differs
+from CI's rejection policy and must not be described as equivalent.
+Before changing the check, the same pinned database and original lock fail
+`cargo audit --ignore yanked --deny unsound` with both named advisories;
+the original default check had returned0. Use Crane's existing
+`cargoAuditExtraArgs` port to reject unsound warnings while preserving the
+existing yanked-package policy. No new check or tooling is needed. The user
+explicitly approved the cumulative16-file scope, then gave standing approval
+for the remaining goal work and necessary scope increases on2026-11-11.
+This supersedes the earlier requirement to ask again for each scope increase;
+pre-edit laws, bounded ledgers, review and required verification still apply.
+
 #### Timer ownership — DX13/16
 
 Ordinary OneShot, Periodic, Deadline and ReceiveTimeout construction takes the
