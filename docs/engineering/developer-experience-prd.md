@@ -1008,6 +1008,25 @@ delivery remain open. Retained inputs now store their senders as well as
 messages; concrete layout and workload costs remain part of resource acceptance.
 No whole-workload allocation or memory reduction is claimed from removing
 execution clones.
+The extracted Behavior/Actors/Macros archives also pass the real Application
+custody journey and two pure designation cases on1.99/1.96, debug/release,
+with patched Tokio1.53.3. Shipped Rust sources compare byte-for-byte with the
+owner source. This establishes archive compatibility, not registry publication.
+
+A bounded resource comparison reuses the shipped Processor domain source,
+changing only its facade import. Identical harness sources and dependency
+versions compare registry0.29 with the new Actors archive:64 processors each
+defer one Work, then Open and prove that exact work completed. Five independent
+optimized processes per selection/compiler give identical counts on1.99/1.96.
+Actor layout remains72 bytes and completion live heap remains6656 bytes.
+Allocations fall193→129, while total allocated bytes rise11776→12800, held
+heap8704→10752 and peak heap8752→10784. Disposal leaves zero live allocations
+and bytes. This pure sample uses MailAddr and includes the common actor vector;
+it does not measure native mailboxes, scheduling, large payloads or latency.
+Preserving senders has a measured cost; fewer clones do not prove less memory.
+Sources, locks, import-only diff and raw twenty-process receipts are under
+`restart-2026-11-11/processor-memory-*`; no source optimization follows from
+this single workload. Broader resource acceptance remains open.
 
 PR117 CI exposes a stale dependency prerequisite: Advisories and Licenses
 run43017441450 rejects Tokio1.53.1 for
@@ -1040,6 +1059,14 @@ explicitly approved the cumulative16-file scope, then gave standing approval
 for the remaining goal work and necessary scope increases on2026-11-11.
 This supersedes the earlier requirement to ask again for each scope increase;
 pre-edit laws, bounded ledgers, review and required verification still apply.
+The patched dependency source atc91177a passes all11 native Darwin Nix checks,
+including1045 nextest cases with zero skips and the strict advisory check.
+All three patched locks pass the same strict audit; the original fails for
+both advisories. Patched native and archive matrices pass on both compilers
+in both profiles, and the independent fuzz oracle passes another10000 cases.
+Only this receipt text changes after the frozen full gate; its documentation
+gate is checked separately. DraftPR117 carries the retained implementation;
+exact-head CI and merge/publication remain delivery obligations.
 
 #### Timer ownership — DX13/16
 
