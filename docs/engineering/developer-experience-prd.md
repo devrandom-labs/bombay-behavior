@@ -753,8 +753,8 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX24 | Terminal evidence stays authoritative. Root/subtree report inspection survives completed selection, startup refusal, cancellation and a real notification panic without reclassifying actor failure; absent publication stays absent. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: remaining pressure/retry/drain inspection, sensitive-payload policy, bounded diagnostic dimensions/retention and final report delivery gates. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained. Final native protected gates pass132 outer cases with two expected failed child controls and four zero-match controls; passing retries do not explain the hang or establish compressed-content/permanent Darwin repair. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. Comparable030 main814c96d1/recovery0da4c952 FIFO consumers now pass120 process controls/pairs on both compilers: identical heap traces, allocation counts and measured value sizes within each compiler/capacity, complete custody retained. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, binary/metadata diagnostics and remaining runtime paths; configured-service, remote and latency costs remain unproved. The bounded two-actor/one-job memory case is not full DX26. Memory outranks binary size. |
-| DX27 | Published Behavior/Actors0.29.0 and macros0.16.0 match actual registry checksums, tags/releases and228 shipped Rust files at55dbac2. Reviewed PR115, all14 GitHub checks, all11 native gates, four-workspace preflight and normal main-CI/publication workflows pass. Root/fuzz/protected locks select these registry owners; Driver inventory, fuzz compilation and both immutable compiler corpora pass. Bombaybb832b0 passes all25 native Nix gates and six exact-head GitHub checks; PR386 merged as531ded50. Behavior documentation PR116 merged asf9e5fdf with14 checks passing. | Open: current-main reconciliation and runtime publication. Failed runtime-only packaging on eadea00 led to approved41812fce: Engine0.3/macros0.2/runtime0.2, all-feature joint archives, supported-compiler native failure/retirement consumers and historical compatibility inversions. Feature/consumer/cost acceptance remains open; these historical gates do not certify later source. |
-| DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. Its three partial ignored topology copies are replaced by links to complete compiled sources; both supported archive previews pass six doctests/zero ignores. This table is the sole DX01–DX28 disposition checklist. | Open: compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. Current contract/evidence is compacted. |
+| DX27 | Published030 owners and unchanged macros016 retain exact registry/source/tag and downstream proofs. Mainf09303c8 is reconciled. Clean Native706810b8 joint Engine0.3/macros0.2/runtime0.2 all-feature packaging passes actual1.99/1.96 with identical VCS-bound archives. Actual extracted consumers on both compilers pass eight canonical examples/all-targets, native51 per profile, renamed3, six local example runs and ten doctests. All570 extracted files,533 native-copy source/test files,28 caller Rust files and prepared locks stay exact; only unpublished candidate manifest patches differ by design. | Open: remaining selected acceptance/costs, final combined-source Nix/CI/review/PR and runtime registry delivery. Candidate versions remain unpublished. Earlier release/native/compatibility-inversion receipts keep their original limits; package consumers do not replace complete programme gates. |
+| DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. Three partial ignored topology copies are replaced by complete compiled source links. The corrected guide teaches borrowed outcome inspection and complete consuming recovery; both supported current candidate archives execute ten all-feature doctests/zero ignores. This table is the sole DX01–DX28 disposition checklist. | Open: compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. Current contract/evidence is compacted. |
 
 ### Retained contracts and evidence
 
@@ -1048,6 +1048,34 @@ Production +16/-0, tests +43/-0; all original bytes/oracles conserved. Cumulativ
 native120/paired145 paths, Rust113 +3124/-1490/net1634, production net53/tests
 net1581/public types +1/-0. Native PRD and borrowed-outcome-* own exact receipts.
 Final combined-source/CI/package delivery and the complete programme remain open.
+
+Native706810b8 corrects the guide's stale outer Completed migration to the exact
+borrowed outcome/owned custody pair and removes its redundant text-only Work
+sketch. Compiled doctests and original assertions stay unchanged. Both actual
+compilers verify joint all-feature Engine0.3.0/macros0.2.0/runtime0.2.0 archives;
+all three sets are byte-identical with VCS706810b8. Archive inventories are28/7/
+535 files, including3/2/108 src files (source-local tests included). The runtime
+guide and all source match the frozen718 inputs. An earlier current-only e41da292
+preview keeps its pre-guide qualification; no archive is a published release.
+
+Actual archive consumers on1.99/1.96 each compile all eight canonical examples/
+all-targets, pass native51 per profile (Application42/interpreter2/retirement7),
+renamed3, six terminating local examples and ten all-feature doctests/zero ignores.
+Root registry030/016 selection, all570 extracted files,533 native-copy source/
+test/diagnostic/readme files,28 caller Rust files and prepared locks stay exact.
+Only candidate path/version adapters and two unpublished Engine/macros manifest
+patches support the isolated setup. The initial CLI-only patch failure is kept:
+trybuild child Cargo lacked those unpublished versions. Existing manifest patch
+propagation fixes setup without Rust/fixture/expected-diagnostic changes. The
+minimum all-target check retains the original remote controller's unfulfilled
+dead_code expectation warning; no warning-free minimum claim or suppression.
+HTTP/remote examples compile only in this corpus. Two author reviews and
+unchanged-model checkpoint pass; no independent review. Native96c249e2/0c9ef555
+record exact results/current backlog. Source scope native121/paired146 paths,
+same Rust113 +3124/-1490/net1634, production net53/tests1581/public types+1.
+The native PRD and runtime-archive-*/runtime-consumer-* receipts retain exact
+commands/inputs and limits. Final full-source Nix/CI/PR/registry runtime delivery,
+broader acceptance/costs and whole DX01–DX28 remain open.
 
 The isolated recovery cost comparison uses actual030 source main814c96d1 and
 recovery0da4c952 with identical locked graphs, unchanged domain worker/work,
