@@ -730,7 +730,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
-| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; frozen030 source0da4c952 passes all28 host Nix checks and authoritative flake check. The following test-only family consumer passes both compilers/profiles, exact conservation and fault-erasure inversions. | Open: remaining proportional recovery, nonempty source progress, coexisting root/family cleanup failures, operational inspection, comparable costs and final registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
+| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; frozen030 source0da4c952 passes all28 host Nix checks and authoritative flake check. Following test-only family and nonempty native source consumers pass both compilers/profiles, exact conservation and loss inversions. | Open: remaining proportional recovery/source phases and Application paths, coexisting root/family cleanup failures, operational inspection, comparable costs and final registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Report retention adds8 peak heap bytes and no allocations/retained heap in the frozen pool workload on both compilers; broader costs remain open. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
@@ -952,6 +952,26 @@ evidence-locator failure and source-qualified receipts. Cumulative Rust is
 unchanged117 native/142 paired paths. Nonempty source progress, coexisting
 root/family cleanup failures, comparable costs and whole programme acceptance
 remain open. No new release or release notice belongs to this test stage.
+
+Nativee0935e07 adds one inline test in an existing source interpreter module.
+After actual timer receipt admission, a rejected observer causes a real native
+offer panic. Consuming custody preserves the primary panic identity, source
+index0, nonempty Completed(Admitted) remainder, unfolded state and distinct
+admitted id1/gen1/untouched id2/gen1 receipts, with independent successful
+notification and address retirement. New case/original cancellation control
+pass actual1.99/1.96 debug/release, including exact restored runs. Source erasure
+only in the HostExecutionPanicked projection fails the intended assertion in
+both current profiles; cancellation and all seven Counter controls stay healthy.
+Strict all-tests Clippy/format pass. Three new empty assertions needed equivalent
+length0 syntax for lint; initial failed lint remains failed. Original whole
+launch.rs is byte-identical after removing only the test/import. Two author
+reviews and the full D-SETTLE-1/D-RETIRE-1/D-TERM-1 checkpoint pass; no independent
+review is claimed. Tests +160/-0, production/API +0/-0, no new fixture or state.
+Cumulative Rust110 paths +2706/-1482/net1224; production net36, tests net1188,
+public types +1/-0; native117/paired142 paths unchanged. This witnesses one native
+source phase, not every source phase or the Application callback path. Its
+source-qualified receipts and remaining obligations are in the native PRD;
+the full28/flake receipt still belongs to earlier0da4c952.
 
 Canonical finite holding is `actor.with_stash(8, refused, route)`. The limit counts
 held logical inputs, not allocation bytes, Machine deferrals, native mailboxes
