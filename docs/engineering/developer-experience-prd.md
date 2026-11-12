@@ -730,7 +730,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
-| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. Both report getters preserve native custody and independent failures; pre-edit denials, report-erasure inversions, six native regressions and two product laws pass. Native receiving migrations preserve original assertions; custody-loss inversions fail and restoration passes. | Open: proportional failure recovery, complete family-disposal/operational inspection and final registry runtime delivery. Sourceeadea native/minimum workspace/remote gates pass; corrected41812fce archive journeys pass both compilers/profiles. |
+| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. Both report getters preserve native custody and independent failures; pre-edit denials, report-erasure inversions, six native regressions and two product laws pass. The native owned actor-custody port and107-file/357-product migration retain original causes and assertions; corrected361d7728 passes all28 host Nix checks. | Open: proportional failure recovery, nonempty consuming progress/descendant evidence, complete family-disposal/operational inspection, costs and final registry runtime delivery. Sourceeadea and corrected41812fce archive receipts retain their original source limits; CI and other platforms for361d7728 remain open. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Report retention adds8 peak heap bytes and no allocations/retained heap in the frozen pool workload on both compilers; broader costs remain open. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
@@ -860,6 +860,45 @@ ordinary birth and replacement provenance stay explicit. A request or restart
 decision is never a committed birth/restart diagnostic.
 
 #### Stash and Machine custody — DX04/06/14/17
+
+Stage1 owned-retirement investigation,2026-11-11, begins against Bombay2b7acf12,
+selecting registry029/016 without Behavior patches; its separate030 adoption
+remains with Bombay Codex in the existing step order. The source already owns
+one ActorCustody product in20 of24 ActorRetirement alternatives. Two real native
+controls pass current1.99 debug/release: completed work beside exact overflow
+failure and actual shutdown returning the whole non-Clone/non-Default wrapper.
+All payload allocations, report, remaining queues, cleanup and notification
+facts are checked. The six consuming regressions fail before production for the
+missing method/outcome, then pass1.96/1.99 debug/release. The focused native port
+factors20 custody-bearing cases into Retained plus RetirementOutcome while
+keeping all24 inhabited alternatives, exact original custody, failures and
+progress. Two source inversions fail the intended case in both profiles; exact
+restoration passes. The owning native test also passes both profiles, and
+strict library Clippy passes. Production is +203/-167/net36 with one new public
+type; all26 custody constructions and20 outcome payloads are conserved. The
+paired Bombay PRD owns the complete pre-edit law, selected revisions, two test
+reviews and measured checkpoint. The separately measured107-file/357-product
+caller migration preserves original bindings, causes and assertions. Corrected
+native source361d7728 now passes all28 host Nix checks and the authoritative
+flake check, including both remote profiles, actual minimum1.96, protected
+Counter and unchanged coverage/law gates. Exact manifests and logs remain in
+the restart handoff; CI and other platforms are unclaimed. Nonempty consuming
+progress/descendant/family evidence, costs and delivery remain open; the focused
+port and local gate do not complete DX04. The additional test-only witness exercises
+actual unread-command ownership through that existing consuming port, with its
+law and falsifier recorded before editing in the paired native PRD. That witness
+now passes with the six originals on1.96/1.99 debug/release; strict Clippy and
+formatting pass. A lane-dropping source inversion fails only the new case in
+both profiles, and exact restoration passes. Complete original six-case source
+is conserved. Production/API +0/-0; tests +102/-2/net100. The full28-check receipt
+stays tied to361d7728, before this additional test/record batch.
+The existing real-file rejection case also consumes the port on1.96/1.99 in
+both profiles: the usable accepted File, exact refused request/path allocation
+and actual OS error coexist with complete actor custody. Settlement erasure
+fails that case while all seven Counter controls pass; exact restoration and
+strict Clippy/formatting pass. All original assertions/fixtures are conserved;
+test +15/-14/net1, production/API +0/-0. Partial progress and descendant/family
+consumer coverage remain open.
 
 Canonical finite holding is `actor.with_stash(8, refused, route)`. The limit counts
 held logical inputs, not allocation bytes, Machine deferrals, native mailboxes
