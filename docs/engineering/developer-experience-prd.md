@@ -729,9 +729,9 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | --- | --- | --- |
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. Current configuration/session/query owners are private; standard foreign-error spelling and rendered extraction signatures are verified atfa25bbd7. | Open: complete selected semantics, full interface acceptance and final gates. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
-| DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
+| DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. Mainf09303c8 is integrated with the recorded source conservation. | Open: all owner consumers, remaining cancellation/freshness acceptance and final gates. |
 | DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Frozen030 source0da4c952 passes all28 host Nix checks and flake check; later consuming family, nonempty native source and joint Application cleanup witnesses retain their focused proofs. Mainf09303c8 is integrated with complete incoming schedule conservation and both-compiler/profile checks. Ata2ef6ce5, outcome() borrows the original typed primary cause without matching the outer runtime variant; complete subsequent consuming recovery and all four unavailable alternatives pass both compilers/profiles with the intended omission control. | Open: complete selected consumer/inspection audit, broader comparable costs and final combined-source/package/registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
-| DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
+| DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. Actual706810b8 archives replay the42-case receiving target on both compilers/profiles, including cancellation after work returns while cleanup is pending. | Open: direct non-Send root-actor compile denial with a valid transported-actor control, current combined-source gates/review and runtime registry delivery. The existing non-Send worker-factory denial does not prove the root-actor diagnostic. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Report retention adds8 peak heap bytes and no allocations/retained heap in the frozen pool workload on both compilers; broader costs remain open. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
 | DX08 | Published owners preserve selected send lanes through wrappers and static denials. FIFO/keyed construction accepts ordinary named completion/business products. Published029/016 includes generic-product insertion and caller-name safety; owner gates, packaged consumers and complete missing/ambiguous controls pass. | Open: finish downstream retention, catalogue reconciliation and final delivery gates. Earlier native witnesses retain their recorded compiler/profile and source limits. |
@@ -783,6 +783,22 @@ whole outcome. Execution performs cleanup. Split receiving preserves actual
 publication/join ordering and borrowed or non-Send caller work. Construction,
 poll, cancellation and disposal remain distinct custody cuts.
 
+DX05 source audit at Native0c9ef555 confirms the existing receiving tests use
+original `Rc` allocations and borrowed work, retry the uninvoked callable after
+startup cancellation, and retain the same receiver after cancelling its borrowed
+wait. The selected-host test keeps a multithread actor host distinct from its
+current-thread caller. The family-cleanup test cancels the real host only after
+work has returned and the first family has retired, preserving output, root,
+completed family and the unfinished cleanup error. Actual706810b8 archive runs
+replay these receiving cases on1.99/1.96 in both profiles; their raw log hashes
+were rechecked. The separate blocking-run test returns the original allocation
+and both configured builders before worker startup and retries those inputs.
+Its execution remains qualified to its own gates, not the archive42-case target.
+The worker-factory `Rc` denial proves a different transfer contract; add a direct
+root-actor denial and valid counterpart before claiming that diagnostic clause.
+Receipt: execution-acceptance-audit.json, including all718 unchanged Native
+inputs and counterexample review. This audit changes no runtime or test source.
+
 Application establishes clients and senders for root, selected recipients and
 Entity targets. Receive authority remains affine; send-only customers allocate
 no reply mailbox. Exact admission returns original Full/Closed commands and is
@@ -808,8 +824,10 @@ retained terminal storage remain separately owned resources.
 
 Entity retire_entity proves joined slot release/mode, not an error-free native
 or callback result. Cancelling the observer does not cancel its directory task;
-missing publication cannot fabricate completion. Callback/associated-type
-ceremony and independent family/root cleanup acceptance remain open.
+missing publication cannot fabricate completion. Coexisting root/family disposal
+faults have the four-combination witness recorded under DX22; admitted family
+work has separate witnesses. Callback/associated-type distillation and final
+consumer/delivery acceptance remain open.
 
 #### Effects, policies and worker startup — DX07–12/15–18
 
