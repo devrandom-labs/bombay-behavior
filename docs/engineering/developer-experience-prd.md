@@ -45,16 +45,16 @@ require the remaining consumers, inferred standalone roots and full gates.
 Published Behavior/Actors0.29.0 and macros0.16.0 are verified against the actual
 registry index/checksums, downloaded archives, clean source55dbac2, tags and
 releases. All228 shipped Rust files match the tested candidate. Finite holding,
-generic send insertion and caller-name safety are delivered. Bombay's isolated
-branch now selects these three registry packages without Behavior patches; all
-actual Cargo-selected source bytes match the verified release. The canonical
-shutdown migration and final native workspace/compiler gates pass. Packaged
-runtime dependencies and complete programme acceptance remain open. Older proofs
-retain their original version/revision limits.
+generic send insertion and caller-name safety are delivered. Current Bombay
+main814c96d1 and the isolated recovery branch select registry Behavior/Actors0.30.0
+and macros0.16.0 without Behavior patches. The030 source/registry verification
+and full host gate below retain their exact source limits. Packaged runtime
+dependencies and complete programme acceptance remain open; older proofs retain
+their original version/revision limits.
 
 Owner documentation PR116 merged asf9e5fdf; Bombay PR386 merged as531ded50
 on2026-10-18. Their exact heads pass14 and six GitHub checks respectively.
-The resumed owner branch is `codex/devx-resume`, based onf9e5fdf. Earlier
+The current owner branch is `codex/retirement-recovery`. Earlier
 feature branches remain preserved; already delivered implementations are not
 merged back as duplicate machinery. The programme checklist remains open.
 
@@ -727,7 +727,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 
 | ID | Implementation and tests | Remaining work / disposition |
 | --- | --- | --- |
-| DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
+| DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. Current configuration/session/query owners are private; standard foreign-error spelling and rendered extraction signatures are verified atfa25bbd7. | Open: complete selected semantics, full interface acceptance and final gates. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
 | DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; frozen030 source0da4c952 passes all28 host Nix checks and authoritative flake check. Following test-only family, nonempty native source and public Application root/family cleanup consumers pass both compilers/profiles, exact conservation and loss inversions. | Open: remaining proportional recovery/source and Application inspection, comparable costs and final registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
@@ -749,7 +749,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX20 | Application directly establishes root/selected-recipient/Entity clients and senders. Nonwaiting exact admission preserves original Full/Closed commands; origin inversions fail. Shared external customers and pre-root scope retain target authority and original inputs on retry. | Open: complete correlated/cancelled/slow/closed-customer/late-reply and capacity corpus plus packaged delivery. Final-source minimum/native full gates pass. Admission remains distinct from business completion. |
 | DX21 | Canonical `application.shutdown()` and advanced lifecycle access retain the original admission Result and inferred ingress. Both owners pass the pre-edit missing-method control and supported-compiler debug/optimized journeys. Root wrapper orders, request replay, natural completion and complete retirement retain their assertions; immutable compiler replay preserves missing/ambiguous authority denials. | Open: complete child-derived phases/drain/deadline/forced-retirement acceptance and packaged delivery. Final native repository gates pass. Admission does not imply joined cleanup. |
 | DX22 | HTTP/Entity use the same Application and joined outcomes. Awaitable retire_entity preserves exact-slot completion, cancellation, reactivation and native/callback failures; HTTP removes unnecessary clones and receives ApplicationHandle directly. Original receiving/HTTP/family tests retain their assertions. Public Application consuming recovery now preserves coexisting root-service/family disposal faults in all four fault combinations; entire42-case target passes both compilers/profiles with selective loss inversions. | Open: callback/associated-type distillation and final complete consumer/repository gates. Admitted/nonzero family work retains separate witnesses; zero-incarnation coexistence is not relabelled as that case. |
-| DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
+| DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Source and59 generated remote declaration pages confirm private configuration/session/query owners. Three public extraction signatures now spell their identical standard boxed error without SDK aliases; existing configuration/query and callback denials pass. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open: complete interface, typed-extension/outcome acceptance and final delivery gates. This bounded audit does not certify runtime/privacy policy or deferred products. |
 | DX24 | Terminal evidence stays authoritative. Root/subtree report inspection survives completed selection, startup refusal, cancellation and a real notification panic without reclassifying actor failure; absent publication stays absent. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: remaining pressure/retry/drain inspection, sensitive-payload policy, bounded diagnostic dimensions/retention and final report delivery gates. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained. Final native protected gates pass132 outer cases with two expected failed child controls and four zero-match controls; passing retries do not explain the hang or establish compressed-content/permanent Darwin repair. |
 | DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. Comparable030 main814c96d1/recovery0da4c952 FIFO consumers now pass120 process controls/pairs on both compilers: identical heap traces, allocation counts and measured value sizes within each compiler/capacity, complete custody retained. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, binary/metadata diagnostics and remaining runtime paths; configured-service, remote and latency costs remain unproved. The bounded two-actor/one-job memory case is not full DX26. Memory outranks binary size. |
@@ -995,6 +995,25 @@ zero-incarnation family composition witness; nonzero admitted-family evidence
 stays separate. Exact source-qualified receipts and remaining obligations are
 in the native PRD and retirement-recovery-joint-* handoff evidence. Full28/flake
 credit remains bound to0da4c952; final programme delivery/cost gates remain open.
+
+Nativefa25bbd7 changes six zenoh::Error spellings to the identical standard
+boxed Error/Send/Sync type, with one module import and no producer/consumer body,
+test, expected diagnostic, visibility, lifetime or type-identity change. Selected
+zenoh-result1.10.1's enabled std feature proves equality; no new conversion,
+reboxing or erasure is introduced. Frozen717-input focused Nix checks pass:
+current1.99 remote debug/release each524 outer cases/12 summaries/31 UI fixtures,
+actual1.96 minimum remote3 outer cases/11 UI fixtures, strict all-target remote
+Clippy and remote/workspace docs. All four output derivers/NAR hashes are rooted.
+All three generated extraction signatures expand exactly their former unlinked
+Error alias and link standard traits;59 remote declaration pages and relevant
+private owners are inspected. The initial SDK-hyperlink assumption is rejected,
+not counted as a failing regression. Two author reviews and unchanged-state
+checkpoint pass; no independent review. Production +7/-6/net1, tests/API0;
+cumulative native120/paired145 paths, Rust113 +3065/-1490/net1575, production
+net37/tests net1538/public types +1/-0. Exact frozen source, conservation,
+rendered signatures and gate receipts are sdk-privacy-* in the restart handoff.
+Four focused checks do not replace the earlier0da4c952 full28 gate or final
+programme/CI/delivery acceptance.
 
 The isolated recovery cost comparison uses actual030 source main814c96d1 and
 recovery0da4c952 with identical locked graphs, unchanged domain worker/work,
