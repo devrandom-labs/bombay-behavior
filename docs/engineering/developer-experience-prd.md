@@ -1021,6 +1021,23 @@ PRD. This bounded healthy FIFO comparison changes no runtime/API/test source;
 clean/incremental compile, binary/metadata, macro, other runtime/caller and final
 programme delivery acceptance remain open. No independent review is claimed.
 
+The matching compiler study passes220 checks on actual1.99/1.96: five clean
+targets,25 unchanged noise controls and25 real business-input edits per source/
+compiler. Cargo JSON verifies genuine rebuilds and restored source/lock hashes.
+Current clean medians7.71→7.39s and minimum7.81→7.67s overlap sampled ranges;
+edited medians0.20→0.19s/current or0.20→0.20/minimum, unchanged0.04s both.
+CPU/RSS ranges and short-command precision establish no general speedup.
+Snapshots show no unrelated build worker; coverage is before/during checks and
+after campaign, not an immediate post frame for each short command. Both author
+reviews retain those limits. All20 completed task-only targets are removed after
+preserving raw evidence/metadata (2255316KiB); no global GC. Native metadata and
+validated release binary sizes are secondary diagnostics with source-path
+confounders; zero-byte consumer check metadata earns no size claim. The native
+PRD and retirement-costs/check-*/artifact-sizes records own exact commands,
+220 rows/CSV, sources/artifacts/toolchains, review and pass checkpoint. No code/
+API change or independent review. Wrapper/child additions, macro expansion,
+full-workspace/latest-test costs and remaining DX26/delivery stay open.
+
 Canonical finite holding is `actor.with_stash(8, refused, route)`. The limit counts
 held logical inputs, not allocation bytes, Machine deferrals, native mailboxes
 or outgoing effects. Zero is valid. Only a newly hold-selected input at capacity
