@@ -752,7 +752,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX23 | Zenoh is the sole internal network. Both Node Work callbacks receive only typed actor capabilities; native client/requester test drivers live under Node. Raw configuration/export/query surfaces remain unfinished. | Deferred: networking, durability, identity and deployment products stay with later PRDs. Open interface obligation: hide SDK types without a transport escape hatch; preserve typed extension and complete outcome laws. |
 | DX24 | Terminal evidence stays authoritative. Root/subtree report inspection survives completed selection, startup refusal, cancellation and a real notification panic without reclassifying actor failure; absent publication stays absent. FIFO rejected-role projection preserves its exact failure/lifecycle product through both orders, inverse and native consumer. | Open: remaining pressure/retry/drain inspection, sensitive-payload policy, bounded diagnostic dimensions/retention and final report delivery gates. |
 | DX25 | Protected actor-only consumers conserve original custody; provider and current catalogue retirement matrices have source/effect reviews and independent failure controls. Freshb8 full-gate evidence is separate from earlier runs with masked classifier crashes. | Open: the observed optimized original-work-retry hang remains unexplained. Final native protected gates pass132 outer cases with two expected failed child controls and four zero-match controls; passing retries do not explain the hang or establish compressed-content/permanent Darwin repair. |
-| DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, layouts/binary metadata and runtime memory measurements; configured-service, remote and latency costs remain unproved. Memory outranks binary size. |
+| DX26 | Recorded examples remove structural assembly; counter51→36 main lines, pool191→90, supervisor332→96 main plus39 domain lines. Assertions move to owning tests. Frozen counter comparisons retain equal allocation/heap products; sender/client measurements improve their bounded cases. Fifty optimized stash runs account for held/refused originals; the no-overflow control has equal heap costs and16 additional actor bytes. Comparable030 main814c96d1/recovery0da4c952 FIFO consumers now pass120 process controls/pairs on both compilers: identical heap traces, allocation counts and measured value sizes within each compiler/capacity, complete custody retained. | Open: full comparable caller ceremony, compiler/diagnostic/macro costs, binary/metadata diagnostics and remaining runtime paths; configured-service, remote and latency costs remain unproved. The bounded two-actor/one-job memory case is not full DX26. Memory outranks binary size. |
 | DX27 | Published Behavior/Actors0.29.0 and macros0.16.0 match actual registry checksums, tags/releases and228 shipped Rust files at55dbac2. Reviewed PR115, all14 GitHub checks, all11 native gates, four-workspace preflight and normal main-CI/publication workflows pass. Root/fuzz/protected locks select these registry owners; Driver inventory, fuzz compilation and both immutable compiler corpora pass. Bombaybb832b0 passes all25 native Nix gates and six exact-head GitHub checks; PR386 merged as531ded50. Behavior documentation PR116 merged asf9e5fdf with14 checks passing. | Open: current-main reconciliation and runtime publication. Failed runtime-only packaging on eadea00 led to approved41812fce: Engine0.3/macros0.2/runtime0.2, all-feature joint archives, supported-compiler native failure/retirement consumers and historical compatibility inversions. Feature/consumer/cost acceptance remains open; these historical gates do not certify later source. |
 | DX28 | Historical pruning is retained. One compiled application guide runs in workspace/extracted packages across recorded configurations; local links resolve. Its three partial ignored topology copies are replaced by links to complete compiled sources; both supported archive previews pass six doctests/zero ignores. This table is the sole DX01–DX28 disposition checklist. | Open: compiled sample/support tables, rendered/external links, final documentation gates and retirement of this PRD/appendix after obligations have owners. Current contract/evidence is compacted. |
 
@@ -995,6 +995,31 @@ zero-incarnation family composition witness; nonzero admitted-family evidence
 stays separate. Exact source-qualified receipts and remaining obligations are
 in the native PRD and retirement-recovery-joint-* handoff evidence. Full28/flake
 credit remains bound to0da4c952; final programme delivery/cost gates remain open.
+
+The isolated recovery cost comparison uses actual030 source main814c96d1 and
+recovery0da4c952 with identical locked graphs, unchanged domain worker/work,
+all18 borrowed root/worker field equations and complete owner retention through
+join. Latest production source agrees; its later cfg(test) addition has exact
+source conservation. Initial baseline compilation rejected an incorrect flat
+custody pattern; source-derived existing ActorCustody nesting fixes only that
+adapter, and the failed inputs/logs remain uncredited. Both supported compiler/
+allocator/capacity functional matrices then pass. Wrong allocator and business
+controls fail their exact0/4096 and3/4 assertions; known32MiB resident allocation
+raises measured child RSS by33570816 bytes. Two author reviews pass.
+
+Forty fresh controls and80 alternating paired processes pass all work/custody/
+layout/hash oracles with no competing build workers in their snapshots. Both
+sources have identical complete heap traces per compiler/capacity: current peak
+161650/415106 bytes, minimum161874/415330 at effective2/1024; joined28656/current
+or28880/minimum, after host56 bytes in one existing Tokio parker,176 total
+allocations. Sizes also match: execution8936/current or9048/minimum; outcome3224,
+application retirement2936, native2840, worker712. Page-scale RSS/footprint
+variation and short-work duration outliers establish no general improvement or
+latency result. Exact inputs, raw120 rows/CSV, controls, source/graph/binary proof,
+reviews and limits are retirement-costs/* in the existing handoff and the native
+PRD. This bounded healthy FIFO comparison changes no runtime/API/test source;
+clean/incremental compile, binary/metadata, macro, other runtime/caller and final
+programme delivery acceptance remain open. No independent review is claimed.
 
 Canonical finite holding is `actor.with_stash(8, refused, route)`. The limit counts
 held logical inputs, not allocation bytes, Machine deferrals, native mailboxes
