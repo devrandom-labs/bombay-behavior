@@ -46,7 +46,7 @@ Published Behavior/Actors0.29.0 and macros0.16.0 are verified against the actual
 registry index/checksums, downloaded archives, clean source55dbac2, tags and
 releases. All228 shipped Rust files match the tested candidate. Finite holding,
 generic send insertion and caller-name safety are delivered. Current Bombay
-main814c96d1 and the isolated recovery branch select registry Behavior/Actors0.30.0
+mainf09303c8 and the isolated recovery branch select registry Behavior/Actors0.30.0
 and macros0.16.0 without Behavior patches. The030 source/registry verification
 and full host gate below retain their exact source limits. Packaged runtime
 dependencies and complete programme acceptance remain open; older proofs retain
@@ -730,7 +730,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. Current configuration/session/query owners are private; standard foreign-error spelling and rendered extraction signatures are verified atfa25bbd7. | Open: complete selected semantics, full interface acceptance and final gates. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
-| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; frozen030 source0da4c952 passes all28 host Nix checks and authoritative flake check. Following test-only family, nonempty native source and public Application root/family cleanup consumers pass both compilers/profiles, exact conservation and loss inversions. | Open: remaining proportional recovery/source and Application inspection, comparable costs and final registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
+| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Frozen030 source0da4c952 passes all28 host Nix checks and flake check; later consuming family, nonempty native source and joint Application cleanup witnesses retain their focused proofs. Mainf09303c8 is integrated with complete incoming schedule conservation and both-compiler/profile checks. Ata2ef6ce5, outcome() borrows the original typed primary cause without matching the outer runtime variant; complete subsequent consuming recovery and all four unavailable alternatives pass both compilers/profiles with the intended omission control. | Open: complete selected consumer/inspection audit, broader comparable costs and final combined-source/package/registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Report retention adds8 peak heap bytes and no allocations/retained heap in the frozen pool workload on both compilers; broader costs remain open. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
@@ -1014,6 +1014,40 @@ net37/tests net1538/public types +1/-0. Exact frozen source, conservation,
 rendered signatures and gate receipts are sdk-privacy-* in the restart handoff.
 Four focused checks do not replace the earlier0da4c952 full28 gate or final
 programme/CI/delivery acceptance.
+
+Mainf09303c8/PR414's incoming schedule campaign is merged into the recovery
+branch as0e4851b2, preserving every upstream byte outside the previously proved
+retirement pattern/import and the independent DX1 status row. Frozen718 inputs
+pass current remote debug/release each528 outer cases/31 UI fixtures, strict
+remote Clippy/docs and actual1.96 incoming five-case debug/release. Minimum
+profiles each execute180 finite orders and256 generated successes plus one
+persisted replay, with recorded seed/configuration. Two exact Nix outputs are
+rooted; source/seed conservation and two author reviews pass. PR414's eight
+hosted checks pass on its own51d8909a head, not this feature source. The original
+28-check gate is not relabelled. Native8ccbc102 records this integration.
+
+Nativea2ef6ce5 adds only the immutable ActorRetirement::outcome() view required
+by DX04. Pre-edit inferred Counter syntax fails only E0599; original production
+remains exact until that witness. The new getter borrows the existing primary
+outcome beside custody; presence means availability and does not certify success.
+Counter command and real-file rejection pointers survive inspection and subsequent
+complete consuming recovery; normal wrapped completion is available, and all
+four unavailable alternatives retain absence and exact original owned return.
+Actual1.99/1.96 debug/release each pass nine existing owner cases: four live
+Application journeys, one real executor, three pure unavailable cases and one
+compile harness with two unchanged denials. Accessor-only absence inversion
+fails three intended observations and preserves six controls in all four runs.
+The initial classifier's five-control assumption and earlier eight-case reports
+are corrected from original source/positive logs; no Rust oracle changes.
+New-observer style corrections preserve the same pointer/byte expectations.
+Production restores exactly; final reruns, strict lint/format/docs and rendered
+const signature pass. Two author reviews, no independence. The five outer/20
+retained/24 logical alternatives,14 custody fields and every runtime transition
+stay unchanged; one public observation method/match, no type/bound/storage change.
+Production +16/-0, tests +43/-0; all original bytes/oracles conserved. Cumulative
+native120/paired145 paths, Rust113 +3124/-1490/net1634, production net53/tests
+net1581/public types +1/-0. Native PRD and borrowed-outcome-* own exact receipts.
+Final combined-source/CI/package delivery and the complete programme remain open.
 
 The isolated recovery cost comparison uses actual030 source main814c96d1 and
 recovery0da4c952 with identical locked graphs, unchanged domain worker/work,
