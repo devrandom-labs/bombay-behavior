@@ -730,7 +730,7 @@ DX01–03 now accept the approved single explicit topology declaration; rejected
 | DX01 | One Application owns roots, members, scope, HTTP and Entity. Joined/split Node callbacks are actor-only; protected consumers adopt that contract at6c5c18a. Recursive, supervisor, pool and cold journeys execute without composed-type annotations. | Open: complete selected semantics and final gates; hide remaining SDK configuration/query surfaces. [Bombay PR375](https://github.com/devrandom-labs/bombay/pull/375) merged as5e9bcd1 after all six checks passed; programme acceptance remains open. |
 | DX02 | One topology declaration derives spaces, occurrences and custody for born/cold/recursive actors, including equal protocols in distinct roles. Missing/wrong hosts, roles and births remain denied. | Open: complete host/caller corpus, canonical catalogue reconciliation and final gates. |
 | DX03 | Nominal role owners close the tested recursive retirement proofs. Native owner/topology tests, cancellation custody and static authority/occurrence denials run on supported compilers. Strict compiler-specific diagnostic replay retains source/coverage controls. | Open: latest-main reconciliation, all owner consumers, remaining cancellation/freshness acceptance and final gates. |
-| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; focused current23/minimum22 cases per profile, inventory and strict lint/format gates pass. Earlier029 source361d7728 passes all28 host Nix checks. | Open: remaining proportional recovery, nonempty source progress, complete family-disposal/operational inspection, costs and final registry runtime delivery. Full host gates run at frozen030 source0da4c952; CI/other platforms remain open. All earlier archive/full-gate receipts keep their exact source limits. |
+| DX04 | ApplicationOutcome joins work, optional root report, native retirement, notifications and families; consuming completion retains every axis. The owned actor-custody port preserves original causes and caller assertions. Unread commands, accepted/rejected effects, partial interpretation and failed-child/survivor consumers pass both compilers/profiles with intended loss inversions. Registry030 main814c96d1 is integrated; frozen030 source0da4c952 passes all28 host Nix checks and authoritative flake check. The following test-only family consumer passes both compilers/profiles, exact conservation and fault-erasure inversions. | Open: remaining proportional recovery, nonempty source progress, coexisting root/family cleanup failures, operational inspection, comparable costs and final registry runtime delivery. Independent review, CI and other platforms remain open. Earlier archive/full-gate receipts retain their exact source limits. |
 | DX05 | Runner types derive from root/members; current-thread/multithread, original-input recovery and independent receiving witnesses retain caller-local non-Send work. All38 original cancellation/host journeys pass their recorded matrices. | Open: complete consumer acceptance and coordinated runtime archive delivery; final native workspace gates pass. |
 | DX06 | Validated actor/client MailboxCapacity propagates through root, births, cold members and Entity. e629464 rejects native-unsupported sizes before allocation, retaining the original request; boundary/native tests pass both compilers/profiles. Saturation returns originals. Senders drop unused reply storage (176→48 bytes; three constructors each8→0 allocations). Actual-archive FIFO measurements reproduce lower peak heap with capacity2 on both supported compilers, preserving the same work and complete cleanup. | Open: complete resource accounting and comparable package/compile/runtime measurements. Source41812fce passes all25 native gates and both-compiler archive consumers. Report retention adds8 peak heap bytes and no allocations/retained heap in the frozen pool workload on both compilers; broader costs remain open. |
 | DX07 | The existing actor/worker expansion remains authoritative; empty birth aliases are delivered. Private send parameters avoid caller parameter/type names, raw spellings and occupied fallbacks. Pre-edit compile failures,19 added pure cuts, two-pass source/oracle reviews and three native failure/retirement journeys retain their recorded bounds. | Open: generic/private/public, renamed/sibling-target and duplicate-role reconciliation; common-owner fixes are published in029/016. |
@@ -927,9 +927,30 @@ cases per profile, including both original interpreter denials; actual minimum
 checks; strict five-target Clippy, workspace and protected formatting pass.
 Registry checksums/provenance remain exact. Native117/paired142 source paths,
 Rust +2501/-1482/net1019, production net36, tests net983, public types +1/-0.
-Frozen native0da4c952 now runs all28 host Nix checks plus authoritative flake
-check. No030 full-gate, independent review, CI or feature delivery credit yet.
-Nonempty source progress, family recovery, costs and whole programme acceptance
+Frozen native0da4c952 passes all28 host Nix checks and authoritative flake
+check. Exact roots, output hashes/derivers and all four unchanged coverage
+floors verify; workspace execution reports990 passes/123 summaries, zero failed
+summaries and six unchanged controlled child registrations. Actual minimum1.96
+reports114 passes/136 compiler fixtures. This certifies that immutable source,
+not subsequent edits or other platforms. Independent review, CI and feature
+delivery remain open.
+
+The following test-only family witness adds45 lines to two existing traces.
+They consume every original family result and root custody after their borrowed
+snapshots, preserving exact Work, roles, original panic carrier, acquired
+prefix/tail, joined live account, nonzero metrics and final lifetime oracles.
+All four cases pass actual1.99/1.96 debug/release, including restored runs;
+strict current target lint/format pass. Erasing only the original disposal
+failure in FamilyRetirement::into_parts kills both fault cases in both current
+profiles, with both healthy controls passing. Production restores exactly;
+removing only the bridges reproduces the original entire test byte-for-byte.
+Two author reviews pass; no independent review is claimed. Existing consuming
+ports suffice: no production/API/state/trait/wrapper or registration is added.
+The native PRD owns the pre-edit law, complete pass checkpoint, corrected
+evidence-locator failure and source-qualified receipts. Cumulative Rust is
++2546/-1482/net1064; production net36, tests net1028, public types +1/-0,
+unchanged117 native/142 paired paths. Nonempty source progress, coexisting
+root/family cleanup failures, comparable costs and whole programme acceptance
 remain open. No new release or release notice belongs to this test stage.
 
 Canonical finite holding is `actor.with_stash(8, refused, route)`. The limit counts
