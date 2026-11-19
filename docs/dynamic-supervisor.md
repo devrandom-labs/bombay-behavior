@@ -34,7 +34,7 @@ reporting are Bombay policies.
 
 ## Construction
 
-The canonical constructor is:
+Create an empty service directory with:
 
 ```rust,ignore
 behavior_actors::supervisor::directory::new(
@@ -55,6 +55,22 @@ The configuration owns simultaneous policy choices and the two distinct typed
 routes. Construction consumes it into the actor's existing fields without
 preparing workers or performing runtime effects. There are no defaults, staged
 builder, empty routes or public proxy factory.
+
+Management replies use exact established endpoints by default. Pass a client's
+`recipient()` directly as `reply_to`; no logical host declaration or route
+conversion is needed. Lifecycle and diagnostic routes keep their separate
+configuration choices.
+
+Applications using logical management destinations explicitly select
+`directory::new(config).logical_replies()` before adding other layers. This
+selects the existing mixed reply family, accepting both logical and exact
+destinations. Its five management protocols retain their logical host
+requirements. No entry, worker or lifecycle policy is changed by this choice.
+
+Inferred application code does not name a reply family. Explicit
+`DynamicSupervisor`, `DynamicCommand` and `DynamicSupervisorEvent` annotations
+append `ExactReplies` or `MixedReplies` from `composition::replies` to describe
+the selected protocol. This is a source-breaking interface change.
 
 The complete application syntax and public products are owned by
 [`atomic-actor-devx.md`](engineering/atomic-actor-devx.md).

@@ -16,6 +16,7 @@ use behavior::{
     Recipient, RoutedCreation, SettledItem, User,
 };
 use behavior_actors::ZeroCapacity;
+use behavior_actors::composition::replies::MixedReplies;
 use behavior_actors::diagnostic::{DiagnosticAction, DiagnosticDisposition};
 use behavior_actors::lifecycle::ActorDrainPolicy;
 use behavior_actors::proxy::{
@@ -312,6 +313,7 @@ fn search_supervisor(
                 DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
             >,
         >,
+        MixedReplies,
     >,
 > {
     directory::new(directory::Config {
@@ -322,6 +324,7 @@ fn search_supervisor(
         lifecycle: peers.lifecycle,
         diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
     })
+    .logical_replies()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior
@@ -499,6 +502,7 @@ fn admit_search_replacement(
                     DynamicDiagnostic<SearchKey, SearchWorker, SearchStartup>,
                 >,
             >,
+            MixedReplies,
         >,
     >,
 ) {
@@ -549,6 +553,7 @@ fn role_first_construction_returns_the_complete_behavior() {
         lifecycle: peers.lifecycle,
         diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
     })
+    .logical_replies()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior;
@@ -2798,6 +2803,7 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
             >,
         >::global(SearchAddress(102))),
     })
+    .logical_replies()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     let mut supervisor = initialized.behavior;
@@ -3275,6 +3281,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
             >,
         >::global(SearchAddress(2))),
     })
+    .logical_replies()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     assert!(initialized.actions.creates.is_empty());

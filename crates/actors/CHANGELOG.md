@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Dynamic service directories reply to exact established recipients by default,
+  removing five unused logical host requirements for exact clients. Pass
+  `client.recipient()` directly. Existing logical applications select
+  `directory::new(config).logical_replies()`; their destinations and logical host
+  requirements are preserved. Explicit `DynamicSupervisor`, `DynamicCommand`
+  and `DynamicSupervisorEvent` types append the selected existing `ExactReplies`
+  or `MixedReplies` family. Lifecycle and diagnostic routes remain independent.
+
 ## [0.30.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.29.0...bombay-behavior-actors-v0.30.0) - 2026-11-11
 
 ### Added

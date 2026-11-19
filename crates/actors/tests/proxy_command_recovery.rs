@@ -131,7 +131,7 @@ fn supervisors_accept_their_stable_proxy_diagnostic_report() {
             ExactReplies,
         >,
     >();
-    require_parent_ingress::<DynamicSupervisorEvent<(), Worker, Hydrate>>();
+    require_parent_ingress::<DynamicSupervisorEvent<(), Worker, Hydrate, ExactReplies>>();
 }
 
 #[derive(Debug, Eq, PartialEq)]
