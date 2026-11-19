@@ -1,11 +1,13 @@
 //! Named construction choices for a dynamic service directory.
 
+use core::marker::PhantomData;
 use core::num::NonZeroU64;
 use std::collections::BTreeMap;
 
 use behavior::{Behavior, BehaviorAddr, CreationSequence, EndpointAddress};
 
 use super::{DynamicSupervisor, EntryCapacity, SupervisorAvailability, UnexpectedExit};
+use crate::composition::replies::ExactReplies;
 use crate::diagnostic::DiagnosticDisposition;
 use crate::lifecycle::ActorDrainPolicy;
 use crate::proxy::StableProxy;
@@ -35,10 +37,12 @@ pub struct Config<LifecycleRoute, DiagnosticRoute> {
 ///
 /// Capacity and startup limits are already validated by their owning values.
 /// Construction performs no worker preparation or runtime effect.
+/// Management replies use exact established recipients without logical hosts.
+/// Select [`DynamicSupervisor::logical_replies`] when logical replies are needed.
 #[must_use]
 pub fn new<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>(
     config: Config<LifecycleRoute, DiagnosticRoute>,
-) -> DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>
+) -> DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute, ExactReplies>
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -64,5 +68,6 @@ where
         availability: SupervisorAvailability::Accepting(actor_drain),
         lifecycle,
         diagnostics,
+        replies: PhantomData,
     }
 }

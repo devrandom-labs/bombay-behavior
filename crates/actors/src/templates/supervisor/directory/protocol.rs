@@ -2,7 +2,8 @@
 
 use behavior::{Behavior, BehaviorAddr, EndpointAddress, MessageProtocol, Protocol};
 
-use crate::{ReplyRoute, WorkerSubmission};
+use crate::WorkerSubmission;
+use crate::composition::replies::ReplyRoutes;
 
 /// Affine authority to cancel one accepted start or replacement.
 ///
@@ -176,7 +177,12 @@ where
 }
 
 /// Five application operations accepted by one dynamic supervisor.
-pub enum DynamicCommand<Key, Worker, Plan>
+///
+/// The directory selects exact established reply recipients by default.
+/// Its explicit `logical_replies()` choice permits logical and exact routes.
+/// Each command transfers its reply destination into its immediate reply;
+/// lifecycle publication uses the independently configured durable route.
+pub enum DynamicCommand<Key, Worker, Plan, Replies: ReplyRoutes>
 where
     Worker: Behavior,
     BehaviorAddr<Worker>: EndpointAddress,
@@ -184,7 +190,7 @@ where
     Start {
         key: Key,
         submission: WorkerSubmission<Worker, Plan>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -197,7 +203,7 @@ where
     Replace {
         key: Key,
         submission: WorkerSubmission<Worker, Plan>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -210,16 +216,17 @@ where
     Stop {
         key: Key,
         reply_to:
-            ReplyRoute<MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>>,
+            Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>>,
     },
     Query {
         key: Key,
-        reply_to:
-            ReplyRoute<MessageProtocol<BehaviorAddr<Worker>, QueryReply<Key, Worker::Protocol>>>,
+        reply_to: Replies::Route<
+            MessageProtocol<BehaviorAddr<Worker>, QueryReply<Key, Worker::Protocol>>,
+        >,
     },
     Cancel {
         authority: CancelAuthority<Key>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, CancellationReceipt<Key, Worker, Plan>>,
         >,
     },

@@ -1,6 +1,7 @@
 //! Bounded keyed supervision through one stable proxy per service.
 
 use core::cmp::Ordering;
+use core::marker::PhantomData;
 use core::num::NonZeroU64;
 use core::ops::Bound::{Excluded, Unbounded};
 use std::collections::BTreeMap;
@@ -14,10 +15,11 @@ use behavior::{
 
 use crate::{
     ActorDrainPolicy, ChildStopped, DeliveryRoute, DiagnosticAction, DiagnosticDisposition,
-    InitialWorkerOutcome, ObserveChild, ProxyOutcome, ReplacementOutcome, ReplyRoute,
-    ScheduleAfter, StartupPlan, WorkerStartResult, WorkerSubmission,
+    InitialWorkerOutcome, ObserveChild, ProxyOutcome, ReplacementOutcome, ScheduleAfter,
+    StartupPlan, WorkerStartResult, WorkerSubmission,
 };
 
+use crate::composition::replies::{ExactReplies, MixedReplies, ReplyRoutes};
 use crate::proxy::{ProxyInputResult, ProxyOperation, StableProxy};
 use crate::templates::drain::ShutdownDeadline;
 use crate::templates::proxy::ProxyOperationWitness;
@@ -68,8 +70,14 @@ enum SupervisorAvailability {
 }
 
 /// One bounded keyed supervisor with a stable proxy per retained service.
-pub struct DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>
-where
+pub struct DynamicSupervisor<
+    Key,
+    Worker,
+    Plan,
+    LifecycleRoute,
+    DiagnosticRoute,
+    Replies: ReplyRoutes,
+> where
     Worker: Behavior,
     Plan: StartupPlan,
     BehaviorAddr<Worker>: EndpointAddress,
@@ -85,10 +93,42 @@ where
     availability: SupervisorAvailability,
     lifecycle: LifecycleRoute,
     diagnostics: DiagnosticDisposition<DiagnosticRoute>,
+    replies: PhantomData<fn() -> Replies>,
 }
 
-impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType> BehaviorBase
-    for DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType>
+impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>
+    DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute, ExactReplies>
+where
+    Worker: Behavior,
+    Plan: StartupPlan,
+    BehaviorAddr<Worker>: EndpointAddress,
+    StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
+{
+    /// Allow logical names as well as exact endpoints for management replies.
+    /// Logical delivery requires hosts for the management reply protocols.
+    /// Existing entries and independent lifecycle policies are retained unchanged.
+    #[must_use]
+    pub fn logical_replies(
+        self,
+    ) -> DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute, MixedReplies> {
+        DynamicSupervisor {
+            services: self.services,
+            entries: self.entries,
+            startup: self.startup,
+            generations: self.generations,
+            operations: self.operations,
+            creations: self.creations,
+            unexpected_exit: self.unexpected_exit,
+            availability: self.availability,
+            lifecycle: self.lifecycle,
+            diagnostics: self.diagnostics,
+            replies: PhantomData,
+        }
+    }
+}
+
+impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies: ReplyRoutes> BehaviorBase
+    for DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies>
 where
     Worker: Behavior,
     Plan: StartupPlan,
@@ -102,8 +142,8 @@ where
     }
 }
 
-impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType>
-    DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType>
+impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies: ReplyRoutes>
+    DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies>
 where
     Key: Clone + Ord + Send + Sync,
     Worker: Behavior + Send,
@@ -115,8 +155,13 @@ where
     LifecycleRoute: DeliveryRoute<
             Protocol = MessageProtocol<BehaviorAddr<Worker>, DynamicLifecycle<Key, Worker, Plan>>,
         > + Clone,
-    LifecycleRoute::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan>>,
+    LifecycleRoute::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
     DiagnosticRouteType: crate::DiagnosticRoute<DynamicDiagnostic<Key, Worker, Plan>> + Clone,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<WorkerChangeReceipt<Key>, WorkerChangeRejection<Key, Worker, Plan, StartRejection>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<WorkerChangeReceipt<Key>, WorkerChangeRejection<Key, Worker, Plan, ReplaceRejection>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, QueryReply<Key, Worker::Protocol>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, CancellationReceipt<Key, Worker, Plan>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
 {
     fn take_proxy_entry(
         &mut self,
@@ -129,7 +174,7 @@ where
 
     fn reject_input(
         &mut self,
-        input: DynamicSupervisorEvent<Key, Worker, Plan>,
+        input: DynamicSupervisorEvent<Key, Worker, Plan, Replies>,
     ) -> BehaviorActed<Self> {
         Err(input)
     }
@@ -237,7 +282,7 @@ where
         &mut self,
         key: Key,
         submission: WorkerSubmission<Worker, Plan>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -313,7 +358,7 @@ where
         &mut self,
         key: Key,
         submission: WorkerSubmission<Worker, Plan>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -412,7 +457,7 @@ where
     fn stop(
         &mut self,
         key: Key,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>,
         >,
     ) -> BehaviorActed<Self> {
@@ -640,7 +685,7 @@ where
         generation: NonZeroU64,
         operation: NonZeroU64,
         phase: DynamicEntryPhase<Worker, Plan>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>,
         >,
     ) -> BehaviorActed<Self> {
@@ -754,7 +799,7 @@ where
         })
     }
 
-    fn command(&mut self, command: DynamicCommand<Key, Worker, Plan>) -> BehaviorActed<Self> {
+    fn command(&mut self, command: DynamicCommand<Key, Worker, Plan, Replies>) -> BehaviorActed<Self> {
         match &self.availability {
             SupervisorAvailability::Accepting(_) => {}
             SupervisorAvailability::ShuttingDown(_) => {
@@ -794,7 +839,7 @@ where
 
     fn command_while_shutting_down(
         &mut self,
-        command: DynamicCommand<Key, Worker, Plan>,
+        command: DynamicCommand<Key, Worker, Plan, Replies>,
     ) -> BehaviorActed<Self> {
         let mut requests = DynamicSupervisorRequests::empty();
         match command {
@@ -847,7 +892,7 @@ where
     fn cancel(
         &mut self,
         authority: CancelAuthority<Key>,
-        reply_to: ReplyRoute<
+        reply_to: Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, CancellationReceipt<Key, Worker, Plan>>,
         >,
     ) -> BehaviorActed<Self> {
@@ -2711,8 +2756,8 @@ where
     }
 }
 
-impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType> Behavior
-    for DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType>
+impl<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies: ReplyRoutes> Behavior
+    for DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRouteType, Replies>
 where
     Key: Clone + Ord + Send + Sync,
     Worker: Behavior + Send,
@@ -2724,16 +2769,21 @@ where
     LifecycleRoute: DeliveryRoute<
             Protocol = MessageProtocol<BehaviorAddr<Worker>, DynamicLifecycle<Key, Worker, Plan>>,
         > + Clone,
-    LifecycleRoute::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan>>,
+    LifecycleRoute::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
     DiagnosticRouteType: crate::DiagnosticRoute<DynamicDiagnostic<Key, Worker, Plan>> + Clone,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<WorkerChangeReceipt<Key>, WorkerChangeRejection<Key, Worker, Plan, StartRejection>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<WorkerChangeReceipt<Key>, WorkerChangeRejection<Key, Worker, Plan, ReplaceRejection>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, QueryReply<Key, Worker::Protocol>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
+    <Replies::Route<MessageProtocol<BehaviorAddr<Worker>, CancellationReceipt<Key, Worker, Plan>>> as DeliveryRoute>::Sends: behavior::SendsFor<DynamicSupervisorEvent<Key, Worker, Plan, Replies>>,
 {
-    type Protocol = MessageProtocol<BehaviorAddr<Worker>, DynamicCommand<Key, Worker, Plan>>;
-    type Event = DynamicSupervisorEvent<Key, Worker, Plan>;
+    type Protocol = MessageProtocol<BehaviorAddr<Worker>, DynamicCommand<Key, Worker, Plan, Replies>>;
+    type Event = DynamicSupervisorEvent<Key, Worker, Plan, Replies>;
     type Sends = DynamicSupervisorRequests<
         InterpreterRequests<ObserveChild<Worker::Protocol, ChildHead>>,
         SourceActions<ProxyOperation<behavior::Here, Worker, Plan>>,
         SourceActions<ScheduleAfter>,
-        <ReplyRoute<
+        <Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -2742,7 +2792,7 @@ where
                 >,
             >,
         > as DeliveryRoute>::Sends,
-        <ReplyRoute<
+        <Replies::Route<
             MessageProtocol<
                 BehaviorAddr<Worker>,
                 Result<
@@ -2751,13 +2801,13 @@ where
                 >,
             >,
         > as DeliveryRoute>::Sends,
-        <ReplyRoute<
+        <Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, Result<Key, StopRejection<Key>>>,
         > as DeliveryRoute>::Sends,
-        <ReplyRoute<
+        <Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, QueryReply<Key, Worker::Protocol>>,
         > as DeliveryRoute>::Sends,
-        <ReplyRoute<
+        <Replies::Route<
             MessageProtocol<BehaviorAddr<Worker>, CancellationReceipt<Key, Worker, Plan>>,
         > as DeliveryRoute>::Sends,
         LifecycleRoute::Sends,
@@ -2766,7 +2816,7 @@ where
         >,
     >;
     type Ph = Never;
-    type Error = DynamicSupervisorEvent<Key, Worker, Plan>;
+    type Error = DynamicSupervisorEvent<Key, Worker, Plan, Replies>;
     type Birth = Births<StableProxy<Worker, Plan>>;
 
     fn init(&mut self, _: InitializationTurn) -> BehaviorActed<Self> {

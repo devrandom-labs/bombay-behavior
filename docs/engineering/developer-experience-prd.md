@@ -2074,3 +2074,88 @@ ledgers remain deleted. The sole checklist stays open until every selected
 acceptance criterion is implemented and verified or explicitly transferred with
 user agreement. Deferred networking/durability/identity/deployment products do
 not defer SDK privacy or the selected local developer-experience programme.
+
+### Exact dynamic-supervisor replies, before implementation (2026-11-19)
+
+DX02/08/10 already require an exact external endpoint to need no fabricated
+logical host. The published dynamic supervisor instead fixes all five immediate
+management reply lanes to mixed `ReplyRoute`. Its actual Bombay caller declares
+five unused local hosts although all six supplied recipients are exact.
+Removing only those seven declaration lines produces ten missing-host E0277
+diagnostics; the original and exact restored caller each compile successfully.
+All731 runtime inputs/modes are restored. This probe executes no actors.
+
+Reuse the existing sealed `ReplyRoutes`, `ExactReplies` and `MixedReplies`, as
+fixed supervision and FIFO already do. Ordinary `directory::new(config)` selects
+exact replies automatically. Explicit `logical_replies()` selects the mixed
+management protocol; lifecycle and diagnostic routes remain independent.
+No caller supplies a policy marker, placeholder, new host or runtime adapter.
+This is Bombay static-capability policy, not a new actor-model law.
+
+The selected family changes actual command/event/send types. One private
+zero-sized type witness owns that static selection. It adds no runtime choice,
+state alternative, stored reply, public nominal type or trait. Every entry,
+worker/plan, cancellation authority, receipt, refusal and lifecycle cause stays
+with its existing owner and timing. Entries and retirement have no management
+reply field and must not gain one to carry a generic parameter.
+
+Three reviewed focused laws check ordinary exact query, complete exact
+replacement refusal, and explicit logical query. They inspect original keys,
+destinations, full returned submission values and all ten effect lanes. The
+unchanged prior owner refuses the corrected test source only at four exact
+recipient/vector mismatches and the missing explicit selector. Earlier test
+import/container-view errors are retained separately and receive no semantic
+credit. Neither the native nor focused compiler refusal is a passing fix.
+
+Before lowering, actual remote Core main6932914 is fetched and checked: its tree
+and selected owner/instructions equal53e/registry628649. The isolated source
+checkout preserves the existing main PRD edits. Planned owner scope is four
+files: dynamic config, command protocol, input event and aggregate root. Reuse
+the named request product; do not add a forwarding wrapper or another runtime.
+Focused debug/optimized and the smallest native interpreter witness precede
+separately measured caller/catalogue migration. Logical host denials, complete
+source controls, both supported downstream compilers, final owner/package gates
+and normal delivery remain required. No production change or release is claimed
+by this prerecord; the full DX01–DX28 goal remains active.
+
+#### Focused verification and caller migration
+
+The four existing directory owners now use the existing reply family. No new
+public nominal type, trait, runtime state or stored management reply was added.
+The private zero-sized witness describes the actual command/send protocol.
+The entry graph, transition alternatives, cancellation and lifecycle custody
+are unchanged. All five replies retain the original payloads and timing.
+
+Three focused ownership/route cases pass on pinned Rust1.95 in debug and
+optimized builds. A one-site key-copy control fails both exact and logical
+query allocation oracles in each profile; exact restoration passes all three.
+Two further pure cases pass in both timer-wrapper orders, preserving complete
+initialization, exact query actions, original key and selected timer stop.
+Existing fixed-supervisor four protocol cases and FIFO two compile/pure cases
+also pass, reusing the same lower-order reply family without placeholders.
+
+The real Bombay dynamic application passes on pinned Rust1.99 in debug and
+optimized builds with all five unused hosts removed. Every original assertion
+is preserved, including original worker allocations and refusal reuse,
+cancellation, ordered retirement, complete joined descendants and cleanup.
+The formerly ignored root report is also checked. This proof uses three
+explicit local Core package overrides (Behavior/Actors0.30, Macros0.16); exact
+versions, dependency/feature graph and all unrelated package origins remain.
+Both runtime inputs changed for that probe are restored, including all731
+original source bytes/modes and the registry lock. This is local integration
+evidence, not published-package compatibility.
+
+Mechanical migration is limited to the existing logical-policy test helpers
+and four stateful fuzz consumers. They explicitly select the existing mixed
+family and keep every prior assertion, expected host projection and outcome.
+One diagnostic-ingress annotation names the exact family. No new policy,
+adapter, callback or catalogue abstraction is introduced by migration.
+The cumulative planned batch is15 existing/new paths: four production owners,
+three test files, four fuzz files and four documentation/change-record files.
+Production state alternatives and transition branches remain unchanged;
+protocol causes are not repeated, no arrival history or semantic boolean is
+added, and the application syntax requires no structural path or policy marker.
+Disposition: `pass` for this model and focused evidence. Migrated owner tests,
+fuzz campaigns, strict Clippy, complete native/Nextest/package checks, supported
+consumer compilers and normal reviewed delivery remain open. The full
+DX01–DX28 programme is not completed by this bounded reply improvement.
