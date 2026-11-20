@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.31.0...bombay-behavior-actors-v0.32.0) - 2026-11-20
+
+### Other
+
+- refactor!(replies): use address names for reply choices ([#126](https://github.com/devrandom-labs/bombay-behavior/pull/126))
+
 ### Breaking
 
 - Rename the address reply choices: `logical_replies()` becomes
