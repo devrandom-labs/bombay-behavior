@@ -104,11 +104,11 @@ where
     BehaviorAddr<Worker>: EndpointAddress,
     StableProxy<Worker, Plan>: Behavior<Protocol = Worker::Protocol>,
 {
-    /// Allow logical names as well as exact endpoints for management replies.
-    /// Logical delivery requires hosts for the management reply protocols.
+    /// Allow actor addresses as well as direct recipients for management replies.
+    /// Address delivery requires hosts for the management reply protocols.
     /// Existing entries and independent lifecycle policies are retained unchanged.
     #[must_use]
-    pub fn logical_replies(
+    pub fn replies_by_address(
         self,
     ) -> DynamicSupervisor<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute, MixedReplies> {
         DynamicSupervisor {

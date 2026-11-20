@@ -103,12 +103,12 @@ where
 impl<Factory, Role, Source, DiagnosticRoute>
     FifoBuilder<Factory, Role, Source, DiagnosticRoute, ExactReplies>
 {
-    /// Accept logical customers as well as exact endpoints.
+    /// Accept actor addresses as well as direct recipients for customer replies.
     ///
     /// This changes the concrete command and send types. Interpreters must
-    /// provide the corresponding logical protocol namespace.
+    /// host the corresponding reply protocol for address delivery.
     #[must_use]
-    pub fn logical_replies(
+    pub fn replies_by_address(
         self,
     ) -> FifoBuilder<Factory, Role, Source, DiagnosticRoute, MixedReplies> {
         FifoBuilder {

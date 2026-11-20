@@ -80,7 +80,7 @@ where
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    ).logical_status().logical_capabilities()
+    ).status_by_address().capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker is prepared"))
     .initialize()

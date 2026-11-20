@@ -11,7 +11,7 @@ mod sealed {
 /// The destination capabilities accepted by one actor's reply protocols.
 ///
 /// Owning constructors select exact endpoints for ordinary clients. Explicitly
-/// enabling logical replies selects the mixed family instead. This choice fixes
+/// enabling replies by address selects the mixed family instead. This choice fixes
 /// the command and send types; it performs no resolution or delivery. Those
 /// operations remain owned by [`DeliveryRoute`] and the interpreter.
 pub trait ReplyRoutes: sealed::ReplyRoutes {
@@ -22,10 +22,10 @@ pub trait ReplyRoutes: sealed::ReplyRoutes {
         P::Addr: EndpointAddress;
 }
 
-/// Replies to exact established endpoints, without logical name resolution.
+/// Replies to direct recipients, without resolving actor addresses.
 pub struct ExactReplies;
 
-/// Replies accepting both logical names and exact established endpoints.
+/// Replies accepting both actor addresses and direct recipients.
 pub struct MixedReplies;
 
 impl sealed::ReplyRoutes for ExactReplies {}

@@ -179,7 +179,7 @@ where
 /// Five application operations accepted by one dynamic supervisor.
 ///
 /// The directory selects exact established reply recipients by default.
-/// Its explicit `logical_replies()` choice permits logical and exact routes.
+/// Its `replies_by_address()` choice also accepts actor addresses.
 /// Each command transfers its reply destination into its immediate reply;
 /// lifecycle publication uses the independently configured durable route.
 pub enum DynamicCommand<Key, Worker, Plan, Replies: ReplyRoutes>

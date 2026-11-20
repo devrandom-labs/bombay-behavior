@@ -61,7 +61,7 @@ fuzz_target!(|input: &[u8]| {
         lifecycle: lifecycle,
         diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     let mut supervisor = initialized.behavior;

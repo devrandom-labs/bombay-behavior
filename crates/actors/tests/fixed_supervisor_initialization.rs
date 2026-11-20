@@ -530,8 +530,8 @@ fn first_proxy_dispatched(
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -590,8 +590,8 @@ fn routed_start(
             diagnostics: DiagnosticDisposition::deliver_to(diagnostics),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -909,8 +909,8 @@ fn automatic_recovery_has_one_named_worker_preparation_lane() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -932,8 +932,8 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -1009,8 +1009,8 @@ fn proxy_birth_batch_requires_each_roles_creation_and_birth_kind() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -1086,8 +1086,8 @@ fn failed_proxy_birth_batches_require_exact_pending_creations() {
                 diagnostics: DiagnosticDisposition::terminate(),
             },
         )
-        .logical_status()
-        .logical_capabilities()
+        .status_by_address()
+        .capabilities_by_address()
         .build()
         .unwrap_or_else(|_| panic!("every initial worker prepares"))
         .initialize()
@@ -1331,8 +1331,8 @@ fn terminal_initial_failure_retains_other_workers_until_supervisor_retirement() 
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("both tracked workers prepare"))
     .initialize()
@@ -1454,8 +1454,8 @@ async fn terminal_restart_denial_retains_member_and_prepared_worker_until_retire
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the tracked worker prepares"))
     .initialize()
@@ -1950,8 +1950,8 @@ where
             diagnostics: diagnostics,
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -2173,8 +2173,8 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -2253,8 +2253,8 @@ async fn logical_lifecycle_route_publishes_exact_started_event() {
         },
     )
     .publish_lifecycle(lifecycle.clone())
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -2391,8 +2391,8 @@ where
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -4615,8 +4615,8 @@ fn shutdown_cancels_unemitted_initial_inputs_and_stops_proxies_in_roster_order()
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -4745,8 +4745,8 @@ fn shutdown_retains_pending_proxy_creation_and_stops_an_exact_committed_proxy() 
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -5389,8 +5389,8 @@ fn starting_roles_accept_unavailable_only_from_their_proxy() {
             diagnostics: DiagnosticDisposition::deliver_to(diagnostics.clone()),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()
@@ -5817,8 +5817,8 @@ fn unavailable_report_before_proxy_creation_returns_complete() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -6184,8 +6184,8 @@ async fn one_replacement_operation() -> (
     .publish_lifecycle(EstablishedRecipient::<SearchLifecycleProtocol>::issued(
         Endpoint(970),
     ))
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the initial worker prepares"))
     .initialize()
@@ -9732,8 +9732,8 @@ fn pending_proxy_births_are_observable_as_creating_proxy() {
             diagnostics: DiagnosticDisposition::terminate(),
         },
     )
-    .logical_status()
-    .logical_capabilities()
+    .status_by_address()
+    .capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("every initial worker prepares"))
     .initialize()

@@ -37,8 +37,8 @@ pub struct Config<LifecycleRoute, DiagnosticRoute> {
 ///
 /// Capacity and startup limits are already validated by their owning values.
 /// Construction performs no worker preparation or runtime effect.
-/// Management replies use exact established recipients without logical hosts.
-/// Select [`DynamicSupervisor::logical_replies`] when logical replies are needed.
+/// Management replies use direct recipients without reply-protocol hosts.
+/// Select [`DynamicSupervisor::replies_by_address`] to also accept actor addresses.
 #[must_use]
 pub fn new<Key, Worker, Plan, LifecycleRoute, DiagnosticRoute>(
     config: Config<LifecycleRoute, DiagnosticRoute>,

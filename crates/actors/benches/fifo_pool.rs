@@ -149,7 +149,7 @@ async fn measure() -> f64 {
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
     )
-    .logical_replies()
+    .replies_by_address()
     .build()
     .unwrap_or_else(|_| panic!("the worker declaration constructs a FIFO pool"));
 

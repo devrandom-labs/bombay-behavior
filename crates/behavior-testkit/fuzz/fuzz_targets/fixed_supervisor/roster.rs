@@ -111,7 +111,7 @@ where
                 WorkerEndpoint,
             )),
         },
-    ).logical_status().logical_capabilities()
+    ).status_by_address().capabilities_by_address()
     .build()
     .unwrap_or_else(|_| panic!("each declared role has an initial worker"))
     .initialize()
