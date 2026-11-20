@@ -56,16 +56,14 @@ routes. Construction consumes it into the actor's existing fields without
 preparing workers or performing runtime effects. There are no defaults, staged
 builder, empty routes or public proxy factory.
 
-Management replies use exact established endpoints by default. Pass a client's
-`recipient()` directly as `reply_to`; no logical host declaration or route
-conversion is needed. Lifecycle and diagnostic routes keep their separate
-configuration choices.
+Management replies use direct recipients by default. Pass a client's
+`recipient()` as `reply_to`; no host declaration or route conversion is needed
+for these replies. Lifecycle and diagnostics have their own destinations.
 
-Applications using logical management destinations explicitly select
-`directory::new(config).logical_replies()` before adding other layers. This
-selects the existing mixed reply family, accepting both logical and exact
-destinations. Its five management protocols retain their logical host
-requirements. No entry, worker or lifecycle policy is changed by this choice.
+To also accept actor addresses as reply destinations, select
+`directory::new(config).replies_by_address()` before adding other layers.
+Both actor addresses and direct recipients are accepted. The interpreter must
+host all five management reply protocols for delivery by address.
 
 Inferred application code does not name a reply family. Explicit
 `DynamicSupervisor`, `DynamicCommand` and `DynamicSupervisorEvent` annotations

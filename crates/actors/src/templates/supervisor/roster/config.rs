@@ -251,10 +251,10 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute, CapabilityReplies: 
         CapabilityReplies,
     >
 {
-    /// Allow logical addresses as well as exact endpoints for status replies.
-    /// Logical delivery requires the interpreter to host this reply protocol.
+    /// Allow actor addresses as well as direct recipients for status replies.
+    /// Address delivery requires the interpreter to host this reply protocol.
     #[must_use]
-    pub fn logical_status(
+    pub fn status_by_address(
         self,
     ) -> FixedBuilder<
         Factory,
@@ -286,10 +286,10 @@ impl<Factory, Role, Source, DiagnosticRoute, LifecycleRoute, StatusReplies: Repl
         ExactReplies,
     >
 {
-    /// Allow logical addresses as well as exact endpoints for capability replies.
-    /// Logical delivery requires the interpreter to host this reply protocol.
+    /// Allow actor addresses as well as direct recipients for capability replies.
+    /// Address delivery requires the interpreter to host this reply protocol.
     #[must_use]
-    pub fn logical_capabilities(
+    pub fn capabilities_by_address(
         self,
     ) -> FixedBuilder<
         Factory,

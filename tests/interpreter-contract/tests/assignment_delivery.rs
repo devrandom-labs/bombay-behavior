@@ -138,7 +138,7 @@ async fn ready_pool() -> (Active<Pool>, CreationId) {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    ).logical_replies().build()
+    ).replies_by_address().build()
     .unwrap_or_else(|_| panic!("the declared worker constructs the pool"));
     let initialized = pool.initialize().expect("pool initialization");
     let mut pool = initialized.behavior;

@@ -324,7 +324,7 @@ fn search_supervisor(
         lifecycle: peers.lifecycle,
         diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior
@@ -553,7 +553,7 @@ fn role_first_construction_returns_the_complete_behavior() {
         lifecycle: peers.lifecycle,
         diagnostics: DiagnosticDisposition::deliver_to(peers.diagnostics),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"))
     .behavior;
@@ -2803,7 +2803,7 @@ async fn retire_policy_drains_an_unexpected_worker_stop_and_releases_its_key() {
             >,
         >::global(SearchAddress(102))),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     let mut supervisor = initialized.behavior;
@@ -3281,7 +3281,7 @@ fn accepted_start_cancellation_retires_before_fresh_key_reuse() {
             >,
         >::global(SearchAddress(2))),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("dynamic supervisor initialization is pure"));
     assert!(initialized.actions.creates.is_empty());

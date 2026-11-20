@@ -149,7 +149,7 @@ fn ready_pool() -> (SearchPool, CreationId) {
             shutdown: ActorDrainPolicy::WaitForActorGraph,
             diagnostics: DiagnosticDisposition::<Infallible>::terminate(),
         },
-    ).logical_replies().build()
+    ).replies_by_address().build()
     .unwrap_or_else(|_| panic!("the infallible worker declaration constructs a pool"));
     let initialized = pool
         .initialize()

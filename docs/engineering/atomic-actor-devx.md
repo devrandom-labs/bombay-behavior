@@ -54,14 +54,14 @@ A closure covered by this implementation cannot also implement the trait itself.
 
 Fixed supervisor, dynamic directory and FIFO replies use exact established
 recipients by default. Pass the client's `recipient()` directly. Applications
-using logical reply addresses select `logical_status()` and
-`logical_capabilities()` independently on the fixed-supervisor builder,
-`logical_replies()` on the FIFO builder before `build()`, or
-`directory::new(config).logical_replies()` for a dynamic directory. The fixed
-supervisor's status and capability choices are independent. Dynamic logical
-replies enable all five management namespaces, including unused lanes. Declare
-hosts for every protocol in the enabled logical reply family. Exact customers
-need no logical reply namespace or structural reply-type alias.
+using actor addresses for replies select `status_by_address()` and
+`capabilities_by_address()` independently on the fixed-supervisor builder,
+`replies_by_address()` on the FIFO builder before `build()`, or
+`directory::new(config).replies_by_address()` for a dynamic directory. The fixed
+supervisor's status and capability choices are independent. Dynamic replies
+by address enable all five management namespaces, including unused lanes. Declare
+hosts for every protocol in the enabled address reply family. Exact customers
+need no address reply namespace or structural reply-type alias.
 
 An ordinary worker can emit its assignment completion and business messages
 in the same named send product. FIFO and keyed construction infer the result

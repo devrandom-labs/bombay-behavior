@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Rename the address reply choices: `logical_replies()` becomes
+  `replies_by_address()`, `logical_status()` becomes `status_by_address()`, and
+  `logical_capabilities()` becomes `capabilities_by_address()`. Direct recipients
+  remain accepted; reply types, ownership and delivery behavior are unchanged.
+
 ## [0.31.0](https://github.com/devrandom-labs/bombay-behavior/compare/bombay-behavior-actors-v0.30.0...bombay-behavior-actors-v0.31.0) - 2026-11-19
 
 ### Fixed

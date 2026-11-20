@@ -2177,3 +2177,20 @@ preview is approved for29 files. Focused compiler-first verification and the
 rename remain in progress; existing0.31 publication history keeps its actual spelling.
 Full DX01–DX28, remaining interfaces, costs and current release delivery remain
 open in the sole requirement checklist.
+
+
+### Reply address names (2026-11-20)
+
+The user approved the29-file naming correction. The existing directory/FIFO
+selectors are now `replies_by_address()`; fixed-supervisor selectors are
+`status_by_address()` and `capabilities_by_address()`. Direct recipients remain
+the default, and the existing mixed family also accepts actor addresses.
+No alias, type, trait, field, state, route, wrapper or dependency was added.
+All four consuming method bodies are exact; all caller assertions are retained.
+The original API refuses the desired caller at exactly E0599/one error/no tests.
+Actual pinned1.95 debug and optimized focused suites each pass198 cases
+(directory5/FIFO94/fixed99), including both original timer-wrapper orders.
+Mechanical catalogue, benchmark, fuzz and interpreter callers use the same
+spelling; current-source full gates, packages and delivery remain open.
+Published0.31 history above keeps the spelling actually shipped. The existing
+`context/dynamic-replies/reply-addresses` ledger owns exact source/raw evidence.

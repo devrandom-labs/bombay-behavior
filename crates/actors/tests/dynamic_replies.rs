@@ -191,7 +191,7 @@ fn explicit_logical_query_keeps_the_original_logical_destination() {
         lifecycle,
         diagnostics: DiagnosticDisposition::terminate(),
     })
-    .logical_replies()
+    .replies_by_address()
     .initialize()
     .unwrap_or_else(|_| panic!("directory initialization is pure"))
     .behavior;
